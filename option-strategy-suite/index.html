@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NIFTY Option Strategy Suite — Analyser · T1 Helper · Pullback Entry</title>
+<meta name="description" content="A three-in-one execution tool for the NIFTY first-candle option strategy: Option Analyser (entry / T1 / stop loss), T1 Decision Helper (hold vs book) and Stoploss Pullback Entry (liquidity zones)." />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1720'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%2337d6a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="#12202b"/><path d="M6 21l6-7 5 4 9-11" stroke="#37d6a0" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong>NIFTY Option Strategy Suite</strong>
+        <small>First-candle SOP · Analyser → T1 Helper → Pullback Entry</small>
+      </span>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn btn-ghost" id="btn-settings" aria-expanded="false" aria-controls="settings-drawer">Formula settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-clear-all">Clear all</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Formula settings drawer ============ -->
+<section id="settings-drawer" class="drawer" hidden>
+  <div class="wrap">
+    <h2 class="drawer-title">Formula settings</h2>
+    <p class="muted small">
+      The strategy guide defines <em>which</em> values each tool produces, not the arithmetic behind them.
+      Every coefficient below is exposed so the model can be tuned to match your own back-tested numbers.
+      Changes are saved in this browser and apply to all three tools immediately.
+    </p>
+
+    <div class="settings-grid">
+      <fieldset class="settings-group">
+        <legend>Option Analyser</legend>
+        <label class="field">
+          <span>Entry buffer <em>(% of candle range above high)</em></span>
+          <input type="number" id="cfg-entryBufferPct" step="0.1" min="0" max="50" />
+        </label>
+        <label class="field">
+          <span>Stop-loss buffer <em>(% of range below low)</em></span>
+          <input type="number" id="cfg-slBufferPct" step="0.1" min="0" max="50" />
+        </label>
+        <label class="field">
+          <span>Target&nbsp;1 multiplier <em>(× candle range above entry)</em></span>
+          <input type="number" id="cfg-t1Multiplier" step="0.05" min="0.1" max="10" />
+        </label>
+        <label class="field">
+          <span>Tick size <em>(confirmation close must clear entry by)</em></span>
+          <input type="number" id="cfg-tickSize" step="0.05" min="0.01" max="10" />
+        </label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend>T1 Decision Helper</legend>
+        <label class="field">
+          <span>Min. body ratio <em>(body ÷ range)</em></span>
+          <input type="number" id="cfg-minBodyRatio" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span>Min. close position <em>(close within candle range)</em></span>
+          <input type="number" id="cfg-minClosePos" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span>Check 4 reach factor <em>(candle range ÷ distance left to T2)</em></span>
+          <input type="number" id="cfg-reachFactor" step="0.05" min="0.1" max="5" />
+        </label>
+        <label class="field">
+          <span>Hold-T2 score threshold</span>
+          <input type="number" id="cfg-holdThreshold" step="1" min="0" max="100" />
+        </label>
+        <label class="field">
+          <span>Partial-book score threshold</span>
+          <input type="number" id="cfg-partialThreshold" step="1" min="0" max="100" />
+        </label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend>Stoploss Pullback Entry</legend>
+        <label class="field">
+          <span>Zone&nbsp;1 retracement <em>(fraction of range above low)</em></span>
+          <input type="number" id="cfg-zone1Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span>Zone&nbsp;2 retracement <em>(deeper liquidity fill)</em></span>
+          <input type="number" id="cfg-zone2Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span>Target&nbsp;1 multiplier <em>(× range above high)</em></span>
+          <input type="number" id="cfg-pullbackTargetMult" step="0.05" min="0.1" max="10" />
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="row-actions">
+      <button type="button" class="btn btn-primary" id="btn-settings-save">Save settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings-reset">Restore defaults</button>
+      <span class="save-flash" id="settings-flash" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Tools">
+  <div class="wrap tabs-inner" role="tablist">
+    <button class="tab is-active" role="tab" id="tab-analyser"  aria-controls="panel-analyser"  aria-selected="true"  data-panel="analyser"><span class="tab-step">Phase 1–2</span>Option Analyser</button>
+    <button class="tab" role="tab" id="tab-t1"        aria-controls="panel-t1"        aria-selected="false" data-panel="t1"><span class="tab-step">Phase 3</span>T1 Decision Helper</button>
+    <button class="tab" role="tab" id="tab-pullback"  aria-controls="panel-pullback"  aria-selected="false" data-panel="pullback"><span class="tab-step">Phase 4</span>Pullback Entry</button>
+    <button class="tab" role="tab" id="tab-guide"     aria-controls="panel-guide"     aria-selected="false" data-panel="guide"><span class="tab-step">SOP</span>Execution Guide</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- =================== TOOL 1: OPTION ANALYSER =================== -->
+  <section class="panel is-active" id="panel-analyser" role="tabpanel" aria-labelledby="tab-analyser">
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill">Step 1</span> ATM strike selection</h2>
+        <p class="muted">Open price of the 09:15–09:20 NIFTY candle, rounded down to the 100 strike — 23670 gives 23600.</p>
+      </div>
+      <div class="card-body atm-row">
+        <label class="field">
+          <span>NIFTY open price (first 5-min candle)</span>
+          <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="e.g. 23670" />
+        </label>
+        <div class="atm-result" id="atm-result" aria-live="polite">
+          <span class="muted small">Enter the open price to get the ATM strike.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill">Steps 2–3</span> First-candle option data</h2>
+        <p class="muted">Record the 09:15–09:20 candle of the ATM Call and Put from your broker terminal, then analyse.</p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> Call option (CE)</legend>
+            <div class="ohlc">
+              <label class="field"><span>Open</span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>High</span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Low</span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Close</span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> Put option (PE)</legend>
+            <div class="ohlc">
+              <label class="field"><span>Open</span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>High</span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Low</span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Close</span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-analyse">Analyse</button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-sample">Load sample</button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="analyser-output" hidden>
+      <div class="card" id="analyser-bias-card">
+        <div class="card-body bias-row" id="analyser-bias"></div>
+      </div>
+
+      <div class="result-grid">
+        <article class="card result-card side-call" id="res-ce"></article>
+        <article class="card result-card side-put" id="res-pe"></article>
+      </div>
+
+      <div class="card note-card">
+        <h3><span class="step-pill">Steps 4–5</span> Entry confirmation rule</h3>
+        <p>Do <strong>not</strong> enter the moment price touches the entry price. Wait for a full 5-minute candle on the
+        option chart to <strong>close above</strong> the entry price. Only then is the entry confirmed — and that same
+        candle is the one you feed into the T1 Decision Helper.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 2: T1 DECISION HELPER =================== -->
+  <section class="panel" id="panel-t1" role="tabpanel" aria-labelledby="tab-t1" hidden>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill">Steps 6–7</span> Triggered side &amp; mapped levels</h2>
+        <p class="muted">Values come from the Option Analyser, remapped exactly as the strategy guide specifies.</p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Triggered side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call">Call target</button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put">Put target</button>
+        </div>
+
+        <div class="mapping-note">
+          <span class="map-item"><b>Entry</b> ← Analyser <i>Stop Loss</i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b>T1 target</b> ← Analyser <i>Entry Price</i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b>T2 target</b> ← Analyser <i>Target 1</i></span>
+        </div>
+
+        <div class="ohlc ohlc-3">
+          <label class="field"><span>Entry <em>(analyser stop loss)</em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>T1 target <em>(analyser entry)</em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>T2 target <em>(analyser target 1)</em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-levels-err" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill">Steps 8–9</span> Confirmation candle</h2>
+        <p class="muted">The exact 5-minute candle that closed above the entry price and confirmed the trade.</p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span>Open</span><input type="number" id="t1-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>High</span><input type="number" id="t1-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>Low</span><input type="number" id="t1-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>Close</span><input type="number" id="t1-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-candle-err" role="alert"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-decide">Decide</button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="t1-output" hidden>
+      <div class="card verdict-card" id="t1-verdict"></div>
+      <div class="card">
+        <div class="card-head"><h3><span class="step-pill">Step 10</span> Pre-trade condition checks</h3></div>
+        <div class="card-body"><ul class="checks" id="t1-checks"></ul></div>
+      </div>
+      <div class="card" id="t1-gate"></div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 3: PULLBACK ENTRY =================== -->
+  <section class="panel" id="panel-pullback" role="tabpanel" aria-labelledby="tab-pullback" hidden>
+
+    <div class="card warn-card">
+      <h3>⚠ Critical rule — no stop loss</h3>
+      <p>This tool is built on liquidity movement and pullback structure. Do <strong>not</strong> place a stop loss on
+      trades taken from it; standard stop-loss placement does not apply to this setup. Size the position so that the
+      full premium at risk is an amount you accept losing.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill">Steps 11–12</span> Original first-candle data</h2>
+        <p class="muted">The same 09:15–09:20 Call and Put candles used in Phase 1. Analyse to get the tradable side.</p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> Call option (CE)</legend>
+            <div class="ohlc">
+              <label class="field"><span>Open</span><input type="number" id="pb-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>High</span><input type="number" id="pb-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Low</span><input type="number" id="pb-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Close</span><input type="number" id="pb-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> Put option (PE)</legend>
+            <div class="ohlc">
+              <label class="field"><span>Open</span><input type="number" id="pb-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>High</span><input type="number" id="pb-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Low</span><input type="number" id="pb-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span>Close</span><input type="number" id="pb-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-pullback">Analyse</button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-import">Copy from analyser</button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pullback-output" hidden>
+      <div class="card verdict-card" id="pb-verdict"></div>
+      <div class="card" id="pb-levels"></div>
+      <div class="card" id="pb-detail"></div>
+    </div>
+  </section>
+
+  <!-- =================== SOP GUIDE =================== -->
+  <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2>Execution guide</h2>
+        <p class="muted">The 13-step standard operating procedure this suite implements, phase by phase.</p>
+      </div>
+      <div class="card-body guide">
+
+        <h3 class="phase">Phase 1 · ATM selection &amp; option data setup</h3>
+        <ol class="sop" start="1">
+          <li><b>Identify the ATM strike.</b> Open the NIFTY chart, note the open of the first 5-minute candle
+            (09:15–09:20) and round it to the nearest 100. Open 23670 → 23600 CE and 23600 PE.</li>
+          <li><b>Record option OHLC.</b> In your broker app, note the open, high, low and close of that same
+            09:15–09:20 candle for both the ATM Call and the ATM Put.</li>
+        </ol>
+
+        <h3 class="phase">Phase 2 · Option Analyser (levels &amp; confirmation)</h3>
+        <ol class="sop" start="3">
+          <li><b>Enter values.</b> Put the CE OHLC into the Call section and the PE OHLC into the Put section, then
+            press <i>Analyse</i>.</li>
+          <li><b>Read the output.</b> Three levels are produced for each side: entry price, Target 1 and stop loss.</li>
+          <li><b>Wait for confirmation.</b> Never enter on touch. Wait for a 5-minute candle to <i>close above</i> the
+            entry price — entry 150 means a close of 150.05 or higher confirms it.</li>
+        </ol>
+
+        <h3 class="phase">Phase 3 · T1 Decision Helper (target validation)</h3>
+        <ol class="sop" start="6">
+          <li><b>Select the triggered side</b> — Call target or Put target.</li>
+          <li><b>Map the levels.</b> Entry field ← analyser stop loss · T1 field ← analyser entry price ·
+            T2 field ← analyser Target 1.</li>
+          <li><b>Enter the confirmation candle</b> — the OHLC of the exact candle that closed above the entry price.</li>
+          <li><b>Decide.</b> <i>Hold T2</i> means the probability of reaching target is high and the trade can be held.
+            <i>Book now / partial book</i> means probability is low — exit or avoid.</li>
+          <li><b>Check condition 4.</b> Passed → proceed with the trade. Not passed → skip the trade, whatever the
+            other checks say.</li>
+        </ol>
+
+        <h3 class="phase">Phase 4 · Stoploss Pullback Entry (liquidity setup)</h3>
+        <ol class="sop" start="11">
+          <li><b>Enter the original first-candle data</b> for both Call and Put.</li>
+          <li><b>Check direction.</b> The tool returns Call Buy or Put Buy — trade only the recommended side.</li>
+          <li><b>Execute.</b> Zone 1 is the entry price, Target 1 is the target.
+            <span class="inline-warn">No stop loss is used with this tool.</span></li>
+        </ol>
+
+        <h3 class="phase">How each number is calculated</h3>
+        <p class="muted small">The strategy guide specifies which levels each tool outputs, not the arithmetic. This
+        suite uses the transparent first-candle range model below; every coefficient is editable under
+        <i>Formula settings</i>.</p>
+        <div class="formula-list" id="formula-list"></div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <div class="wrap">
+    <p><strong>Educational tool only.</strong> Nothing here is investment advice or a recommendation to trade.
+    Options carry substantial risk of loss; levels are derived arithmetically from the values you type and carry no
+    predictive guarantee. Verify every number against your broker terminal before acting.</p>
+    <p class="muted small">All inputs stay in your browser — nothing is uploaded or stored on a server.</p>
+  </div>
+</footer>
+
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/analyser.js"></script>
+<script src="assets/js/t1helper.js"></script>
+<script src="assets/js/pullback.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
