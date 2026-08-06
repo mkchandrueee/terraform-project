@@ -91,6 +91,7 @@ em { font-style: normal; color: var(--text-faint); font-weight: 400; }
 .btn-primary:hover { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%); }
 .btn-ghost { background: transparent; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
+.lang-toggle { min-width: 74px; border-color: #2e4155; }
 
 /* ---------- settings drawer ---------- */
 .drawer {
@@ -339,6 +340,7 @@ input[type=number] { -moz-appearance: textfield; }
 .check.is-critical { border-color: rgba(88, 166, 255, .45); box-shadow: inset 3px 0 0 var(--info); }
 .check-icon { font-family: var(--mono); font-weight: 700; font-size: 15px; line-height: 1.45; }
 .check.pass .check-icon { color: var(--accent); }
+.check.warn .check-icon { color: var(--warn); }
 .check.fail .check-icon { color: var(--danger); }
 .check-body { min-width: 0; flex: 1; display: block; }
 .check-name { display: block; font-size: 13.5px; font-weight: 650; }
@@ -346,6 +348,7 @@ input[type=number] { -moz-appearance: textfield; }
 .check-detail { display: block; font-size: 12.5px; color: var(--text-dim); font-family: var(--mono); margin-top: 3px; }
 .check-verdict { flex: none; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .08em; align-self: center; }
 .check.pass .check-verdict { color: var(--accent); }
+.check.warn .check-verdict { color: var(--warn); }
 .check.fail .check-verdict { color: var(--danger); }
 
 .gate { text-align: center; padding: 20px 18px; border-left: 3px solid var(--line); }

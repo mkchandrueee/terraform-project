@@ -7,6 +7,7 @@
   'use strict';
 
   var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
 
   /* ---------- ATM strike (step 1) ----------
      The guide's own example rounds 23670 down to 23600, so the strike is the
@@ -64,23 +65,23 @@
   function levelBlock(r) {
     return '' +
       '<div class="levels">' +
-        '<div class="level level-entry"><div class="level-label">Entry price</div><div class="level-value">' + U.fmt(r.entry) + '</div></div>' +
-        '<div class="level level-target"><div class="level-label">Target 1</div><div class="level-value">' + U.fmt(r.target1) + '</div></div>' +
-        '<div class="level level-sl"><div class="level-label">Stop loss</div><div class="level-value">' + U.fmt(r.stopLoss) + '</div></div>' +
+        '<div class="level level-entry"><div class="level-label">' + t('an.entryPrice') + '</div><div class="level-value">' + U.fmt(r.entry) + '</div></div>' +
+        '<div class="level level-target"><div class="level-label">' + t('an.target1') + '</div><div class="level-value">' + U.fmt(r.target1) + '</div></div>' +
+        '<div class="level level-sl"><div class="level-label">' + t('an.stopLoss') + '</div><div class="level-value">' + U.fmt(r.stopLoss) + '</div></div>' +
       '</div>';
   }
 
   function metricsBlock(r, isPut) {
     return '' +
       '<div class="metrics">' +
-        '<div class="metric"><span>First-candle range</span><span>' + U.fmt(r.range) + '</span></div>' +
-        '<div class="metric"><span>Risk per lot unit</span><span>' + U.fmt(r.risk) + '</span></div>' +
-        '<div class="metric"><span>Reward to T1</span><span>' + U.fmt(r.reward) + '</span></div>' +
-        '<div class="metric"><span>Risk : reward</span><span>' + (isFinite(r.rr) ? '1 : ' + U.fmt(r.rr) : '—') + '</span></div>' +
-        '<div class="metric"><span>Risk as % of entry</span><span>' + U.pct(r.riskPctOfEntry) + '</span></div>' +
-        '<div class="metric"><span>Close position in candle</span><span>' + U.pct(r.stats.closePos) + '</span></div>' +
-        '<div class="metric"><span>Body of candle</span><span>' + U.pct(r.stats.bodyRatio) + '</span></div>' +
-        '<div class="metric"><span>First-candle strength</span><span>' + U.pct(r.strength, 0) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.range') + '</span><span>' + U.fmt(r.range) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.risk') + '</span><span>' + U.fmt(r.risk) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.reward') + '</span><span>' + U.fmt(r.reward) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.rr') + '</span><span>' + (isFinite(r.rr) ? '1 : ' + U.fmt(r.rr) : '—') + '</span></div>' +
+        '<div class="metric"><span>' + t('an.riskPct') + '</span><span>' + U.pct(r.riskPctOfEntry) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.closePos') + '</span><span>' + U.pct(r.stats.closePos) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.bodyPct') + '</span><span>' + U.pct(r.stats.bodyRatio) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.strength') + '</span><span>' + U.pct(r.strength, 0) + '</span></div>' +
       '</div>' +
       '<div class="bar' + (isPut ? ' bar-put' : '') + '"><i style="width:' + U.fmt(r.strength * 100, 0) + '%"></i></div>';
   }
@@ -89,14 +90,15 @@
     var el = U.$(elId);
     el.innerHTML = '' +
       '<h3 class="result-title">' + U.escapeHtml(title) +
-        (isPrimary ? '<span class="badge-primary">Primary watch</span>' : '') +
+        (isPrimary ? '<span class="badge-primary">' + U.escapeHtml(t('an.primary')) + '</span>' : '') +
       '</h3>' +
       levelBlock(r) +
       metricsBlock(r, isPut) +
-      '<p class="confirm-line">Entry confirms only when a 5-minute candle <b>closes at ' +
-        U.fmt(r.confirmClose) + ' or higher</b> (above the ' + U.fmt(r.entry) + ' entry price).</p>' +
+      '<p class="confirm-line">' +
+        t('an.confirm', { close: U.fmt(r.confirmClose), entry: U.fmt(r.entry) }) + '</p>' +
       '<div class="row-actions">' +
-        '<button type="button" class="btn btn-sm" data-send-t1="' + (isPut ? 'put' : 'call') + '">Send to T1 Helper</button>' +
+        '<button type="button" class="btn btn-sm" data-send-t1="' + (isPut ? 'put' : 'call') + '">' +
+          U.escapeHtml(t('an.sendT1')) + '</button>' +
       '</div>';
   }
 
@@ -104,21 +106,21 @@
     var el = U.$('analyser-bias');
     var tag, text;
     if (result.bias === 'call') {
-      tag = '<span class="bias-tag bias-call">Call side stronger</span>';
-      text = 'The call first-candle closed more decisively. Watch the call entry first, but still wait for the confirmation close.';
+      tag = '<span class="bias-tag bias-call">' + U.escapeHtml(t('an.biasCall')) + '</span>';
+      text = t('an.biasCallText');
     } else if (result.bias === 'put') {
-      tag = '<span class="bias-tag bias-put">Put side stronger</span>';
-      text = 'The put first-candle closed more decisively. Watch the put entry first, but still wait for the confirmation close.';
+      tag = '<span class="bias-tag bias-put">' + U.escapeHtml(t('an.biasPut')) + '</span>';
+      text = t('an.biasPutText');
     } else {
-      tag = '<span class="bias-tag bias-flat">No clear side</span>';
-      text = 'Both first-candles closed with similar conviction — take whichever side confirms first, and skip if neither does.';
+      tag = '<span class="bias-tag bias-flat">' + U.escapeHtml(t('an.biasFlat')) + '</span>';
+      text = t('an.biasFlatText');
     }
-    el.innerHTML = tag + '<span class="muted small">' + text + '</span>';
+    el.innerHTML = tag + '<span class="muted small">' + U.escapeHtml(text) + '</span>';
   }
 
   function render(result) {
-    renderSide('res-ce', 'Call option (CE)', result.ce, false, result.bias === 'call');
-    renderSide('res-pe', 'Put option (PE)', result.pe, true, result.bias === 'put');
+    renderSide('res-ce', t('f.call'), result.ce, false, result.bias === 'call');
+    renderSide('res-pe', t('f.put'), result.pe, true, result.bias === 'put');
     renderBias(result);
     U.$('analyser-output').hidden = false;
   }
@@ -127,7 +129,7 @@
     var el = U.$('atm-result');
     var open = U.num(U.$('atm-open').value);
     if (!isFinite(open) || open <= 0) {
-      el.innerHTML = '<span class="muted small">Enter the open price to get the ATM strike.</span>';
+      el.innerHTML = '<span class="muted small">' + U.escapeHtml(t('an.atmHint')) + '</span>';
       return;
     }
     var strike = atmStrike(open);
@@ -138,7 +140,8 @@
           '<span class="leg leg-call">' + U.fmt(strike, 0) + ' CE</span>' +
           '<span class="leg leg-put">' + U.fmt(strike, 0) + ' PE</span>' +
         '</div>' +
-        '<div class="muted small" style="margin-top:6px">Open ' + U.fmt(open) + ' rounded down to the 100 strike.</div>' +
+        '<div class="muted small" style="margin-top:6px">' +
+          U.escapeHtml(t('an.atmRounded', { open: U.fmt(open) })) + '</div>' +
       '</div>';
   }
 
@@ -148,8 +151,8 @@
     var ce = U.readCandle('an-ce');
     var pe = U.readCandle('an-pe');
 
-    var ceErrors = U.validateCandle(ce, 'Call', 'an-ce');
-    var peErrors = U.validateCandle(pe, 'Put', 'an-pe');
+    var ceErrors = U.validateCandle(ce, t('v.call'), 'an-ce');
+    var peErrors = U.validateCandle(pe, t('v.put'), 'an-pe');
     U.showErrors('an-ce-err', ceErrors);
     U.showErrors('an-pe-err', peErrors);
 
@@ -208,6 +211,7 @@
     reset: reset,
     analyse: analyse,
     analyseSide: analyseSide,
-    atmStrike: atmStrike
+    atmStrike: atmStrike,
+    renderAtm: renderAtm
   };
 })(window.APP);

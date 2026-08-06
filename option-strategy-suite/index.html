@@ -18,13 +18,14 @@
         <svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="#12202b"/><path d="M6 21l6-7 5 4 9-11" stroke="#37d6a0" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
       <span class="brand-text">
-        <strong>NIFTY Option Strategy Suite</strong>
-        <small>First-candle SOP · Analyser → T1 Helper → Pullback Entry</small>
+        <strong data-i18n="app.name">NIFTY Option Strategy Suite</strong>
+        <small data-i18n="app.tagline">First-candle SOP · Analyser → T1 Helper → Pullback Entry</small>
       </span>
     </div>
     <div class="header-actions">
-      <button type="button" class="btn btn-ghost" id="btn-settings" aria-expanded="false" aria-controls="settings-drawer">Formula settings</button>
-      <button type="button" class="btn btn-ghost" id="btn-clear-all">Clear all</button>
+      <button type="button" class="btn btn-ghost lang-toggle" id="btn-lang" data-i18n="app.langSwitch">தமிழ்</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings" aria-expanded="false" aria-controls="settings-drawer" data-i18n="app.settings">Formula settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-clear-all" data-i18n="app.clearAll">Clear all</button>
     </div>
   </div>
 </header>
@@ -32,84 +33,82 @@
 <!-- ============ Formula settings drawer ============ -->
 <section id="settings-drawer" class="drawer" hidden>
   <div class="wrap">
-    <h2 class="drawer-title">Formula settings</h2>
-    <p class="muted small">
-      The strategy guide defines <em>which</em> values each tool produces, not the arithmetic behind them.
-      Every coefficient below is exposed so the model can be tuned to match your own back-tested numbers.
-      Changes are saved in this browser and apply to all three tools immediately.
-    </p>
+    <h2 class="drawer-title" data-i18n="cfg.title">Formula settings</h2>
+    <p class="muted small" data-i18n="cfg.intro"></p>
 
     <div class="settings-grid">
       <fieldset class="settings-group">
-        <legend>Option Analyser</legend>
+        <legend data-i18n="cfg.g1">Option Analyser</legend>
         <label class="field">
-          <span>Entry buffer <em>(% of candle range above high)</em></span>
+          <span><span data-i18n="cfg.entryBufferPct"></span> <em data-i18n="cfg.entryBufferPct.hint"></em></span>
           <input type="number" id="cfg-entryBufferPct" step="0.1" min="0" max="50" />
         </label>
         <label class="field">
-          <span>Stop-loss buffer <em>(% of range below low)</em></span>
+          <span><span data-i18n="cfg.slBufferPct"></span> <em data-i18n="cfg.slBufferPct.hint"></em></span>
           <input type="number" id="cfg-slBufferPct" step="0.1" min="0" max="50" />
         </label>
         <label class="field">
-          <span>Target&nbsp;1 multiplier <em>(× candle range above entry)</em></span>
+          <span><span data-i18n="cfg.t1Multiplier"></span> <em data-i18n="cfg.t1Multiplier.hint"></em></span>
           <input type="number" id="cfg-t1Multiplier" step="0.05" min="0.1" max="10" />
         </label>
         <label class="field">
-          <span>Tick size <em>(confirmation close must clear entry by)</em></span>
+          <span><span data-i18n="cfg.tickSize"></span> <em data-i18n="cfg.tickSize.hint"></em></span>
           <input type="number" id="cfg-tickSize" step="0.05" min="0.01" max="10" />
         </label>
       </fieldset>
 
       <fieldset class="settings-group">
-        <legend>T1 Decision Helper</legend>
+        <legend data-i18n="cfg.g2">T1 Decision Helper</legend>
         <label class="field">
-          <span>Min. body ratio <em>(body ÷ range for a decisive candle)</em></span>
-          <input type="number" id="cfg-minBodyRatio" step="0.05" min="0" max="1" />
+          <span><span data-i18n="cfg.bodyStrong"></span> <em data-i18n="cfg.bodyStrong.hint"></em></span>
+          <input type="number" id="cfg-bodyStrong" step="0.05" min="0" max="1" />
         </label>
         <label class="field">
-          <span>Min. close position <em>(close within candle range)</em></span>
+          <span><span data-i18n="cfg.bodyModerate"></span> <em data-i18n="cfg.bodyModerate.hint"></em></span>
+          <input type="number" id="cfg-bodyModerate" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.minClosePos"></span> <em data-i18n="cfg.minClosePos.hint"></em></span>
           <input type="number" id="cfg-minClosePos" step="0.05" min="0" max="1" />
         </label>
         <label class="field">
-          <span>Hold-T2 momentum threshold</span>
+          <span data-i18n="cfg.holdThreshold">Hold-T2 momentum threshold</span>
           <input type="number" id="cfg-holdThreshold" step="1" min="0" max="100" />
         </label>
         <label class="field">
-          <span>Partial-book momentum threshold</span>
+          <span data-i18n="cfg.partialThreshold">Partial-book momentum threshold</span>
           <input type="number" id="cfg-partialThreshold" step="1" min="0" max="100" />
         </label>
         <label class="field">
-          <span>Direction convention</span>
+          <span data-i18n="cfg.sideAwareDirection">Direction convention</span>
           <select id="cfg-sideAwareDirection">
-            <option value="0">Option premium — a rising candle is good on both sides</option>
-            <option value="1">Side-inverted — a put trade wants a falling candle</option>
+            <option value="0" data-i18n="cfg.dir.premium"></option>
+            <option value="1" data-i18n="cfg.dir.inverted"></option>
           </select>
         </label>
-        <p class="muted small" style="margin-top:8px">You are long the option on both sides, so a rising premium
-        is a gain whether the leg is a call or a put — that is the default. The second option reproduces the
-        side-inverted behaviour of the original helper tool.</p>
+        <p class="muted small" style="margin-top:8px" data-i18n="cfg.dirNote"></p>
       </fieldset>
 
       <fieldset class="settings-group">
-        <legend>Stoploss Pullback Entry</legend>
+        <legend data-i18n="cfg.g3">Stoploss Pullback Entry</legend>
         <label class="field">
-          <span>Zone&nbsp;1 retracement <em>(fraction of range above low)</em></span>
+          <span><span data-i18n="cfg.zone1Retrace"></span> <em data-i18n="cfg.zone1Retrace.hint"></em></span>
           <input type="number" id="cfg-zone1Retrace" step="0.001" min="0" max="1" />
         </label>
         <label class="field">
-          <span>Zone&nbsp;2 retracement <em>(deeper liquidity fill)</em></span>
+          <span><span data-i18n="cfg.zone2Retrace"></span> <em data-i18n="cfg.zone2Retrace.hint"></em></span>
           <input type="number" id="cfg-zone2Retrace" step="0.001" min="0" max="1" />
         </label>
         <label class="field">
-          <span>Target&nbsp;1 multiplier <em>(× range above high)</em></span>
+          <span><span data-i18n="cfg.pullbackTargetMult"></span> <em data-i18n="cfg.pullbackTargetMult.hint"></em></span>
           <input type="number" id="cfg-pullbackTargetMult" step="0.05" min="0.1" max="10" />
         </label>
       </fieldset>
     </div>
 
     <div class="row-actions">
-      <button type="button" class="btn btn-primary" id="btn-settings-save">Save settings</button>
-      <button type="button" class="btn btn-ghost" id="btn-settings-reset">Restore defaults</button>
+      <button type="button" class="btn btn-primary" id="btn-settings-save" data-i18n="cfg.save">Save settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings-reset" data-i18n="cfg.restore">Restore defaults</button>
       <span class="save-flash" id="settings-flash" role="status" aria-live="polite"></span>
     </div>
   </div>
@@ -117,10 +116,10 @@
 
 <nav class="tabs" aria-label="Tools">
   <div class="wrap tabs-inner" role="tablist">
-    <button class="tab is-active" role="tab" id="tab-analyser"  aria-controls="panel-analyser"  aria-selected="true"  data-panel="analyser"><span class="tab-step">Phase 1–2</span>Option Analyser</button>
-    <button class="tab" role="tab" id="tab-t1"        aria-controls="panel-t1"        aria-selected="false" data-panel="t1"><span class="tab-step">Phase 3</span>T1 Decision Helper</button>
-    <button class="tab" role="tab" id="tab-pullback"  aria-controls="panel-pullback"  aria-selected="false" data-panel="pullback"><span class="tab-step">Phase 4</span>Pullback Entry</button>
-    <button class="tab" role="tab" id="tab-guide"     aria-controls="panel-guide"     aria-selected="false" data-panel="guide"><span class="tab-step">SOP</span>Execution Guide</button>
+    <button class="tab is-active" role="tab" id="tab-analyser" aria-controls="panel-analyser" aria-selected="true" data-panel="analyser"><span class="tab-step" data-i18n="tab.phase12"></span><span data-i18n="tab.analyser"></span></button>
+    <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
+    <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
+    <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
   </div>
 </nav>
 
@@ -131,54 +130,52 @@
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Step 1</span> ATM strike selection</h2>
-        <p class="muted">Open price of the 09:15–09:20 NIFTY candle, rounded down to the 100 strike — 23670 gives 23600.</p>
+        <h2><span class="step-pill" data-i18n="an.step1"></span> <span data-i18n="an.step1.title"></span></h2>
+        <p class="muted" data-i18n="an.step1.desc"></p>
       </div>
       <div class="card-body atm-row">
         <label class="field">
-          <span>NIFTY open price (first 5-min candle)</span>
-          <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="e.g. 23670" />
+          <span data-i18n="an.openLabel"></span>
+          <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="23670" />
         </label>
-        <div class="atm-result" id="atm-result" aria-live="polite">
-          <span class="muted small">Enter the open price to get the ATM strike.</span>
-        </div>
+        <div class="atm-result" id="atm-result" aria-live="polite"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 2–3</span> First-candle option data</h2>
-        <p class="muted">Record the 09:15–09:20 candle of the ATM Call and Put from your broker terminal, then analyse.</p>
+        <h2><span class="step-pill" data-i18n="an.steps23"></span> <span data-i18n="an.steps23.title"></span></h2>
+        <p class="muted" data-i18n="an.steps23.desc"></p>
       </div>
       <div class="card-body">
         <div class="candle-grid">
           <fieldset class="candle-box side-call">
-            <legend><span class="dot dot-call"></span> Call option (CE)</legend>
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
             <div class="ohlc">
-              <label class="field"><span>Open</span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>High</span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Low</span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Close</span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-ce-err" role="alert"></p>
           </fieldset>
 
           <fieldset class="candle-box side-put">
-            <legend><span class="dot dot-put"></span> Put option (PE)</legend>
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
             <div class="ohlc">
-              <label class="field"><span>Open</span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>High</span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Low</span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Close</span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-pe-err" role="alert"></p>
           </fieldset>
         </div>
 
         <div class="row-actions">
-          <button type="button" class="btn btn-primary" id="btn-analyse">Analyse</button>
-          <button type="button" class="btn btn-ghost" id="btn-analyser-sample">Load sample</button>
-          <button type="button" class="btn btn-ghost" id="btn-analyser-reset">Reset</button>
+          <button type="button" class="btn btn-primary" id="btn-analyse" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-reset" data-i18n="f.reset"></button>
         </div>
       </div>
     </div>
@@ -194,10 +191,8 @@
       </div>
 
       <div class="card note-card">
-        <h3><span class="step-pill">Steps 4–5</span> Entry confirmation rule</h3>
-        <p>Do <strong>not</strong> enter the moment price touches the entry price. Wait for a full 5-minute candle on the
-        option chart to <strong>close above</strong> the entry price. Only then is the entry confirmed — and that same
-        candle is the one you feed into the T1 Decision Helper.</p>
+        <h3><span class="step-pill" data-i18n="an.rule"></span> <span data-i18n="an.rule.title"></span></h3>
+        <p data-i18n-html="an.rule.body"></p>
       </div>
     </div>
   </section>
@@ -206,35 +201,34 @@
   <section class="panel" id="panel-t1" role="tabpanel" aria-labelledby="tab-t1" hidden>
 
     <div class="card t1-hero">
-      <span class="hero-badge">T1 Decision Helper</span>
-      <h2>Hold to T2, or book here?</h2>
-      <p class="muted">When price touches the T1 level, enter that 5-minute candle once it has closed — you get an
-      exact decision back.</p>
+      <span class="hero-badge" data-i18n="t1.badge"></span>
+      <h2 data-i18n="t1.hero"></h2>
+      <p class="muted" data-i18n="t1.heroSub"></p>
     </div>
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 6–7</span> Trade side &amp; mapped levels</h2>
-        <p class="muted">Values come from the Option Analyser, remapped exactly as the strategy guide specifies.</p>
+        <h2><span class="step-pill" data-i18n="t1.steps67"></span> <span data-i18n="t1.steps67.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps67.desc"></p>
       </div>
       <div class="card-body">
         <div class="side-toggle" role="radiogroup" aria-label="Trade side">
-          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call">Call trade</button>
-          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put">Put trade</button>
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="t1.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="t1.putTrade"></button>
         </div>
 
         <div class="mapping-note">
-          <span class="map-item"><b>Entry</b> ← Analyser <i>Stop Loss</i></span>
+          <span class="map-item"><b data-i18n="t1.mapEntry"></b> ← <i data-i18n="t1.mapEntryFrom"></i></span>
           <span class="map-arrow">·</span>
-          <span class="map-item"><b>T1 level</b> ← Analyser <i>Entry Price</i></span>
+          <span class="map-item"><b data-i18n="t1.mapT1"></b> ← <i data-i18n="t1.mapT1From"></i></span>
           <span class="map-arrow">·</span>
-          <span class="map-item"><b>T2 level</b> ← Analyser <i>Target 1</i></span>
+          <span class="map-item"><b data-i18n="t1.mapT2"></b> ← <i data-i18n="t1.mapT2From"></i></span>
         </div>
 
         <div class="ohlc ohlc-3">
-          <label class="field"><span>Entry price <em>(your entry)</em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>T1 level <em>(target 1)</em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>T2 level <em>(target 2)</em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.entryLabel"></span> <em data-i18n="t1.entryHint"></em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t1Label"></span> <em data-i18n="t1.t1Hint"></em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t2Label"></span> <em data-i18n="t1.t2Hint"></em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
         </div>
         <p class="err" id="t1-levels-err" role="alert"></p>
       </div>
@@ -242,24 +236,24 @@
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 8–9</span> T1-touch candle values</h2>
-        <p class="muted">The exact 5-minute candle that touched the T1 level — enter it once that candle has closed.</p>
+        <h2><span class="step-pill" data-i18n="t1.steps89"></span> <span data-i18n="t1.steps89.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps89.desc"></p>
       </div>
       <div class="card-body">
         <div class="ohlc">
-          <label class="field"><span>Open</span><input type="number" id="t1-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>High</span><input type="number" id="t1-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>Low</span><input type="number" id="t1-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>Close</span><input type="number" id="t1-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.open"></span><input type="number" id="t1-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.high"></span><input type="number" id="t1-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.low"></span><input type="number" id="t1-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.close"></span><input type="number" id="t1-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
         </div>
         <p class="err" id="t1-candle-err" role="alert"></p>
 
         <div class="candle-preview" id="t1-preview" hidden></div>
 
         <div class="row-actions">
-          <button type="button" class="btn btn-primary btn-decide" id="btn-decide">Decide — hold or book?</button>
-          <button type="button" class="btn btn-ghost" id="btn-t1-sample">Load sample</button>
-          <button type="button" class="btn btn-ghost" id="btn-t1-reset">Reset</button>
+          <button type="button" class="btn btn-primary btn-decide" id="btn-decide" data-i18n="t1.decide"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-reset" data-i18n="f.reset"></button>
         </div>
       </div>
     </div>
@@ -268,8 +262,8 @@
       <div class="card verdict-card" id="t1-verdict"></div>
       <div class="card" id="t1-signal"></div>
       <div class="card">
-        <div class="card-head"><h3>Condition checks</h3>
-        <p class="muted">Check 4 is the pre-trade gate the strategy guide requires at step 10.</p></div>
+        <div class="card-head"><h3 data-i18n="t1.checks"></h3>
+        <p class="muted" data-i18n="t1.checksDesc"></p></div>
         <div class="card-body"><ul class="checks" id="t1-checks"></ul></div>
       </div>
       <div class="card" id="t1-gate"></div>
@@ -281,46 +275,44 @@
   <section class="panel" id="panel-pullback" role="tabpanel" aria-labelledby="tab-pullback" hidden>
 
     <div class="card warn-card">
-      <h3>⚠ Critical rule — no stop loss</h3>
-      <p>This tool is built on liquidity movement and pullback structure. Do <strong>not</strong> place a stop loss on
-      trades taken from it; standard stop-loss placement does not apply to this setup. Size the position so that the
-      full premium at risk is an amount you accept losing.</p>
+      <h3>⚠ <span data-i18n="pb.warnTitle"></span></h3>
+      <p data-i18n-html="pb.warnBody"></p>
     </div>
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 11–12</span> Original first-candle data</h2>
-        <p class="muted">The same 09:15–09:20 Call and Put candles used in Phase 1. Analyse to get the tradable side.</p>
+        <h2><span class="step-pill" data-i18n="pb.steps"></span> <span data-i18n="pb.steps.title"></span></h2>
+        <p class="muted" data-i18n="pb.steps.desc"></p>
       </div>
       <div class="card-body">
         <div class="candle-grid">
           <fieldset class="candle-box side-call">
-            <legend><span class="dot dot-call"></span> Call option (CE)</legend>
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
             <div class="ohlc">
-              <label class="field"><span>Open</span><input type="number" id="pb-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>High</span><input type="number" id="pb-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Low</span><input type="number" id="pb-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Close</span><input type="number" id="pb-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="pb-ce-err" role="alert"></p>
           </fieldset>
 
           <fieldset class="candle-box side-put">
-            <legend><span class="dot dot-put"></span> Put option (PE)</legend>
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
             <div class="ohlc">
-              <label class="field"><span>Open</span><input type="number" id="pb-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>High</span><input type="number" id="pb-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Low</span><input type="number" id="pb-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span>Close</span><input type="number" id="pb-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="pb-pe-err" role="alert"></p>
           </fieldset>
         </div>
 
         <div class="row-actions">
-          <button type="button" class="btn btn-primary" id="btn-pullback">Analyse</button>
-          <button type="button" class="btn btn-ghost" id="btn-pb-import">Copy from analyser</button>
-          <button type="button" class="btn btn-ghost" id="btn-pb-reset">Reset</button>
+          <button type="button" class="btn btn-primary" id="btn-pullback" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-import" data-i18n="pb.import"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-reset" data-i18n="f.reset"></button>
         </div>
       </div>
     </div>
@@ -336,55 +328,10 @@
   <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
     <div class="card">
       <div class="card-head">
-        <h2>Execution guide</h2>
-        <p class="muted">The 13-step standard operating procedure this suite implements, phase by phase.</p>
+        <h2 data-i18n="g.title"></h2>
+        <p class="muted" data-i18n="g.desc"></p>
       </div>
-      <div class="card-body guide">
-
-        <h3 class="phase">Phase 1 · ATM selection &amp; option data setup</h3>
-        <ol class="sop" start="1">
-          <li><b>Identify the ATM strike.</b> Open the NIFTY chart, note the open of the first 5-minute candle
-            (09:15–09:20) and round it to the nearest 100. Open 23670 → 23600 CE and 23600 PE.</li>
-          <li><b>Record option OHLC.</b> In your broker app, note the open, high, low and close of that same
-            09:15–09:20 candle for both the ATM Call and the ATM Put.</li>
-        </ol>
-
-        <h3 class="phase">Phase 2 · Option Analyser (levels &amp; confirmation)</h3>
-        <ol class="sop" start="3">
-          <li><b>Enter values.</b> Put the CE OHLC into the Call section and the PE OHLC into the Put section, then
-            press <i>Analyse</i>.</li>
-          <li><b>Read the output.</b> Three levels are produced for each side: entry price, Target 1 and stop loss.</li>
-          <li><b>Wait for confirmation.</b> Never enter on touch. Wait for a 5-minute candle to <i>close above</i> the
-            entry price — entry 150 means a close of 150.05 or higher confirms it.</li>
-        </ol>
-
-        <h3 class="phase">Phase 3 · T1 Decision Helper (target validation)</h3>
-        <ol class="sop" start="6">
-          <li><b>Select the triggered side</b> — Call target or Put target.</li>
-          <li><b>Map the levels.</b> Entry field ← analyser stop loss · T1 field ← analyser entry price ·
-            T2 field ← analyser Target 1.</li>
-          <li><b>Enter the confirmation candle</b> — the OHLC of the exact candle that closed above the entry price.</li>
-          <li><b>Decide.</b> <i>Hold T2</i> means the probability of reaching target is high and the trade can be held.
-            <i>Book now / partial book</i> means probability is low — exit or avoid.</li>
-          <li><b>Check condition 4.</b> Passed → proceed with the trade. Not passed → skip the trade, whatever the
-            other checks say.</li>
-        </ol>
-
-        <h3 class="phase">Phase 4 · Stoploss Pullback Entry (liquidity setup)</h3>
-        <ol class="sop" start="11">
-          <li><b>Enter the original first-candle data</b> for both Call and Put.</li>
-          <li><b>Check direction.</b> The tool returns Call Buy or Put Buy — trade only the recommended side.</li>
-          <li><b>Execute.</b> Zone 1 is the entry price, Target 1 is the target.
-            <span class="inline-warn">No stop loss is used with this tool.</span></li>
-        </ol>
-
-        <h3 class="phase">How each number is calculated</h3>
-        <p class="muted small">The strategy guide specifies which levels each tool outputs, not the arithmetic. This
-        suite uses the transparent first-candle range model below; every coefficient is editable under
-        <i>Formula settings</i>.</p>
-        <div class="formula-list" id="formula-list"></div>
-
-      </div>
+      <div class="card-body guide" id="guide-body"></div>
     </div>
   </section>
 
@@ -392,14 +339,13 @@
 
 <footer class="app-footer">
   <div class="wrap">
-    <p><strong>Educational tool only.</strong> Nothing here is investment advice or a recommendation to trade.
-    Options carry substantial risk of loss; levels are derived arithmetically from the values you type and carry no
-    predictive guarantee. Verify every number against your broker terminal before acting.</p>
-    <p class="muted small">All inputs stay in your browser — nothing is uploaded or stored on a server.</p>
+    <p><strong data-i18n="foot.warn"></strong> <span data-i18n="foot.body"></span></p>
+    <p class="muted small" data-i18n="foot.privacy"></p>
   </div>
 </footer>
 
 <script src="assets/js/utils.js"></script>
+<script src="assets/js/i18n.js"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/analyser.js"></script>
 <script src="assets/js/t1helper.js"></script>

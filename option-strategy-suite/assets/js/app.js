@@ -1,10 +1,12 @@
-/* Bootstrap: shared state, tab routing, settings drawer, formula reference. */
+/* Bootstrap: shared state, tab routing, language toggle, settings drawer and
+   the generated guide / formula reference. */
 (function (APP) {
   'use strict';
 
   APP.state = APP.state || { analyser: null, t1: null, pullback: null };
 
   var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
 
   /* ---------- tabs ---------- */
   var tabs = {
@@ -61,12 +63,13 @@
     window.setTimeout(function () { el.textContent = ''; }, 2200);
   }
 
-  /* Re-run whichever tools already have results so edited coefficients show up. */
+  /* Re-run whichever tools already have results so edits show up immediately. */
   function recomputeAll() {
     if (APP.state.analyser) APP.analyser.run();
     if (APP.state.t1) APP.t1helper.run();
     if (APP.state.pullback) APP.pullback.run();
-    renderFormulas();
+    APP.t1helper.renderPreview();
+    renderGuide();
   }
 
   function initSettings() {
@@ -84,79 +87,106 @@
       APP.config.save(readSettingsInputs());
       fillSettingsInputs();
       recomputeAll();
-      flash('Saved.');
+      flash(t('cfg.saved'));
     });
 
     U.$('btn-settings-reset').addEventListener('click', function () {
       APP.config.reset();
       fillSettingsInputs();
       recomputeAll();
-      flash('Defaults restored.');
+      flash(t('cfg.restored'));
     });
 
     fillSettingsInputs();
   }
 
-  /* ---------- formula reference (guide tab) ---------- */
-  function renderFormulas() {
-    var cfg = APP.config.get();
+  /* ---------- language ---------- */
+  function initLanguage() {
+    APP.i18n.init();
+    U.$('btn-lang').addEventListener('click', function () {
+      APP.i18n.set(APP.i18n.get() === 'ta' ? 'en' : 'ta');
+    });
+    /* Generated markup is not covered by data-i18n, so redraw it on switch. */
+    APP.i18n.onChange(function () {
+      APP.analyser.renderAtm();
+      recomputeAll();
+    });
+  }
+
+  /* ---------- guide tab ---------- */
+  var PHASES = [
+    { title: 'g.p1', steps: ['g.p1s1', 'g.p1s2'], start: 1 },
+    { title: 'g.p2', steps: ['g.p2s3', 'g.p2s4', 'g.p2s5'], start: 3 },
+    { title: 'g.p3', steps: ['g.p3s6', 'g.p3s7', 'g.p3s8', 'g.p3s9', 'g.p3s10'], start: 6 },
+    { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 }
+  ];
+
+  function formulaItems(cfg) {
     var entryTerm = cfg.entryBufferPct ? ' + ' + cfg.entryBufferPct + '% × range' : '';
     var slTerm = cfg.slBufferPct ? ' − ' + cfg.slBufferPct + '% × range' : '';
-
-    var items = [
+    return [
       {
-        title: 'Option Analyser — entry, Target 1, stop loss',
+        title: 'g.f1', note: 'g.f1n',
         code:
           'range     = high − low\n' +
           'entry     = high' + entryTerm + '\n' +
           'stop loss = low' + slTerm + '\n' +
           'Target 1  = entry + ' + cfg.t1Multiplier + ' × range\n' +
-          'confirm   = a 5-min close ≥ entry + ' + cfg.tickSize,
-        note: 'The first candle\'s high is the breakout level and its low is the invalidation level, ' +
-              'so risk equals the candle range and Target 1 is a measured move of that same range.'
+          'confirm   = a 5-min close ≥ entry + ' + cfg.tickSize
       },
       {
-        title: 'Option Analyser — first-candle strength',
-        code: 'strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)',
-        note: 'Only used to flag which side to watch first. It never replaces the confirmation close.'
+        title: 'g.f2', note: 'g.f2n',
+        code: 'strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)'
       },
       {
-        title: 'T1 Decision Helper — momentum score and gate',
+        title: 'g.f3', note: 'g.f3n',
         code:
-          'check 1 (40) direction — candle closed up' +
+          'check 1 (40)   direction — candle closed up' +
             (cfg.sideAwareDirection >= 1 ? ' (down on a put trade)' : '') + '\n' +
-          'check 2 (30) body strength — body ÷ range ≥ ' + cfg.minBodyRatio + '\n' +
-          'check 3 (30) close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
-          'momentum = sum of the weights that passed\n' +
+          'check 2 (15)   body strength — body ÷ range ≥ ' + cfg.bodyStrong + '\n' +
+          '        (7.5)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
+          'check 3 (40)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
+          'momentum = floor(sum of the weights earned)\n' +
           '\n' +
           'check 4 (gate) T1 breakout — close > T1 level   ← decisive\n' +
           '\n' +
           'verdict = WAIT if check 4 failed, else\n' +
           '          HOLD → T2 at momentum ≥ ' + cfg.holdThreshold + ',\n' +
           '          PARTIAL BOOK at ≥ ' + cfg.partialThreshold + ', otherwise BOOK NOW\n' +
-          'reward ratio = (T2 − T1) ÷ (T1 − entry)',
-        note: 'Check 4 sits outside the momentum score: it asks whether the breakout above T1 actually ' +
-              'happened, and it is the pre-trade gate the guide requires at step 10.'
+          'reward ratio = (T2 − T1) ÷ (T1 − entry)'
       },
       {
-        title: 'Stoploss Pullback Entry — side and zones',
+        title: 'g.f4', note: 'g.f4n',
         code:
           'liquidity score = 45% × close position + 30% × body ÷ range\n' +
           '                + 15% × (close > open) + 10% × share of combined range\n' +
-          'side    = whichever of CE / PE scores higher\n' +
-          'zone 1  = low + ' + cfg.zone1Retrace + ' × range\n' +
-          'zone 2  = low + ' + cfg.zone2Retrace + ' × range\n' +
-          'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range',
-        note: 'Entries sit inside the first-candle range rather than above it — the setup buys the ' +
-              'pullback into liquidity, which is why no stop loss is placed.'
+          'side     = whichever of CE / PE scores higher\n' +
+          'zone 1   = low + ' + cfg.zone1Retrace + ' × range\n' +
+          'zone 2   = low + ' + cfg.zone2Retrace + ' × range\n' +
+          'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range'
       }
     ];
+  }
 
-    U.$('formula-list').innerHTML = items.map(function (item) {
-      return '<div class="formula"><h4>' + U.escapeHtml(item.title) + '</h4>' +
-             '<code>' + U.escapeHtml(item.code) + '</code>' +
-             '<p>' + U.escapeHtml(item.note) + '</p></div>';
+  function renderGuide() {
+    var cfg = APP.config.get();
+    var html = PHASES.map(function (phase) {
+      var steps = phase.steps.map(function (key) { return '<li>' + t(key) + '</li>'; }).join('');
+      return '<h3 class="phase">' + U.escapeHtml(t(phase.title)) + '</h3>' +
+             '<ol class="sop" start="' + phase.start + '">' + steps + '</ol>';
     }).join('');
+
+    html += '<h3 class="phase">' + U.escapeHtml(t('g.formulas')) + '</h3>' +
+            '<p class="muted small">' + U.escapeHtml(t('g.formulasDesc')) + '</p>' +
+            '<div class="formula-list">' +
+              formulaItems(cfg).map(function (item) {
+                return '<div class="formula"><h4>' + U.escapeHtml(t(item.title)) + '</h4>' +
+                       '<code>' + U.escapeHtml(item.code) + '</code>' +
+                       '<p>' + U.escapeHtml(t(item.note)) + '</p></div>';
+              }).join('') +
+            '</div>';
+
+    U.$('guide-body').innerHTML = html;
   }
 
   /* ---------- clear everything ---------- */
@@ -171,13 +201,15 @@
 
   function init() {
     APP.config.load();
+    initLanguage();
     initTabs();
     initSettings();
     initClearAll();
     APP.analyser.init();
     APP.t1helper.init();
     APP.pullback.init();
-    renderFormulas();
+    APP.analyser.renderAtm();
+    renderGuide();
   }
 
   if (document.readyState === 'loading') {

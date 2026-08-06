@@ -64,30 +64,32 @@ window.APP = window.APP || {};
   /* Validate a candle. Returns [] when usable, otherwise a list of messages.
      Also flags the offending inputs when a prefix is supplied. */
   function validateCandle(candle, label, prefix) {
+    var t = window.APP.i18n.t;
     var errors = [];
     var bad = {};
-    var keys = { o: 'open', h: 'high', l: 'low', c: 'close' };
+    var fieldKeys = { o: 'f.open', h: 'f.high', l: 'f.low', c: 'f.close' };
 
-    Object.keys(keys).forEach(function (k) {
-      if (!isFinite(candle[k])) { errors.push(label + ': ' + keys[k] + ' is required.'); bad[k] = true; }
-      else if (candle[k] <= 0) { errors.push(label + ': ' + keys[k] + ' must be greater than 0.'); bad[k] = true; }
+    Object.keys(fieldKeys).forEach(function (k) {
+      var field = t(fieldKeys[k]);
+      if (!isFinite(candle[k])) { errors.push(t('v.required', { label: label, field: field })); bad[k] = true; }
+      else if (candle[k] <= 0) { errors.push(t('v.positive', { label: label, field: field })); bad[k] = true; }
     });
 
     if (!errors.length) {
       if (candle.h < candle.l) {
-        errors.push(label + ': high cannot be below the low.');
+        errors.push(t('v.highLow', { label: label }));
         bad.h = bad.l = true;
       }
       if (candle.h < Math.max(candle.o, candle.c)) {
-        errors.push(label + ': high must be the largest of the four values.');
+        errors.push(t('v.highMax', { label: label }));
         bad.h = true;
       }
       if (candle.l > Math.min(candle.o, candle.c)) {
-        errors.push(label + ': low must be the smallest of the four values.');
+        errors.push(t('v.lowMin', { label: label }));
         bad.l = true;
       }
       if (candle.h === candle.l) {
-        errors.push(label + ': high and low are identical — the candle has no range to work from.');
+        errors.push(t('v.noRange', { label: label }));
         bad.h = bad.l = true;
       }
     }

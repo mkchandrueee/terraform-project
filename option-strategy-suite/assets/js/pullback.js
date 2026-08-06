@@ -7,6 +7,7 @@
   'use strict';
 
   var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
 
   function scoreSide(candle, combinedRange) {
     var s = U.candleStats(candle);
@@ -56,49 +57,53 @@
   /* ---------- rendering ---------- */
   function render(result) {
     var isCall = result.side === 'call';
-    var label = isCall ? 'CALL BUY' : 'PUT BUY';
-    var legend = isCall ? 'ATM call option (CE)' : 'ATM put option (PE)';
 
     U.$('pb-verdict').innerHTML = '' +
-      '<div class="muted small" style="margin-bottom:12px">Recommended side · trade only this leg</div>' +
-      '<div class="pb-side ' + (isCall ? 'pb-call' : 'pb-put') + '">' + label + '</div>' +
-      '<p class="verdict-sub">The ' + legend + ' shows the stronger liquidity structure on the first candle ' +
-        '(' + U.pct(isCall ? result.ce.score : result.pe.score, 0) + ' vs ' +
-        U.pct(isCall ? result.pe.score : result.ce.score, 0) + ', ' + result.confidence + ' separation). ' +
-        'Take the pullback entry on this side only.</p>';
+      '<div class="muted small" style="margin-bottom:12px">' + U.escapeHtml(t('pb.recommended')) + '</div>' +
+      '<div class="pb-side ' + (isCall ? 'pb-call' : 'pb-put') + '">' +
+        U.escapeHtml(t(isCall ? 'pb.callBuy' : 'pb.putBuy')) + '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('pb.reason', {
+        leg: t(isCall ? 'f.call' : 'f.put'),
+        win: U.pct(isCall ? result.ce.score : result.pe.score, 0),
+        lose: U.pct(isCall ? result.pe.score : result.ce.score, 0),
+        confidence: t('pb.conf.' + result.confidence)
+      })) + '</p>';
 
     U.$('pb-levels').innerHTML = '' +
-      '<div class="card-head"><h3><span class="step-pill">Step 13</span> Execution levels</h3>' +
-      '<p class="muted">Zone 1 is your entry price. Target 1 is your target.</p></div>' +
+      '<div class="card-head"><h3><span class="step-pill">' + U.escapeHtml(t('pb.step13')) + '</span> ' +
+        U.escapeHtml(t('pb.levels')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.levelsDesc')) + '</p></div>' +
       '<div class="zone-grid">' +
-        '<div class="zone zone-1"><div class="zone-label">Zone 1 — entry</div><div class="zone-value">' +
-          U.fmt(result.levels.zone1) + '</div><div class="zone-note">pullback into the first-candle range</div></div>' +
-        '<div class="zone zone-2"><div class="zone-label">Zone 2 — deeper fill</div><div class="zone-value">' +
-          U.fmt(result.levels.zone2) + '</div><div class="zone-note">optional second entry if zone 1 is swept</div></div>' +
-        '<div class="zone zone-t"><div class="zone-label">Target 1</div><div class="zone-value">' +
-          U.fmt(result.levels.target1) + '</div><div class="zone-note">exit level</div></div>' +
+        '<div class="zone zone-1"><div class="zone-label">' + U.escapeHtml(t('pb.zone1')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.zone1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone1Note')) + '</div></div>' +
+        '<div class="zone zone-2"><div class="zone-label">' + U.escapeHtml(t('pb.zone2')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.zone2) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone2Note')) + '</div></div>' +
+        '<div class="zone zone-t"><div class="zone-label">' + U.escapeHtml(t('pb.target')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.target1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.targetNote')) + '</div></div>' +
       '</div>' +
-      '<p class="no-sl">⚠ No stop loss — do not place one on this setup.</p>';
+      '<p class="no-sl">' + U.escapeHtml(t('pb.noSl')) + '</p>';
 
     function row(name, ceVal, peVal, ceWins) {
-      return '<tr><td>' + name + '</td>' +
+      return '<tr><td>' + U.escapeHtml(name) + '</td>' +
         '<td class="' + (ceWins === true ? 'win' : '') + '">' + ceVal + '</td>' +
         '<td class="' + (ceWins === false ? 'win' : '') + '">' + peVal + '</td></tr>';
     }
     var c = result.ce, p = result.pe;
 
     U.$('pb-detail').innerHTML = '' +
-      '<div class="card-head"><h3>Side comparison</h3>' +
-      '<p class="muted">How the two first-candles scored against each other.</p></div>' +
+      '<div class="card-head"><h3>' + U.escapeHtml(t('pb.compare')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.compareDesc')) + '</p></div>' +
       '<div class="table-scroll"><table class="compare">' +
-        '<thead><tr><th>Measure</th><th>Call (CE)</th><th>Put (PE)</th></tr></thead><tbody>' +
-        row('Range', U.fmt(c.stats.range), U.fmt(p.stats.range), c.stats.range > p.stats.range) +
-        row('Close position', U.pct(c.stats.closePos), U.pct(p.stats.closePos), c.stats.closePos > p.stats.closePos) +
-        row('Body of range', U.pct(c.stats.bodyRatio), U.pct(p.stats.bodyRatio), c.stats.bodyRatio > p.stats.bodyRatio) +
-        row('Direction', c.stats.bullish ? 'bullish' : 'bearish', p.stats.bullish ? 'bullish' : 'bearish',
+        '<thead><tr><th>' + U.escapeHtml(t('pb.measure')) + '</th><th>' + U.escapeHtml(t('pb.colCall')) +
+          '</th><th>' + U.escapeHtml(t('pb.colPut')) + '</th></tr></thead><tbody>' +
+        row(t('pb.rRange'), U.fmt(c.stats.range), U.fmt(p.stats.range), c.stats.range > p.stats.range) +
+        row(t('pb.rClose'), U.pct(c.stats.closePos), U.pct(p.stats.closePos), c.stats.closePos > p.stats.closePos) +
+        row(t('pb.rBody'), U.pct(c.stats.bodyRatio), U.pct(p.stats.bodyRatio), c.stats.bodyRatio > p.stats.bodyRatio) +
+        row(t('pb.rDirection'), t(c.stats.bullish ? 'pb.bullish' : 'pb.bearish'),
+            t(p.stats.bullish ? 'pb.bullish' : 'pb.bearish'),
             c.stats.bullish === p.stats.bullish ? null : c.stats.bullish) +
-        row('Share of early movement', U.pct(c.relRange), U.pct(p.relRange), c.relRange > p.relRange) +
-        row('Liquidity score', U.pct(c.score, 0), U.pct(p.score, 0), c.score >= p.score) +
+        row(t('pb.rShare'), U.pct(c.relRange), U.pct(p.relRange), c.relRange > p.relRange) +
+        row(t('pb.rScore'), U.pct(c.score, 0), U.pct(p.score, 0), c.score >= p.score) +
         '</tbody></table></div>';
 
     U.$('pullback-output').hidden = false;
@@ -110,8 +115,8 @@
     var ce = U.readCandle('pb-ce');
     var pe = U.readCandle('pb-pe');
 
-    var ceErrors = U.validateCandle(ce, 'Call', 'pb-ce');
-    var peErrors = U.validateCandle(pe, 'Put', 'pb-pe');
+    var ceErrors = U.validateCandle(ce, t('v.call'), 'pb-ce');
+    var peErrors = U.validateCandle(pe, t('v.put'), 'pb-pe');
     U.showErrors('pb-ce-err', ceErrors);
     U.showErrors('pb-pe-err', peErrors);
 

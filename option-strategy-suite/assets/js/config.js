@@ -16,8 +16,11 @@
     t1Multiplier: 1.0,      // Target 1 = entry + (multiplier x range)
     tickSize: 0.05,         // exchange tick; confirmation must clear entry by one
 
-    /* T1 Decision Helper */
-    minBodyRatio: 0.50,     // body / range for a candle to count as decisive
+    /* T1 Decision Helper.
+       Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
+       floored. Those weights reproduce the reference tool's published scores. */
+    bodyStrong: 0.65,       // body / range at or above this is strong momentum
+    bodyModerate: 0.45,     // between moderate and strong scores half credit
     minClosePos: 0.50,      // close must sit in the upper half of its range
     holdThreshold: 70,      // momentum at or above this => HOLD T2
     partialThreshold: 40,   // momentum at or above this => PARTIAL BOOK, below => BOOK NOW

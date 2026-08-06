@@ -4,7 +4,9 @@ A single static web app that implements the three tools called for by the *NIFTY
 Execution Guide* — the Option Analyser, the T1 Decision Helper and the Stoploss Pullback Entry tool — as one
 guided workflow instead of three disconnected pages.
 
-No build step, no dependencies, no backend. Everything runs in the browser and nothing leaves it.
+No build step, no dependencies, no backend. Everything runs in the browser and nothing leaves it. The whole
+interface switches between English and Tanglish (Tamil + English) from the header button, and the choice is
+remembered.
 
 ## The workflow
 
@@ -20,11 +22,16 @@ in the pullback tool reuses the same first-candle data.
 
 ## About the formulas
 
-The strategy guide specifies **which** values each tool produces, not the arithmetic behind them, and the
-original tools were not available to inspect. The model below is therefore this implementation's own, chosen to
-be the most natural reading of the guide's structure; every coefficient is exposed under **Formula settings**
-so it can be re-tuned to match your own numbers. Settings persist in the browser and re-run any open result
+The strategy guide specifies **which** values each tool produces, not the arithmetic behind them. Where
+screenshots of the original tools pinned a number down, this implementation matches it; everything else is the
+most natural reading of the guide's structure. Every coefficient is exposed under **Formula settings** so it
+can be re-tuned to match your own numbers — settings persist in the browser and re-run any open result
 immediately.
+
+Two things the reference examples confirm rather than assume: the analyser's ladders come out equally spaced
+(their published examples are 102/152/202, 27/61/96 and 175/219/263 — gaps of 50/50, 34/35 and 44/44), which is
+exactly what `stop loss = low`, `entry = high`, `Target 1 = high + range` produces; and the T1 helper's
+momentum weights below reproduce its published scores exactly.
 
 **Option Analyser** — the first candle's high is the breakout level and its low is the invalidation level, so
 risk equals the candle range and Target 1 is a measured move of that same range:
@@ -46,15 +53,19 @@ fourth check sits outside the score as the gate:
 | # | Check | Weight | Passes when |
 |---|---|---|---|
 | 1 | Direction | 40 | The candle closed up — the premium gained |
-| 2 | Body strength | 30 | Body ÷ range ≥ 0.50, i.e. a decisive candle rather than a wick |
-| 3 | Close position | 30 | Close in the top half of the candle range |
+| 2 | Body strength | 15 strong / 7.5 moderate | Body ÷ range ≥ 0.65 scores full, 0.45–0.65 scores half, below that nothing |
+| 3 | Close position | 40 | Close in the top half of the candle range |
 | 4 | **T1 breakout strength** | *gate* | Close above the T1 level — the breakout actually happened |
+
+`momentum = floor(sum of the weights earned)`. Those weights are not invented: they are the combination that
+reproduces the reference tool's own published scores exactly — 0%, 15% and 87% across the three worked examples
+in its screenshots, including the three-way PASS / WEAK / FAIL grading on body strength.
 
 Verdict: **WAIT** if check 4 failed (nothing is confirmed, so there is nothing to hold or book); otherwise
 **HOLD → T2** at momentum ≥ 70, **PARTIAL BOOK** at ≥ 40, **BOOK NOW** below that. Check 4 is also rendered as
 the standalone pre-trade gate the guide requires at step 10: passed → proceed, not passed → skip, whatever the
-verdict says. Alongside the score the tool shows the `T1→T2 reward ratio = (T2 − T1) ÷ (T1 − entry)`, which is
-1.00× for any ladder produced by the analyser above.
+verdict says. Alongside the score the tool shows `T1→T2 reward ratio = (T2 − T1) ÷ (T1 − entry)`, which is
+1.00× for any ladder produced by the analyser above, and a five-step action plan that changes with the verdict.
 
 ### One deliberate difference on the put side
 
@@ -68,7 +79,8 @@ both the direction and close-position checks and every put trade lands on *book 
 So the default here is the premium reading — up is good on both sides. **Formula settings → Direction
 convention → Side-inverted** restores the original behaviour exactly if you want parity; with it enabled the
 app reproduces the reference tool's output number for number (entry 175 / T1 219 / T2 263, candle
-217/221/210/220 → call: 70% momentum, hold; put: 0% momentum, book now).
+217/221/210/220 → put: 0% momentum, book now; entry 127 / T1 158 / T2 189, candle 144/169/144/167 → put: 15%,
+book now; entry 152 / T1 175 / T2 198, candle 172/181/165/180 → call: 87%, hold to T2).
 
 **Stoploss Pullback Entry** — the side with the stronger first-candle liquidity structure is the tradable one,
 and entries sit *inside* the range rather than above it, which is why the setup carries no stop loss:
@@ -112,6 +124,7 @@ option-strategy-suite/
     ├── css/styles.css
     └── js/
         ├── utils.js           parsing, formatting, candle validation and stats
+        ├── i18n.js            English + Tanglish strings and the language switch
         ├── config.js          tunable coefficients + localStorage persistence
         ├── analyser.js        tool 1
         ├── t1helper.js        tool 2
