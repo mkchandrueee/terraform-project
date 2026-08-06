@@ -17,11 +17,13 @@
     tickSize: 0.05,         // exchange tick; confirmation must clear entry by one
 
     /* T1 Decision Helper */
-    minBodyRatio: 0.35,     // body / range for a candle to count as decisive
-    minClosePos: 0.60,      // close must sit in the upper part of its range
-    reachFactor: 1.0,       // check 4: candle range >= factor x distance left to T2
-    holdThreshold: 70,      // score at or above this => HOLD T2
-    partialThreshold: 45,   // score at or above this => PARTIAL BOOK, below => BOOK NOW
+    minBodyRatio: 0.50,     // body / range for a candle to count as decisive
+    minClosePos: 0.50,      // close must sit in the upper half of its range
+    holdThreshold: 70,      // momentum at or above this => HOLD T2
+    partialThreshold: 40,   // momentum at or above this => PARTIAL BOOK, below => BOOK NOW
+    sideAwareDirection: 0,  // 0 = rising premium is good on both sides (you are long the
+                            // option either way); 1 = a put trade wants a falling candle,
+                            // reproducing the original helper tool's behaviour
 
     /* Stoploss Pullback Entry */
     zone1Retrace: 0.382,    // zone 1 = low + (fraction x range)

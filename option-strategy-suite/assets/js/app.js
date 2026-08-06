@@ -121,18 +121,22 @@
         note: 'Only used to flag which side to watch first. It never replaces the confirmation close.'
       },
       {
-        title: 'T1 Decision Helper — probability score',
+        title: 'T1 Decision Helper — momentum score and gate',
         code:
-          'check 1 (25) close > T1\n' +
-          'check 2 (20) bullish and body ÷ range ≥ ' + cfg.minBodyRatio + '\n' +
-          'check 3 (20) close position ≥ ' + cfg.minClosePos + '\n' +
-          'check 4 (25) candle range ÷ (T2 − close) ≥ ' + cfg.reachFactor + '   ← decisive\n' +
-          'check 5 (10) candle low ≥ entry level\n' +
-          'score   = sum of the weights that passed\n' +
-          'verdict = HOLD T2 at ≥ ' + cfg.holdThreshold + ' with check 4 passed,\n' +
-          '          PARTIAL BOOK at ≥ ' + cfg.partialThreshold + ', otherwise BOOK NOW',
-        note: 'Check 4 asks whether one more candle of the same size would cover the distance still ' +
-              'left to T2. It is the gate the guide requires before a trade is taken.'
+          'check 1 (40) direction — candle closed up' +
+            (cfg.sideAwareDirection >= 1 ? ' (down on a put trade)' : '') + '\n' +
+          'check 2 (30) body strength — body ÷ range ≥ ' + cfg.minBodyRatio + '\n' +
+          'check 3 (30) close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
+          'momentum = sum of the weights that passed\n' +
+          '\n' +
+          'check 4 (gate) T1 breakout — close > T1 level   ← decisive\n' +
+          '\n' +
+          'verdict = WAIT if check 4 failed, else\n' +
+          '          HOLD → T2 at momentum ≥ ' + cfg.holdThreshold + ',\n' +
+          '          PARTIAL BOOK at ≥ ' + cfg.partialThreshold + ', otherwise BOOK NOW\n' +
+          'reward ratio = (T2 − T1) ÷ (T1 − entry)',
+        note: 'Check 4 sits outside the momentum score: it asks whether the breakout above T1 actually ' +
+              'happened, and it is the pre-trade gate the guide requires at step 10.'
       },
       {
         title: 'Stoploss Pullback Entry — side and zones',

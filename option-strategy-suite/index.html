@@ -63,7 +63,7 @@
       <fieldset class="settings-group">
         <legend>T1 Decision Helper</legend>
         <label class="field">
-          <span>Min. body ratio <em>(body ÷ range)</em></span>
+          <span>Min. body ratio <em>(body ÷ range for a decisive candle)</em></span>
           <input type="number" id="cfg-minBodyRatio" step="0.05" min="0" max="1" />
         </label>
         <label class="field">
@@ -71,17 +71,23 @@
           <input type="number" id="cfg-minClosePos" step="0.05" min="0" max="1" />
         </label>
         <label class="field">
-          <span>Check 4 reach factor <em>(candle range ÷ distance left to T2)</em></span>
-          <input type="number" id="cfg-reachFactor" step="0.05" min="0.1" max="5" />
-        </label>
-        <label class="field">
-          <span>Hold-T2 score threshold</span>
+          <span>Hold-T2 momentum threshold</span>
           <input type="number" id="cfg-holdThreshold" step="1" min="0" max="100" />
         </label>
         <label class="field">
-          <span>Partial-book score threshold</span>
+          <span>Partial-book momentum threshold</span>
           <input type="number" id="cfg-partialThreshold" step="1" min="0" max="100" />
         </label>
+        <label class="field">
+          <span>Direction convention</span>
+          <select id="cfg-sideAwareDirection">
+            <option value="0">Option premium — a rising candle is good on both sides</option>
+            <option value="1">Side-inverted — a put trade wants a falling candle</option>
+          </select>
+        </label>
+        <p class="muted small" style="margin-top:8px">You are long the option on both sides, so a rising premium
+        is a gain whether the leg is a call or a put — that is the default. The second option reproduces the
+        side-inverted behaviour of the original helper tool.</p>
       </fieldset>
 
       <fieldset class="settings-group">
@@ -199,29 +205,36 @@
   <!-- =================== TOOL 2: T1 DECISION HELPER =================== -->
   <section class="panel" id="panel-t1" role="tabpanel" aria-labelledby="tab-t1" hidden>
 
+    <div class="card t1-hero">
+      <span class="hero-badge">T1 Decision Helper</span>
+      <h2>Hold to T2, or book here?</h2>
+      <p class="muted">When price touches the T1 level, enter that 5-minute candle once it has closed — you get an
+      exact decision back.</p>
+    </div>
+
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 6–7</span> Triggered side &amp; mapped levels</h2>
+        <h2><span class="step-pill">Steps 6–7</span> Trade side &amp; mapped levels</h2>
         <p class="muted">Values come from the Option Analyser, remapped exactly as the strategy guide specifies.</p>
       </div>
       <div class="card-body">
-        <div class="side-toggle" role="radiogroup" aria-label="Triggered side">
-          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call">Call target</button>
-          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put">Put target</button>
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call">Call trade</button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put">Put trade</button>
         </div>
 
         <div class="mapping-note">
           <span class="map-item"><b>Entry</b> ← Analyser <i>Stop Loss</i></span>
           <span class="map-arrow">·</span>
-          <span class="map-item"><b>T1 target</b> ← Analyser <i>Entry Price</i></span>
+          <span class="map-item"><b>T1 level</b> ← Analyser <i>Entry Price</i></span>
           <span class="map-arrow">·</span>
-          <span class="map-item"><b>T2 target</b> ← Analyser <i>Target 1</i></span>
+          <span class="map-item"><b>T2 level</b> ← Analyser <i>Target 1</i></span>
         </div>
 
         <div class="ohlc ohlc-3">
-          <label class="field"><span>Entry <em>(analyser stop loss)</em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>T1 target <em>(analyser entry)</em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-          <label class="field"><span>T2 target <em>(analyser target 1)</em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>Entry price <em>(your entry)</em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>T1 level <em>(target 1)</em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span>T2 level <em>(target 2)</em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
         </div>
         <p class="err" id="t1-levels-err" role="alert"></p>
       </div>
@@ -229,8 +242,8 @@
 
     <div class="card">
       <div class="card-head">
-        <h2><span class="step-pill">Steps 8–9</span> Confirmation candle</h2>
-        <p class="muted">The exact 5-minute candle that closed above the entry price and confirmed the trade.</p>
+        <h2><span class="step-pill">Steps 8–9</span> T1-touch candle values</h2>
+        <p class="muted">The exact 5-minute candle that touched the T1 level — enter it once that candle has closed.</p>
       </div>
       <div class="card-body">
         <div class="ohlc">
@@ -241,8 +254,11 @@
         </div>
         <p class="err" id="t1-candle-err" role="alert"></p>
 
+        <div class="candle-preview" id="t1-preview" hidden></div>
+
         <div class="row-actions">
-          <button type="button" class="btn btn-primary" id="btn-decide">Decide</button>
+          <button type="button" class="btn btn-primary btn-decide" id="btn-decide">Decide — hold or book?</button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-sample">Load sample</button>
           <button type="button" class="btn btn-ghost" id="btn-t1-reset">Reset</button>
         </div>
       </div>
@@ -250,11 +266,14 @@
 
     <div id="t1-output" hidden>
       <div class="card verdict-card" id="t1-verdict"></div>
+      <div class="card" id="t1-signal"></div>
       <div class="card">
-        <div class="card-head"><h3><span class="step-pill">Step 10</span> Pre-trade condition checks</h3></div>
+        <div class="card-head"><h3>Condition checks</h3>
+        <p class="muted">Check 4 is the pre-trade gate the strategy guide requires at step 10.</p></div>
         <div class="card-body"><ul class="checks" id="t1-checks"></ul></div>
       </div>
       <div class="card" id="t1-gate"></div>
+      <div class="card" id="t1-plan"></div>
     </div>
   </section>
 

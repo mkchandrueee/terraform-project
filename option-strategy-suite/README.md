@@ -11,7 +11,7 @@ No build step, no dependencies, no backend. Everything runs in the browser and n
 | Phase | Tool | In | Out |
 |---|---|---|---|
 | 1–2 (steps 1–5) | **Option Analyser** | NIFTY open price, then the 09:15–09:20 OHLC of the ATM call and put | ATM strike, and entry price / Target 1 / stop loss for each side, plus the confirmation close |
-| 3 (steps 6–10) | **T1 Decision Helper** | Triggered side, the three mapped levels, and the OHLC of the candle that confirmed entry | Hold T2 vs partial book vs book now, a probability score, five condition checks and the condition-4 gate |
+| 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that touched T1 | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy or put buy, zone 1 (entry), zone 2, Target 1 — deliberately no stop loss |
 
 The tools hand off to each other. *Send to T1 Helper* on an analyser result applies the guide's mapping
@@ -40,20 +40,35 @@ confirm   = a 5-minute close ≥ entry + one tick (0.05)
 `strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)` flags which side to watch first.
 It never substitutes for the confirmation close.
 
-**T1 Decision Helper** — five weighted checks produce a 0–100 probability score:
+**T1 Decision Helper** — three weighted checks on the T1-touch candle produce a 0–100 momentum score, and a
+fourth check sits outside the score as the gate:
 
-| # | Check | Weight |
-|---|---|---|
-| 1 | Close above the T1 level (the entry actually triggered) | 25 |
-| 2 | Bullish candle with body ÷ range ≥ 0.35 | 20 |
-| 3 | Close position ≥ 0.60 of the candle range | 20 |
-| 4 | **Candle range ÷ distance left to T2 ≥ 1.0** — decisive | 25 |
-| 5 | Candle low held at or above the entry level | 10 |
+| # | Check | Weight | Passes when |
+|---|---|---|---|
+| 1 | Direction | 40 | The candle closed up — the premium gained |
+| 2 | Body strength | 30 | Body ÷ range ≥ 0.50, i.e. a decisive candle rather than a wick |
+| 3 | Close position | 30 | Close in the top half of the candle range |
+| 4 | **T1 breakout strength** | *gate* | Close above the T1 level — the breakout actually happened |
 
-Verdict: **HOLD T2** at a score ≥ 70 *with check 4 passed*; **PARTIAL BOOK** at ≥ 45; **BOOK NOW** below that.
-A failed check 1 short-circuits to *avoid* — nothing confirmed, so there is no trade. Check 4 asks whether one
-more candle of the same size would cover the distance still left to T2, and it is rendered as the standalone
-pre-trade gate the guide requires: passed → proceed, not passed → skip regardless of the verdict.
+Verdict: **WAIT** if check 4 failed (nothing is confirmed, so there is nothing to hold or book); otherwise
+**HOLD → T2** at momentum ≥ 70, **PARTIAL BOOK** at ≥ 40, **BOOK NOW** below that. Check 4 is also rendered as
+the standalone pre-trade gate the guide requires at step 10: passed → proceed, not passed → skip, whatever the
+verdict says. Alongside the score the tool shows the `T1→T2 reward ratio = (T2 − T1) ÷ (T1 − entry)`, which is
+1.00× for any ladder produced by the analyser above.
+
+### One deliberate difference on the put side
+
+The original helper treats a *bullish* candle as wrong for a put trade, and wants the close in the lower half
+of the range. That holds if the candle is the index, but this workflow feeds it the **option's own premium
+candle** — and you are long the option on either leg, so a rising premium is a gain whether you hold a call or
+a put. The guide's own confirmation rule makes this concrete: the candle must *close above* the entry price, so
+a valid confirmation candle is nearly always green. Under the inverted reading, that same valid candle fails
+both the direction and close-position checks and every put trade lands on *book now*.
+
+So the default here is the premium reading — up is good on both sides. **Formula settings → Direction
+convention → Side-inverted** restores the original behaviour exactly if you want parity; with it enabled the
+app reproduces the reference tool's output number for number (entry 175 / T1 219 / T2 263, candle
+217/221/210/220 → call: 70% momentum, hold; put: 0% momentum, book now).
 
 **Stoploss Pullback Entry** — the side with the stronger first-candle liquidity structure is the tradable one,
 and entries sit *inside* the range rather than above it, which is why the setup carries no stop loss:
