@@ -90,6 +90,28 @@
       </fieldset>
 
       <fieldset class="settings-group">
+        <legend data-i18n="cfg.g4">Trade Signal — filters</legend>
+        <label class="field"><span><span data-i18n="cfg.rsiMin"></span></span><input type="number" id="cfg-rsiMin" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.rsiMax"></span></span><input type="number" id="cfg-rsiMax" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.volumeMin"></span></span><input type="number" id="cfg-volumeMin" step="0.05" min="0" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.vixMax"></span></span><input type="number" id="cfg-vixMax" step="1" min="1" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.atrReachMax"></span></span><input type="number" id="cfg-atrReachMax" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.minRR"></span></span><input type="number" id="cfg-minRR" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.takeThreshold"></span></span><input type="number" id="cfg-takeThreshold" step="1" min="0" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g5">Trade Signal — money</legend>
+        <label class="field"><span><span data-i18n="cfg.lotSize"></span></span><input type="number" id="cfg-lotSize" step="1" min="1" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.costPerLot"></span></span><input type="number" id="cfg-costPerLot" step="1" min="0" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.baseWinRate"></span> <em data-i18n="cfg.baseWinRate.hint"></em></span><input type="number" id="cfg-baseWinRate" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winSensitivity"></span> <em data-i18n="cfg.winSensitivity.hint"></em></span><input type="number" id="cfg-winSensitivity" step="0.05" min="0" max="3" /></label>
+        <label class="field"><span><span data-i18n="cfg.winFloor"></span></span><input type="number" id="cfg-winFloor" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winCeiling"></span></span><input type="number" id="cfg-winCeiling" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.riskPctOfAccount"></span></span><input type="number" id="cfg-riskPctOfAccount" step="0.25" min="0.1" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
         <legend data-i18n="cfg.g3">Stoploss Pullback Entry</legend>
         <label class="field">
           <span><span data-i18n="cfg.zone1Retrace"></span> <em data-i18n="cfg.zone1Retrace.hint"></em></span>
@@ -119,6 +141,7 @@
     <button class="tab is-active" role="tab" id="tab-analyser" aria-controls="panel-analyser" aria-selected="true" data-panel="analyser"><span class="tab-step" data-i18n="tab.phase12"></span><span data-i18n="tab.analyser"></span></button>
     <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
     <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
+    <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
     <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
   </div>
 </nav>
@@ -324,6 +347,126 @@
     </div>
   </section>
 
+
+  <!-- =================== TOOL 4: TRADE SIGNAL =================== -->
+  <section class="panel" id="panel-signal" role="tabpanel" aria-labelledby="tab-signal" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sg.badge"></span>
+      <h2 data-i18n="sg.hero"></h2>
+      <p class="muted" data-i18n="sg.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.setupTitle"></h2>
+        <p class="muted" data-i18n="sg.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="sg.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="sg.putTrade"></button>
+        </div>
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.entry"></span><input type="number" id="sg-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.sl"></span><input type="number" id="sg-sl" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t1"></span><input type="number" id="sg-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t2"></span><input type="number" id="sg-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span><span data-i18n="sg.range"></span> <em data-i18n="sg.rangeHint"></em></span><input type="number" id="sg-range" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="sg-err" role="alert"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-call" data-i18n="sg.importCall"></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-put" data-i18n="sg.importPut"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.marketTitle"></h2>
+        <p class="muted" data-i18n="sg.marketDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.spot"></span><input type="number" id="sg-spot" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vwap"></span><input type="number" id="sg-vwap" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema20"></span><input type="number" id="sg-ema20" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema50"></span><input type="number" id="sg-ema50" inputmode="decimal" step="0.05" placeholder="—" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span data-i18n="sg.rsi"></span><input type="number" id="sg-rsi" inputmode="decimal" step="0.1" placeholder="—" /></label>
+          <label class="field"><span><span data-i18n="sg.vol"></span> <em data-i18n="sg.volHint"></em></span><input type="number" id="sg-vol" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vix"></span><input type="number" id="sg-vix" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.time"></span><input type="time" id="sg-time" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-now" data-i18n="sg.now"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.posTitle"></h2>
+        <p class="muted" data-i18n="sg.posDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc ohlc-3">
+          <label class="field"><span data-i18n="sg.lots"></span><input type="number" id="sg-lots" inputmode="numeric" step="1" min="1" value="1" /></label>
+          <label class="field"><span><span data-i18n="sg.account"></span> <em data-i18n="sg.accountHint"></em></span><input type="number" id="sg-account" inputmode="decimal" step="1000" placeholder="—" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-signal" data-i18n="sg.generate"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="signal-output" hidden>
+      <div class="card verdict-card" id="sg-verdict"></div>
+      <div class="card" id="sg-tiles"></div>
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="sg.checksTitle"></h3></div>
+        <div class="card-body">
+          <div class="signal" id="sg-conf-head" style="margin-bottom:16px"></div>
+          <ul class="checks" id="sg-checks"></ul>
+        </div>
+      </div>
+      <div class="card" id="sg-metrics"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="al.title"></h2>
+        <p class="muted" data-i18n="al.desc"></p>
+      </div>
+      <div class="card-body">
+        <p class="perm" id="al-permission"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost" id="btn-al-enable" data-i18n="al.enable"></button>
+          <button type="button" class="btn btn-ghost" id="btn-al-notify" data-i18n="al.notifyNow"></button>
+        </div>
+        <label class="checkline"><input type="checkbox" id="al-auto" checked /> <span data-i18n="al.auto"></span></label>
+
+        <div class="reminder-row">
+          <label class="field"><span><span data-i18n="al.countLabel"></span> <em data-i18n="al.countHint"></em></span><input type="number" id="al-count" step="1" min="0" value="12" /></label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-al-start" data-i18n="al.startReminders"></button>
+            <button type="button" class="btn btn-ghost" id="btn-al-stop" data-i18n="al.stopReminders" hidden></button>
+          </div>
+        </div>
+        <p class="muted small" id="al-next"></p>
+
+        <h3 class="log-title" data-i18n="al.logTitle"></h3>
+        <ul class="alert-log" id="al-log"></ul>
+      </div>
+    </div>
+  </section>
+
   <!-- =================== SOP GUIDE =================== -->
   <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
     <div class="card">
@@ -350,6 +493,8 @@
 <script src="assets/js/analyser.js"></script>
 <script src="assets/js/t1helper.js"></script>
 <script src="assets/js/pullback.js"></script>
+<script src="assets/js/signal.js"></script>
+<script src="assets/js/alerts.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>

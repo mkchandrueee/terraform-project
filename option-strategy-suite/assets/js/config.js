@@ -31,7 +31,25 @@
     /* Stoploss Pullback Entry */
     zone1Retrace: 0.382,    // zone 1 = low + (fraction x range)
     zone2Retrace: 0.236,    // deeper liquidity fill
-    pullbackTargetMult: 1.0 // target 1 = high + (multiplier x range)
+    pullbackTargetMult: 1.0, // target 1 = high + (multiplier x range)
+
+    /* Trade Signal — market-standard filter thresholds */
+    rsiMin: 55,             // call wants RSI in [rsiMin, rsiMax]; put mirrors it
+    rsiMax: 78,
+    volumeMin: 1.2,         // breakout volume as a multiple of the average
+    vixMax: 25,             // above this the levels understate the swings
+    atrReachMax: 2.0,       // T2 distance as a multiple of the reference range
+    minRR: 1.5,             // minimum risk:reward to T2
+    takeThreshold: 65,      // confluence needed for a full-size TAKE TRADE
+
+    /* Trade Signal — money and sizing */
+    lotSize: 75,            // NIFTY contract size
+    costPerLot: 50,         // round-trip brokerage and charges per lot
+    baseWinRate: 50,        // your own historical win rate, the anchor
+    winSensitivity: 0.6,    // how far confluence moves the estimate off that base
+    winFloor: 15,           // the estimate never claims more certainty than this
+    winCeiling: 85,
+    riskPctOfAccount: 2     // risk budget per trade, for the sizing suggestion
   };
 
   var state = null;

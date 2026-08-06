@@ -3,7 +3,7 @@
 (function (APP) {
   'use strict';
 
-  APP.state = APP.state || { analyser: null, t1: null, pullback: null };
+  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null };
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
@@ -34,7 +34,7 @@
       tab.addEventListener('click', function () { tabs.show(tab.getAttribute('data-panel')); });
     });
     var hash = (window.location.hash || '').replace('#', '');
-    if (['analyser', 't1', 'pullback', 'guide'].indexOf(hash) !== -1) tabs.show(hash);
+    if (['analyser', 't1', 'pullback', 'signal', 'guide'].indexOf(hash) !== -1) tabs.show(hash);
   }
 
   /* ---------- settings drawer ---------- */
@@ -68,7 +68,10 @@
     if (APP.state.analyser) APP.analyser.run();
     if (APP.state.t1) APP.t1helper.run();
     if (APP.state.pullback) APP.pullback.run();
+    if (APP.state.signal) APP.signal.run();
     APP.t1helper.renderPreview();
+    APP.alerts.renderPermission();
+    APP.alerts.renderLog();
     renderGuide();
   }
 
@@ -118,7 +121,8 @@
     { title: 'g.p1', steps: ['g.p1s1', 'g.p1s2'], start: 1 },
     { title: 'g.p2', steps: ['g.p2s3', 'g.p2s4', 'g.p2s5'], start: 3 },
     { title: 'g.p3', steps: ['g.p3s6', 'g.p3s7', 'g.p3s8', 'g.p3s9', 'g.p3s10'], start: 6 },
-    { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 }
+    { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 },
+    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 }
   ];
 
   function formulaItems(cfg) {
@@ -164,6 +168,23 @@
           'zone 1   = low + ' + cfg.zone1Retrace + ' × range\n' +
           'zone 2   = low + ' + cfg.zone2Retrace + ' × range\n' +
           'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range'
+      },
+      {
+        title: 'g.f5', note: 'g.f5n',
+        code:
+          'confluence = passed weights ÷ available weights × 100\n' +
+          '  VWAP 20 · EMA 15 · RSI 15 · volume 10 · VIX 10\n' +
+          '  target reach 15 · risk:reward 15 · time 10 · T1 helper 20\n' +
+          '  (a filter left blank is skipped, not counted against you)\n' +
+          '\n' +
+          'win estimate  = clamp(' + cfg.baseWinRate + ' + (confluence − 50) × ' + cfg.winSensitivity + ',\n' +
+          '                      ' + cfg.winFloor + ', ' + cfg.winCeiling + ')\n' +
+          'breakeven win = risk ÷ (risk + reward)\n' +
+          'expected value = win × profit at T2 − (1 − win) × max loss\n' +
+          '\n' +
+          'TAKE TRADE  when EV > 0, win > breakeven and confluence ≥ ' + cfg.takeThreshold + '\n' +
+          'CAUTION     when EV > 0 and win > breakeven but confluence is short\n' +
+          'SKIP        otherwise'
       }
     ];
   }
@@ -195,6 +216,7 @@
       APP.analyser.reset();
       APP.t1helper.reset();
       APP.pullback.reset();
+      APP.signal.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -208,6 +230,8 @@
     APP.analyser.init();
     APP.t1helper.init();
     APP.pullback.init();
+    APP.signal.init();
+    APP.alerts.init();
     APP.analyser.renderAtm();
     renderGuide();
   }

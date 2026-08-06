@@ -1,8 +1,9 @@
 # NIFTY Option Strategy Suite
 
-A single static web app that implements the three tools called for by the *NIFTY Option Trading Strategy
-Execution Guide* — the Option Analyser, the T1 Decision Helper and the Stoploss Pullback Entry tool — as one
-guided workflow instead of three disconnected pages.
+A single static web app that implements the tools called for by the *NIFTY Option Trading Strategy Execution
+Guide* — the Option Analyser, the T1 Decision Helper and the Stoploss Pullback Entry tool — as one guided
+workflow instead of three disconnected pages, plus a Trade Signal stage that puts the standard market filters,
+the expectancy maths and trade alerts on top of them.
 
 No build step, no dependencies, no backend. Everything runs in the browser and nothing leaves it. The whole
 interface switches between English and Tanglish (Tamil + English) from the header button, and the choice is
@@ -15,6 +16,7 @@ remembered.
 | 1–2 (steps 1–5) | **Option Analyser** | NIFTY open price, then the 09:15–09:20 OHLC of the ATM call and put | ATM strike, and entry price / Target 1 / stop loss for each side, plus the confirmation close |
 | 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that touched T1 | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy or put buy, zone 1 (entry), zone 2, Target 1 — deliberately no stop loss |
+| 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
 
 The tools hand off to each other. *Send to T1 Helper* on an analyser result applies the guide's mapping
 automatically — entry field ← stop loss, T1 field ← entry price, T2 field ← Target 1 — and *Copy from analyser*
@@ -97,6 +99,59 @@ Target 1 = high + 1.0 × range
 One deviation worth naming: the guide says to round the NIFTY open "to the nearest 100" but its own example
 maps 23670 → 23600, so the app rounds **down** to the 100 strike to match the example.
 
+**Trade Signal** — nine market-standard filters produce a confluence score, which becomes a win estimate,
+which combines with the money side into an actual expectancy:
+
+| Filter | Weight | Passes when |
+|---|---|---|
+| Price vs VWAP | 20 | Spot on the trade's side of VWAP |
+| Moving-average alignment | 15 | Spot the right side of EMA 20, with EMA 20/50 stacked to match |
+| RSI regime | 15 | RSI 55–78 for a call, mirrored to 22–45 for a put — momentum without exhaustion |
+| Volume confirmation | 10 | Breakout volume ≥ 1.2× the average |
+| Volatility regime | 10 | India VIX ≤ 25 |
+| Target reachable | 15 | T2 within 2× the reference range |
+| Risk : reward | 15 | At least 1 : 1.5 to T2 |
+| Time of day | 10 | Inside 09:20–11:30 or 13:00–14:45 |
+| T1 Helper momentum | 20 | The helper's momentum cleared its hold threshold |
+
+```
+confluence     = passed weights ÷ available weights × 100
+win estimate   = clamp(base win rate + (confluence − 50) × 0.6, 15, 85)
+breakeven win  = risk ÷ (risk + reward)
+expected value = win × profit at T2 − (1 − win) × max loss
+
+TAKE TRADE  when EV > 0, win estimate > breakeven, and confluence ≥ 65
+CAUTION     when EV > 0 and win > breakeven but confluence falls short
+SKIP        otherwise
+```
+
+A filter you leave blank is **skipped** — dropped from both sides of the ratio, so a partial reading scores
+fairly instead of being punished for missing data. Alongside the verdict the tool reports quantity, capital
+deployed, maximum loss, profit at T1 and T2, brokerage, expected value per rupee risked, risk as a percentage
+of the account, the lot count your risk budget allows, and a quarter-Kelly size.
+
+### What the win percentage is, and is not
+
+The app has no market data feed and no trade history, so it cannot measure a real win rate. The win estimate is
+**your own base win rate** — from your journal, set under Formula settings — moved up or down by how much
+confluence lined up, floored at 15% and capped at 85%. It is a planning figure, not a backtested probability,
+and the UI says so where it is displayed.
+
+The **breakeven win rate** shown beside it is not a judgement call at all: `risk ÷ (risk + reward)` is exact
+arithmetic, and it is the number that decides whether a setup can pay. The verdict leans on that comparison —
+a trade is only *take* when the estimate clears breakeven **and** expected value is positive — so an
+optimistic base rate cannot on its own turn a losing structure into a green badge.
+
+## Notifications
+
+The signal can fire a browser notification carrying the verdict, entry, stop, target, win estimate, expected
+profit, expected value and risk-reward. A separate reminder fires on every 5-minute candle close, aligned to
+the real clock (09:20, 09:25, …) with a settable stop-after count.
+
+Two limits, stated in the UI as well: **the page must stay open** for reminders to fire, and system
+notifications need browser permission. When permission is denied or unsupported, nothing breaks — every alert
+still lands in the in-page alert log.
+
 ## Running it
 
 Any static server works, since the page is plain HTML/CSS/JS:
@@ -119,7 +174,7 @@ needed.
 
 ```
 option-strategy-suite/
-├── index.html                 markup for all four tabs
+├── index.html                 markup for all five tabs
 └── assets/
     ├── css/styles.css
     └── js/
@@ -129,11 +184,14 @@ option-strategy-suite/
         ├── analyser.js        tool 1
         ├── t1helper.js        tool 2
         ├── pullback.js        tool 3
+        ├── signal.js          tool 4 — confluence, win estimate, metrics
+        ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference
 ```
 
 Each tool exposes its pure calculation separately from its rendering — `APP.analyser.analyse()`,
-`APP.t1helper.decide()`, `APP.pullback.analyse()` — so the model can be tested or reused without the DOM.
+`APP.t1helper.decide()`, `APP.pullback.analyse()`, `APP.signal.evaluate()` — so the model can be tested or
+reused without the DOM.
 
 ## Disclaimer
 
