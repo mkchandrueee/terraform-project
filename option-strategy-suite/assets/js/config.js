@@ -7,7 +7,10 @@
 (function (APP) {
   'use strict';
 
-  var STORAGE_KEY = 'nifty-option-suite:v1';
+  /* Bumped when the defaults themselves change: settings saved against an
+     older model would otherwise keep overriding the corrected values, and the
+     app would silently disagree with the original tool. */
+  var STORAGE_KEY = 'nifty-option-suite:v2';
 
   var DEFAULTS = {
     /* Option Analyser — reproduces the original tool exactly across all four
@@ -45,6 +48,9 @@
     pbT2Mult: 1.4,          // each rounded to the nearest 10 points
     pbT3Mult: 2.2,
     pbTargetRound: 10,
+    pbStrongBody: 0.65,     // body / range for "institutional move, very strong"
+    pbDojiBody: 0.10,       // below this the candle is a doji — no momentum, no trade
+    pbMinClosePos: 0.50,    // close must finish above the midpoint
 
     /* Trade Signal — market-standard filter thresholds */
     rsiMin: 55,             // call wants RSI in [rsiMin, rsiMax]; put mirrors it
@@ -72,6 +78,8 @@
     try {
       var raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) stored = JSON.parse(raw) || {};
+      /* clear anything left by an earlier model so it cannot shadow a default */
+      window.localStorage.removeItem('nifty-option-suite:v1');
     } catch (e) {
       stored = {}; // private mode / disabled storage / corrupt value
     }

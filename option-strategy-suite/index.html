@@ -324,6 +324,15 @@
   <!-- =================== TOOL 3: PULLBACK ENTRY =================== -->
   <section class="panel" id="panel-pullback" role="tabpanel" aria-labelledby="tab-pullback" hidden>
 
+    <div class="card concept-card">
+      <h3><span data-i18n="pb.conceptTitle"></span></h3>
+      <ul class="concept-list">
+        <li class="is-bad"><b data-i18n="pb.conceptWrongLabel"></b> <span data-i18n="pb.conceptWrong"></span></li>
+        <li class="is-good"><b data-i18n="pb.conceptRightLabel"></b> <span data-i18n="pb.conceptRight"></span></li>
+        <li class="is-key"><b data-i18n="pb.conceptKeyLabel"></b> <span data-i18n="pb.conceptKey"></span></li>
+      </ul>
+    </div>
+
     <div class="card warn-card">
       <h3>⚠ <span data-i18n="pb.warnTitle"></span></h3>
       <p data-i18n-html="pb.warnBody"></p>
@@ -370,8 +379,9 @@
     <div id="pullback-output" hidden>
       <div class="card verdict-card" id="pb-verdict"></div>
       <div class="card" id="pb-levels"></div>
-      <div class="card" id="pb-rules"></div>
       <div class="card" id="pb-detail"></div>
+      <div class="card" id="pb-rules"></div>
+      <div class="card" id="pb-compare"></div>
     </div>
   </section>
 

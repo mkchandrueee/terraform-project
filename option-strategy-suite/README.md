@@ -130,9 +130,22 @@ Target 3 = zone 2 + round-to-10(2.2 × range)     hold 20%
 ```
 
 On the reference leg (O61 H97 L61 C86) that gives zones **₹70 / ₹74.7 / ₹79**, stop **₹58** at −16.7 points,
-and targets **₹104.7 / ₹124.7 / ₹154.7** at +30 / +50 / +80 — the original's numbers exactly. The zone
-fractions are pinned by that leg; the stop rule and the target multipliers fit a single sample, so a second
-pullback screenshot with different numbers would confirm or correct them.
+and targets **₹104.7 / ₹124.7 / ₹154.7** at +30 / +50 / +80 — the original's numbers exactly. The original's
+own concept note confirms the bounds independently: *"entry = 25–50% of candle range from LOW, SL = below LOW
+only"*. The stop rule and target multipliers still rest on a single sample.
+
+Before any of that, each leg has to qualify on three things — direction, a decisive body, and a close above
+the midpoint:
+
+| Leg verdict | When |
+|---|---|
+| **GOOD** | all three pass — this side is tradable |
+| **DOJI** | body under 10% of range — no momentum, refused outright |
+| **NO TRADE** | some checks failed |
+
+If neither leg is GOOD the tool answers **⏸ WAIT — No Signal** and shows no levels at all, rather than picking
+the least bad side. On CE 125/135/84/124 with PE 50/56/24/26 that is exactly what the original does: call
+DOJI, put NO TRADE, no trade today.
 
 **The guide and the tool disagree about the stop.** Your strategy guide states this tool takes *no stop loss*;
 the original app prints one. Both are shown — the level is there, with a note that the guide forbids acting on

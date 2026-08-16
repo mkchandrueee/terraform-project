@@ -9,6 +9,29 @@
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
 
+  /* The original qualifies each leg on three things before it will trade it,
+     and says so on its detail tab: direction, body strength, close position.
+     A near-bodiless candle is called out as a doji and refused outright. */
+  function qualify(candle, cfg) {
+    var s = U.candleStats(candle);
+    var doji = s.bodyRatio < cfg.pbDojiBody;
+    var checks = [
+      { key: 'direction', pass: s.bullish,
+        detail: t(s.bullish ? 'pb.d.bullish' : 'pb.d.bearish') },
+      { key: 'body', pass: s.bodyRatio >= cfg.pbStrongBody,
+        detail: t(doji ? 'pb.d.doji' : (s.bodyRatio >= cfg.pbStrongBody ? 'pb.d.bodyStrong' : 'pb.d.bodyWeak'),
+                  { pct: U.pct(s.bodyRatio) }) },
+      { key: 'close', pass: s.closePos > cfg.pbMinClosePos,
+        detail: t(s.closePos > cfg.pbMinClosePos ? 'pb.d.closeUp' : 'pb.d.closeDown',
+                  { pct: U.pct(s.closePos) }) }
+    ];
+    var passed = checks.filter(function (c) { return c.pass; }).length;
+    return {
+      checks: checks, passed: passed, doji: doji,
+      verdict: doji ? 'doji' : (passed === checks.length ? 'good' : 'notrade')
+    };
+  }
+
   function scoreSide(candle, combinedRange) {
     var s = U.candleStats(candle);
     var relRange = combinedRange > 0 ? s.range / combinedRange : 0.5;
@@ -53,12 +76,29 @@
     var ce = scoreSide(ceCandle, combined);
     var pe = scoreSide(peCandle, combined);
 
-    var side = ce.score >= pe.score ? 'call' : 'put';
+    ce.qual = qualify(ceCandle, cfg);
+    pe.qual = qualify(peCandle, cfg);
+
+    /* Neither leg qualifying is a real outcome, not a fallback: the original
+       answers "WAIT — No Signal" rather than picking the least bad side. */
+    var ceOk = ce.qual.verdict === 'good';
+    var peOk = pe.qual.verdict === 'good';
+    var side;
+    if (ceOk && peOk) side = ce.score >= pe.score ? 'call' : 'put';
+    else if (ceOk) side = 'call';
+    else if (peOk) side = 'put';
+    else side = null;
+
+    if (!side) {
+      return { side: null, wait: true, ce: ce, pe: pe, ceCandle: ceCandle, peCandle: peCandle };
+    }
+
     var chosenCandle = side === 'call' ? ceCandle : peCandle;
     var margin = Math.abs(ce.score - pe.score);
 
     return {
       side: side,
+      wait: false,
       margin: margin,
       confidence: margin < 0.05 ? 'low' : (margin < 0.15 ? 'moderate' : 'high'),
       ce: ce,
@@ -77,8 +117,46 @@
     return '₹' + (s1.endsWith('.0') ? s1.slice(0, -2) : s1);
   }
 
+  function sideDetail(label, q, isPut) {
+    var badge = q.verdict === 'good' ? t('pb.badgeGood')
+              : (q.doji ? t('pb.badgeDoji') : t('pb.badgeNoTrade'));
+    return '<div class="leg-detail ' + (isPut ? 'side-put' : 'side-call') + '">' +
+      '<div class="leg-head"><span class="dot ' + (isPut ? 'dot-put' : 'dot-call') + '"></span>' +
+        U.escapeHtml(label) +
+        '<span class="leg-badge is-' + q.verdict + '">' + U.escapeHtml(badge) + '</span></div>' +
+      '<ul class="leg-checks">' +
+        q.checks.map(function (c) {
+          return '<li class="' + (c.pass ? 'pass' : 'fail') + '">' +
+            '<span aria-hidden="true">' + (c.pass ? '✓' : '✕') + '</span>' +
+            U.escapeHtml(c.detail) + '</li>';
+        }).join('') +
+      '</ul></div>';
+  }
+
+  function renderDetail(result) {
+    U.$('pb-detail').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('pb.detailTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.detailDesc')) + '</p></div>' +
+      '<div class="leg-grid">' +
+        sideDetail(t('f.call'), result.ce.qual, false) +
+        sideDetail(t('f.put'), result.pe.qual, true) +
+      '</div>';
+  }
+
   /* ---------- rendering ---------- */
   function render(result) {
+    if (result.wait) {
+      U.$('pb-verdict').innerHTML =
+        '<div class="muted small" style="margin-bottom:12px">' + U.escapeHtml(t('pb.decision')) + '</div>' +
+        '<div class="pb-side pb-wait">' + U.escapeHtml(t('pb.wait')) + '</div>' +
+        '<p class="verdict-sub">' + U.escapeHtml(t('pb.waitText')) + '</p>';
+      U.$('pb-levels').innerHTML = '';
+      U.$('pb-rules').innerHTML = '';
+      renderDetail(result);
+      U.$('pullback-output').hidden = false;
+      return;
+    }
+
     var isCall = result.side === 'call';
 
     U.$('pb-verdict').innerHTML = '' +
@@ -136,6 +214,8 @@
         }).join('') +
       '</ol>';
 
+    renderDetail(result);
+
     function row(name, ceVal, peVal, ceWins) {
       return '<tr><td>' + U.escapeHtml(name) + '</td>' +
         '<td class="' + (ceWins === true ? 'win' : '') + '">' + ceVal + '</td>' +
@@ -143,7 +223,7 @@
     }
     var c = result.ce, p = result.pe;
 
-    U.$('pb-detail').innerHTML = '' +
+    U.$('pb-compare').innerHTML = '' +
       '<div class="card-head"><h3>' + U.escapeHtml(t('pb.compare')) + '</h3>' +
       '<p class="muted">' + U.escapeHtml(t('pb.compareDesc')) + '</p></div>' +
       '<div class="table-scroll"><table class="compare">' +
