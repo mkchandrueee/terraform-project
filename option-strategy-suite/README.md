@@ -176,6 +176,17 @@ notifications are disabled outside a secure context.
 
 Each tab is deep-linkable: `#analyser`, `#t1`, `#pullback`, `#signal`, `#guide`.
 
+### Single-file build
+
+```sh
+python3 build.py     # -> dist/nifty-option-suite.html
+```
+
+Inlines the stylesheet and all nine scripts into one ~185 KB file with no external references at all. Open it
+by double-clicking — no server, no install, works offline, and it is easy to carry on a laptop or drop onto a
+phone. The served version is still the better daily driver: some browsers block `localStorage` on `file://`,
+and notifications need a secure context, so settings and language may not persist from a bare file.
+
 ### Deploying
 
 `netlify.toml` in the repository root publishes this directory as-is, with a strict `Content-Security-Policy`

@@ -1,0 +1,3703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Built by build.py: single-file bundle, no external requests. -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NIFTY Option Strategy Suite — Analyser · T1 Helper · Pullback Entry</title>
+<meta name="description" content="A three-in-one execution tool for the NIFTY first-candle option strategy: Option Analyser (entry / T1 / stop loss), T1 Decision Helper (hold vs book) and Stoploss Pullback Entry (liquidity zones)." />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1720'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%2337d6a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+/* ==========================================================================
+   NIFTY Option Strategy Suite — stylesheet
+   Dark trading-terminal theme, mobile first.
+   ========================================================================== */
+
+:root {
+  --bg:            #0a1017;
+  --bg-elev:       #111a24;
+  --bg-elev-2:     #16222e;
+  --line:          #223141;
+  --line-soft:     #1a2734;
+  --text:          #e6edf3;
+  --text-dim:      #93a4b5;
+  --text-faint:    #6b7d8f;
+
+  --accent:        #37d6a0;
+  --accent-dark:   #1f9d73;
+  --call:          #37d6a0;
+  --put:           #ff6b81;
+  --warn:          #ffb454;
+  --danger:        #ff5f6d;
+  --info:          #58a6ff;
+
+  --radius:        14px;
+  --radius-sm:     9px;
+  --shadow:        0 10px 30px rgba(0, 0, 0, .35);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1100px 520px at 12% -8%, #14283a 0%, transparent 60%),
+    radial-gradient(900px 480px at 92% 0%, #172a24 0%, transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+h1, h2, h3 { line-height: 1.25; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+p { margin: 0 0 10px; }
+p:last-child { margin-bottom: 0; }
+
+.muted { color: var(--text-dim); }
+.small { font-size: 13px; }
+em { font-style: normal; color: var(--text-faint); font-weight: 400; }
+
+/* ---------- header ---------- */
+.app-header {
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(10, 16, 23, .82);
+  backdrop-filter: blur(10px);
+  position: sticky; top: 0; z-index: 30;
+}
+.header-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding-top: 12px; padding-bottom: 12px; flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand-mark { display: flex; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-text strong { font-size: 16px; letter-spacing: -.015em; }
+.brand-text small { color: var(--text-faint); font-size: 12px; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font: inherit; font-weight: 600; font-size: 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--line);
+  padding: 9px 16px; cursor: pointer;
+  background: var(--bg-elev-2); color: var(--text);
+  transition: background .15s ease, border-color .15s ease, transform .05s ease;
+}
+.btn:hover { background: #1d2c3a; border-color: #2e4155; }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
+  border-color: transparent; color: #06231a;
+}
+.btn-primary:hover { filter: brightness(1.07); background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%); }
+.btn-ghost { background: transparent; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.lang-toggle { min-width: 74px; border-color: #2e4155; }
+
+/* ---------- settings drawer ---------- */
+.drawer {
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-elev);
+  padding: 20px 0 24px;
+}
+.drawer-title { font-size: 17px; margin-bottom: 6px; }
+.settings-grid {
+  display: grid; gap: 14px; margin: 16px 0 4px;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+.settings-group {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 12px 14px 14px; margin: 0; background: var(--bg-elev-2);
+}
+.settings-group legend { padding: 0 6px; font-size: 13px; font-weight: 650; color: var(--accent); }
+.settings-group .field { margin-bottom: 10px; }
+.settings-group .field:last-child { margin-bottom: 0; }
+.save-flash { color: var(--accent); font-size: 13px; align-self: center; }
+
+/* ---------- tabs ---------- */
+.tabs { border-bottom: 1px solid var(--line-soft); background: rgba(10, 16, 23, .6); position: sticky; top: 57px; z-index: 20; }
+.tabs-inner { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs-inner::-webkit-scrollbar { display: none; }
+.tab {
+  font: inherit; font-weight: 600; font-size: 14px; white-space: nowrap;
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--text-dim); padding: 12px 14px 10px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+}
+.tab:hover { color: var(--text); }
+.tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-step { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.tab.is-active .tab-step { color: var(--accent); }
+
+/* ---------- layout ---------- */
+main { padding: 22px 16px 44px; }
+.panel { display: none; }
+.panel.is-active { display: block; animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.card-head { margin-bottom: 14px; }
+.card-head h2 { font-size: 16px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.card-head h3 { font-size: 15px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.card-head p { margin-top: 5px; font-size: 13px; }
+
+.step-pill {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  background: #1c3b32; color: var(--accent);
+  border-radius: 999px; padding: 3px 9px;
+}
+
+/* ---------- fields ---------- */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span { font-size: 12.5px; color: var(--text-dim); font-weight: 550; }
+.field input, .field select {
+  font: inherit; font-family: var(--mono); font-size: 15px;
+  background: #0c141d; color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 10px 12px; width: 100%;
+}
+.field select { font-family: var(--sans); font-size: 13.5px; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(55, 214, 160, .14); }
+.field input::placeholder { color: #405366; }
+.field input.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(255, 95, 109, .13); }
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+.ohlc { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.ohlc-3 { grid-template-columns: 1fr; }
+@media (min-width: 620px) {
+  .ohlc { grid-template-columns: repeat(4, 1fr); }
+  .ohlc-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+.err { color: var(--danger); font-size: 12.5px; margin: 8px 0 0; min-height: 0; }
+.err:empty { display: none; }
+
+.row-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ---------- ATM ---------- */
+.atm-row { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: end; }
+@media (min-width: 700px) { .atm-row { grid-template-columns: 260px 1fr; } }
+.atm-result {
+  border: 1px dashed var(--line); border-radius: var(--radius-sm);
+  padding: 12px 14px; background: #0c141d; min-height: 56px;
+  display: flex; align-items: center;
+}
+.atm-strike { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--accent); }
+.atm-legs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.leg { font-family: var(--mono); font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.leg-call { color: var(--call); border-color: rgba(55, 214, 160, .4); }
+.leg-put  { color: var(--put);  border-color: rgba(255, 107, 129, .4); }
+
+/* ---------- candle input boxes ---------- */
+.candle-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .candle-grid { grid-template-columns: 1fr 1fr; } }
+.candle-box {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 12px 14px 14px; margin: 0; background: var(--bg-elev-2);
+}
+.candle-box legend { font-size: 13px; font-weight: 650; padding: 0 6px; display: flex; align-items: center; gap: 7px; }
+.side-call legend { color: var(--call); }
+.side-put  legend { color: var(--put); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-call { background: var(--call); }
+.dot-put  { background: var(--put); }
+
+/* ---------- analyser results ---------- */
+.result-grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .result-grid { grid-template-columns: 1fr 1fr; } }
+
+.result-card { border-top: 3px solid var(--line); }
+.result-card.side-call { border-top-color: var(--call); }
+.result-card.side-put  { border-top-color: var(--put); }
+.result-title { font-size: 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.result-title .badge-primary { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; background: #1c3b32; color: var(--accent); border-radius: 999px; padding: 3px 9px; }
+
+.levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.level {
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 8px; text-align: center;
+}
+.level-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 700; }
+.level-value { font-family: var(--mono); font-size: 19px; font-weight: 700; margin-top: 3px; }
+.level-entry  .level-value { color: var(--info); }
+.level-target .level-value { color: var(--accent); }
+.level-sl     .level-value { color: var(--danger); }
+
+.metrics { margin-top: 13px; display: grid; gap: 6px; }
+.metric { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; border-bottom: 1px dashed var(--line-soft); padding-bottom: 5px; }
+.metric:last-child { border-bottom: 0; }
+.metric span:first-child { color: var(--text-dim); }
+.metric span:last-child { font-family: var(--mono); }
+
+.bar { height: 6px; border-radius: 999px; background: #0c141d; border: 1px solid var(--line); overflow: hidden; margin-top: 9px; }
+.bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dark), var(--accent)); }
+.bar-put > i { background: linear-gradient(90deg, #b8394c, var(--put)); }
+
+.confirm-line {
+  margin-top: 13px; font-size: 13px; background: #0c141d;
+  border: 1px solid var(--line); border-left: 3px solid var(--info);
+  border-radius: var(--radius-sm); padding: 9px 12px;
+}
+.confirm-line b { font-family: var(--mono); color: var(--info); }
+
+.bias-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.bias-tag { font-size: 13px; font-weight: 650; padding: 6px 13px; border-radius: 999px; }
+.bias-call { background: rgba(55, 214, 160, .13); color: var(--call); }
+.bias-put  { background: rgba(255, 107, 129, .13); color: var(--put); }
+.bias-flat { background: rgba(147, 164, 181, .13); color: var(--text-dim); }
+
+.note-card { border-left: 3px solid var(--info); }
+.note-card h3 { font-size: 15px; margin-bottom: 8px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.warn-card { border-left: 3px solid var(--warn); background: #1a1a12; }
+.warn-card h3 { font-size: 15px; margin-bottom: 8px; color: var(--warn); }
+
+/* ---------- T1 helper ---------- */
+.t1-hero { text-align: center; padding: 26px 18px; }
+.hero-badge {
+  display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--warn);
+  border: 1px solid rgba(255, 180, 84, .4); border-radius: 999px; padding: 5px 14px;
+}
+.t1-hero h2 { font-size: 24px; margin: 14px 0 8px; letter-spacing: -.02em; }
+.t1-hero p { max-width: 560px; margin: 0 auto; font-size: 13.5px; }
+
+.side-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.side-btn {
+  font: inherit; font-size: 15px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  border: 1px solid var(--line); background: #0c141d; color: var(--text-dim);
+  padding: 15px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.side-btn:hover { color: var(--text); border-color: #33475c; }
+.side-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.side-btn[data-side="call"].is-active {
+  color: var(--call); border-color: rgba(55, 214, 160, .55); background: rgba(55, 214, 160, .08);
+  box-shadow: 0 0 0 1px rgba(55, 214, 160, .25), 0 0 22px rgba(55, 214, 160, .12);
+}
+.side-btn[data-side="put"].is-active {
+  color: var(--put); border-color: rgba(255, 107, 129, .55); background: rgba(255, 107, 129, .08);
+  box-shadow: 0 0 0 1px rgba(255, 107, 129, .25), 0 0 22px rgba(255, 107, 129, .12);
+}
+
+.btn-decide { width: 100%; padding: 15px 20px; font-size: 15.5px; letter-spacing: .02em; }
+@media (min-width: 620px) { .btn-decide { width: auto; } }
+
+/* candle preview */
+.candle-preview {
+  display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  margin-top: 16px; padding: 14px 16px;
+  background: #0c141d; border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.candle-svg { flex: none; overflow: visible; }
+.candle-facts { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; }
+.candle-stat { display: flex; flex-direction: column; gap: 2px; }
+.candle-stat span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 700; }
+.candle-stat b { font-family: var(--mono); font-size: 15px; }
+.candle-dir { font-family: var(--mono); font-size: 13.5px; font-weight: 700; }
+.candle-dir.is-bull { color: var(--call); }
+.candle-dir.is-bear { color: var(--put); }
+
+/* signal strength */
+.signal { display: grid; gap: 16px; }
+.signal-num { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; margin-bottom: 7px; }
+.signal-num span { color: var(--text-dim); }
+.signal-num b { font-family: var(--mono); }
+
+/* action plan */
+.action-plan { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 14px; }
+.action-plan li { padding-left: 4px; }
+.action-plan li::marker { color: var(--accent); font-weight: 700; font-family: var(--mono); }
+
+.mapping-note { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px; }
+.map-item b { color: var(--text); font-weight: 650; }
+.map-arrow { color: var(--text-faint); }
+
+.verdict-card { text-align: center; padding: 24px 18px; }
+.verdict-badge { display: inline-block; font-size: 22px; font-weight: 750; letter-spacing: -.01em; padding: 12px 26px; border-radius: var(--radius); }
+.v-hold    { background: rgba(55, 214, 160, .13); color: var(--accent); border: 1px solid rgba(55, 214, 160, .35); }
+.v-partial { background: rgba(255, 180, 84, .12); color: var(--warn);   border: 1px solid rgba(255, 180, 84, .35); }
+.v-book    { background: rgba(255, 95, 109, .12);  color: var(--danger); border: 1px solid rgba(255, 95, 109, .35); }
+.v-wait    { background: rgba(88, 166, 255, .10);  color: var(--info);   border: 1px solid rgba(88, 166, 255, .35); }
+.verdict-sub { margin-top: 12px; font-size: 14px; color: var(--text-dim); max-width: 620px; margin-left: auto; margin-right: auto; }
+.score-wrap { max-width: 380px; margin: 18px auto 0; }
+.score-num { font-family: var(--mono); font-size: 15px; display: flex; justify-content: space-between; color: var(--text-dim); }
+.score-num b { color: var(--text); }
+
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.check {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 11px 13px;
+}
+.check.is-critical { border-color: rgba(88, 166, 255, .45); box-shadow: inset 3px 0 0 var(--info); }
+.check-icon { font-family: var(--mono); font-weight: 700; font-size: 15px; line-height: 1.45; }
+.check.pass .check-icon { color: var(--accent); }
+.check.warn .check-icon { color: var(--warn); }
+.check.fail .check-icon { color: var(--danger); }
+.check-body { min-width: 0; flex: 1; display: block; }
+.check-name { display: block; font-size: 13.5px; font-weight: 650; }
+.check-name .crit-tag { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; background: rgba(88,166,255,.16); color: var(--info); border-radius: 999px; padding: 2px 8px; margin-left: 8px; vertical-align: 1px; }
+.check-detail { display: block; font-size: 12.5px; color: var(--text-dim); font-family: var(--mono); margin-top: 3px; }
+.check-verdict { flex: none; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .08em; align-self: center; }
+.check.pass .check-verdict { color: var(--accent); }
+.check.warn .check-verdict { color: var(--warn); }
+.check.fail .check-verdict { color: var(--danger); }
+
+.gate { text-align: center; padding: 20px 18px; border-left: 3px solid var(--line); }
+.gate.pass { border-left-color: var(--accent); }
+.gate.fail { border-left-color: var(--danger); }
+.gate h3 { font-size: 17px; margin-bottom: 6px; }
+.gate.pass h3 { color: var(--accent); }
+.gate.fail h3 { color: var(--danger); }
+
+/* ---------- pullback ---------- */
+.pb-side { font-size: 26px; font-weight: 750; letter-spacing: -.02em; padding: 14px 30px; border-radius: var(--radius); display: inline-block; }
+.pb-call { background: rgba(55, 214, 160, .13); color: var(--call); border: 1px solid rgba(55, 214, 160, .35); }
+.pb-put  { background: rgba(255, 107, 129, .12); color: var(--put); border: 1px solid rgba(255, 107, 129, .35); }
+.zone-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .zone-grid { grid-template-columns: repeat(3, 1fr); } }
+.zone {
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 13px; text-align: center;
+}
+.zone-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; color: var(--text-faint); }
+.zone-value { font-family: var(--mono); font-size: 21px; font-weight: 700; margin-top: 3px; }
+.zone-note { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
+.zone-1 .zone-value { color: var(--info); }
+.zone-2 .zone-value { color: var(--text-dim); }
+.zone-t .zone-value { color: var(--accent); }
+.no-sl { margin-top: 14px; text-align: center; font-size: 13px; color: var(--warn); font-weight: 650; }
+
+.compare { width: 100%; border-collapse: collapse; font-size: 13px; }
+.compare th, .compare td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); }
+.compare th:first-child, .compare td:first-child { text-align: left; font-family: var(--sans); color: var(--text-dim); }
+.compare thead th { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-family: var(--sans); }
+.compare .win { color: var(--accent); font-weight: 700; }
+.table-scroll { overflow-x: auto; }
+
+/* ---------- guide ---------- */
+.guide .phase { font-size: 14px; color: var(--accent); margin: 22px 0 8px; letter-spacing: .01em; }
+.guide .phase:first-child { margin-top: 0; }
+.sop { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
+.sop li b { font-weight: 650; }
+.sop li i { color: var(--info); font-style: normal; }
+.inline-warn { color: var(--warn); font-weight: 650; }
+.formula-list { display: grid; gap: 10px; margin-top: 12px; }
+.formula {
+  background: #0c141d; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 11px 13px;
+}
+.formula h4 { font-size: 13px; margin: 0 0 6px; font-weight: 650; }
+.formula code { font-family: var(--mono); font-size: 12.5px; color: var(--accent); display: block; white-space: pre-wrap; word-break: break-word; }
+.formula p { font-size: 12.5px; color: var(--text-dim); margin: 6px 0 0; }
+
+/* ---------- footer ---------- */
+.app-footer { border-top: 1px solid var(--line-soft); padding: 20px 0 34px; font-size: 12.5px; color: var(--text-dim); }
+.app-footer strong { color: var(--warn); }
+
+@media (max-width: 700px) {
+  /* the header wraps to two rows here, so stacked sticky bars would overlap */
+  .app-header, .tabs { position: static; }
+}
+
+@media (max-width: 560px) {
+  .levels { grid-template-columns: 1fr; }
+  .verdict-badge { font-size: 18px; padding: 11px 18px; }
+  .pb-side { font-size: 21px; padding: 12px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- trade signal ---------- */
+.tile-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 760px) { .tile-grid { grid-template-columns: repeat(4, 1fr); } }
+.metric-tile {
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 14px 12px; text-align: center;
+}
+.tile-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; color: var(--text-faint); }
+.tile-value { font-family: var(--mono); font-size: 22px; font-weight: 700; margin-top: 4px; }
+.tile-primary { border-color: rgba(88, 166, 255, .4); }
+.tile-primary .tile-value { color: var(--info); }
+.tile-good .tile-value { color: var(--accent); }
+.tile-bad .tile-value { color: var(--danger); }
+
+.edge-note { margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600; }
+.edge-note.is-good { color: var(--accent); }
+.edge-note.is-bad { color: var(--danger); }
+
+.check.skip { opacity: .62; }
+.check.skip .check-icon { color: var(--text-faint); }
+.check.skip .check-verdict { color: var(--text-faint); }
+.weight-tag {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  background: #16222e; color: var(--text-faint);
+  border-radius: 999px; padding: 2px 7px; margin-left: 8px; vertical-align: 1px;
+}
+
+.metrics-table td:first-child { white-space: normal; }
+.metrics-table td:last-child { text-align: right; white-space: nowrap; }
+.metrics-table .pos { color: var(--accent); font-weight: 700; }
+.metrics-table .neg { color: var(--danger); font-weight: 700; }
+
+/* ---------- alerts ---------- */
+.perm {
+  font-size: 13px; border-radius: var(--radius-sm);
+  padding: 10px 13px; border: 1px solid var(--line); background: #0c141d;
+  border-left-width: 3px;
+}
+.perm-granted { border-left-color: var(--accent); color: var(--accent); }
+.perm-default { border-left-color: var(--info); color: var(--text-dim); }
+.perm-denied, .perm-unsupported { border-left-color: var(--warn); color: var(--warn); }
+
+.checkline { display: flex; align-items: center; gap: 9px; font-size: 13.5px; margin-top: 14px; color: var(--text-dim); cursor: pointer; }
+.checkline input { width: 17px; height: 17px; accent-color: var(--accent); flex: none; }
+
+.reminder-row { display: grid; gap: 12px; margin-top: 16px; align-items: end; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .reminder-row { grid-template-columns: 260px 1fr; } }
+.reminder-row .row-actions { margin-top: 0; }
+
+.log-title { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); margin: 22px 0 10px; }
+.alert-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.log-item {
+  display: flex; gap: 12px; align-items: flex-start; font-size: 13px;
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.log-time { font-family: var(--mono); color: var(--info); flex: none; }
+.log-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.log-body span { color: var(--text-dim); font-family: var(--mono); font-size: 12.5px; }
+.log-empty { padding: 10px 2px; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="#12202b"/><path d="M6 21l6-7 5 4 9-11" stroke="#37d6a0" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong data-i18n="app.name">NIFTY Option Strategy Suite</strong>
+        <small data-i18n="app.tagline">First-candle SOP · Analyser → T1 Helper → Pullback Entry</small>
+      </span>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn btn-ghost lang-toggle" id="btn-lang" data-i18n="app.langSwitch">தமிழ்</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings" aria-expanded="false" aria-controls="settings-drawer" data-i18n="app.settings">Formula settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-clear-all" data-i18n="app.clearAll">Clear all</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Formula settings drawer ============ -->
+<section id="settings-drawer" class="drawer" hidden>
+  <div class="wrap">
+    <h2 class="drawer-title" data-i18n="cfg.title">Formula settings</h2>
+    <p class="muted small" data-i18n="cfg.intro"></p>
+
+    <div class="settings-grid">
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g1">Option Analyser</legend>
+        <label class="field">
+          <span><span data-i18n="cfg.entryBufferPct"></span> <em data-i18n="cfg.entryBufferPct.hint"></em></span>
+          <input type="number" id="cfg-entryBufferPct" step="0.1" min="0" max="50" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.slBufferPct"></span> <em data-i18n="cfg.slBufferPct.hint"></em></span>
+          <input type="number" id="cfg-slBufferPct" step="0.1" min="0" max="50" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.t1Multiplier"></span> <em data-i18n="cfg.t1Multiplier.hint"></em></span>
+          <input type="number" id="cfg-t1Multiplier" step="0.05" min="0.1" max="10" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.tickSize"></span> <em data-i18n="cfg.tickSize.hint"></em></span>
+          <input type="number" id="cfg-tickSize" step="0.05" min="0.01" max="10" />
+        </label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g2">T1 Decision Helper</legend>
+        <label class="field">
+          <span><span data-i18n="cfg.bodyStrong"></span> <em data-i18n="cfg.bodyStrong.hint"></em></span>
+          <input type="number" id="cfg-bodyStrong" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.bodyModerate"></span> <em data-i18n="cfg.bodyModerate.hint"></em></span>
+          <input type="number" id="cfg-bodyModerate" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.minClosePos"></span> <em data-i18n="cfg.minClosePos.hint"></em></span>
+          <input type="number" id="cfg-minClosePos" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.holdThreshold">Hold-T2 momentum threshold</span>
+          <input type="number" id="cfg-holdThreshold" step="1" min="0" max="100" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.partialThreshold">Partial-book momentum threshold</span>
+          <input type="number" id="cfg-partialThreshold" step="1" min="0" max="100" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.sideAwareDirection">Direction convention</span>
+          <select id="cfg-sideAwareDirection">
+            <option value="0" data-i18n="cfg.dir.premium"></option>
+            <option value="1" data-i18n="cfg.dir.inverted"></option>
+          </select>
+        </label>
+        <p class="muted small" style="margin-top:8px" data-i18n="cfg.dirNote"></p>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g4">Trade Signal — filters</legend>
+        <label class="field"><span><span data-i18n="cfg.rsiMin"></span></span><input type="number" id="cfg-rsiMin" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.rsiMax"></span></span><input type="number" id="cfg-rsiMax" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.volumeMin"></span></span><input type="number" id="cfg-volumeMin" step="0.05" min="0" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.vixMax"></span></span><input type="number" id="cfg-vixMax" step="1" min="1" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.atrReachMax"></span></span><input type="number" id="cfg-atrReachMax" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.minRR"></span></span><input type="number" id="cfg-minRR" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.takeThreshold"></span></span><input type="number" id="cfg-takeThreshold" step="1" min="0" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g5">Trade Signal — money</legend>
+        <label class="field"><span><span data-i18n="cfg.lotSize"></span></span><input type="number" id="cfg-lotSize" step="1" min="1" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.costPerLot"></span></span><input type="number" id="cfg-costPerLot" step="1" min="0" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.baseWinRate"></span> <em data-i18n="cfg.baseWinRate.hint"></em></span><input type="number" id="cfg-baseWinRate" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winSensitivity"></span> <em data-i18n="cfg.winSensitivity.hint"></em></span><input type="number" id="cfg-winSensitivity" step="0.05" min="0" max="3" /></label>
+        <label class="field"><span><span data-i18n="cfg.winFloor"></span></span><input type="number" id="cfg-winFloor" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winCeiling"></span></span><input type="number" id="cfg-winCeiling" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.riskPctOfAccount"></span></span><input type="number" id="cfg-riskPctOfAccount" step="0.25" min="0.1" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g3">Stoploss Pullback Entry</legend>
+        <label class="field">
+          <span><span data-i18n="cfg.zone1Retrace"></span> <em data-i18n="cfg.zone1Retrace.hint"></em></span>
+          <input type="number" id="cfg-zone1Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.zone2Retrace"></span> <em data-i18n="cfg.zone2Retrace.hint"></em></span>
+          <input type="number" id="cfg-zone2Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.pullbackTargetMult"></span> <em data-i18n="cfg.pullbackTargetMult.hint"></em></span>
+          <input type="number" id="cfg-pullbackTargetMult" step="0.05" min="0.1" max="10" />
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="row-actions">
+      <button type="button" class="btn btn-primary" id="btn-settings-save" data-i18n="cfg.save">Save settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings-reset" data-i18n="cfg.restore">Restore defaults</button>
+      <span class="save-flash" id="settings-flash" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Tools">
+  <div class="wrap tabs-inner" role="tablist">
+    <button class="tab is-active" role="tab" id="tab-analyser" aria-controls="panel-analyser" aria-selected="true" data-panel="analyser"><span class="tab-step" data-i18n="tab.phase12"></span><span data-i18n="tab.analyser"></span></button>
+    <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
+    <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
+    <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
+    <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- =================== TOOL 1: OPTION ANALYSER =================== -->
+  <section class="panel is-active" id="panel-analyser" role="tabpanel" aria-labelledby="tab-analyser">
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="an.step1"></span> <span data-i18n="an.step1.title"></span></h2>
+        <p class="muted" data-i18n="an.step1.desc"></p>
+      </div>
+      <div class="card-body atm-row">
+        <label class="field">
+          <span data-i18n="an.openLabel"></span>
+          <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="23670" />
+        </label>
+        <div class="atm-result" id="atm-result" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="an.steps23"></span> <span data-i18n="an.steps23.title"></span></h2>
+        <p class="muted" data-i18n="an.steps23.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-analyse" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="analyser-output" hidden>
+      <div class="card" id="analyser-bias-card">
+        <div class="card-body bias-row" id="analyser-bias"></div>
+      </div>
+
+      <div class="result-grid">
+        <article class="card result-card side-call" id="res-ce"></article>
+        <article class="card result-card side-put" id="res-pe"></article>
+      </div>
+
+      <div class="card note-card">
+        <h3><span class="step-pill" data-i18n="an.rule"></span> <span data-i18n="an.rule.title"></span></h3>
+        <p data-i18n-html="an.rule.body"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 2: T1 DECISION HELPER =================== -->
+  <section class="panel" id="panel-t1" role="tabpanel" aria-labelledby="tab-t1" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="t1.badge"></span>
+      <h2 data-i18n="t1.hero"></h2>
+      <p class="muted" data-i18n="t1.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="t1.steps67"></span> <span data-i18n="t1.steps67.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps67.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="t1.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="t1.putTrade"></button>
+        </div>
+
+        <div class="mapping-note">
+          <span class="map-item"><b data-i18n="t1.mapEntry"></b> ← <i data-i18n="t1.mapEntryFrom"></i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b data-i18n="t1.mapT1"></b> ← <i data-i18n="t1.mapT1From"></i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b data-i18n="t1.mapT2"></b> ← <i data-i18n="t1.mapT2From"></i></span>
+        </div>
+
+        <div class="ohlc ohlc-3">
+          <label class="field"><span><span data-i18n="t1.entryLabel"></span> <em data-i18n="t1.entryHint"></em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t1Label"></span> <em data-i18n="t1.t1Hint"></em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t2Label"></span> <em data-i18n="t1.t2Hint"></em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-levels-err" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="t1.steps89"></span> <span data-i18n="t1.steps89.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps89.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span data-i18n="f.open"></span><input type="number" id="t1-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.high"></span><input type="number" id="t1-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.low"></span><input type="number" id="t1-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.close"></span><input type="number" id="t1-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-candle-err" role="alert"></p>
+
+        <div class="candle-preview" id="t1-preview" hidden></div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-decide" data-i18n="t1.decide"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="t1-output" hidden>
+      <div class="card verdict-card" id="t1-verdict"></div>
+      <div class="card" id="t1-signal"></div>
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="t1.checks"></h3>
+        <p class="muted" data-i18n="t1.checksDesc"></p></div>
+        <div class="card-body"><ul class="checks" id="t1-checks"></ul></div>
+      </div>
+      <div class="card" id="t1-gate"></div>
+      <div class="card" id="t1-plan"></div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 3: PULLBACK ENTRY =================== -->
+  <section class="panel" id="panel-pullback" role="tabpanel" aria-labelledby="tab-pullback" hidden>
+
+    <div class="card warn-card">
+      <h3>⚠ <span data-i18n="pb.warnTitle"></span></h3>
+      <p data-i18n-html="pb.warnBody"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="pb.steps"></span> <span data-i18n="pb.steps.title"></span></h2>
+        <p class="muted" data-i18n="pb.steps.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-pullback" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-import" data-i18n="pb.import"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pullback-output" hidden>
+      <div class="card verdict-card" id="pb-verdict"></div>
+      <div class="card" id="pb-levels"></div>
+      <div class="card" id="pb-detail"></div>
+    </div>
+  </section>
+
+
+  <!-- =================== TOOL 4: TRADE SIGNAL =================== -->
+  <section class="panel" id="panel-signal" role="tabpanel" aria-labelledby="tab-signal" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sg.badge"></span>
+      <h2 data-i18n="sg.hero"></h2>
+      <p class="muted" data-i18n="sg.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.setupTitle"></h2>
+        <p class="muted" data-i18n="sg.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="sg.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="sg.putTrade"></button>
+        </div>
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.entry"></span><input type="number" id="sg-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.sl"></span><input type="number" id="sg-sl" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t1"></span><input type="number" id="sg-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t2"></span><input type="number" id="sg-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span><span data-i18n="sg.range"></span> <em data-i18n="sg.rangeHint"></em></span><input type="number" id="sg-range" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="sg-err" role="alert"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-call" data-i18n="sg.importCall"></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-put" data-i18n="sg.importPut"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.marketTitle"></h2>
+        <p class="muted" data-i18n="sg.marketDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.spot"></span><input type="number" id="sg-spot" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vwap"></span><input type="number" id="sg-vwap" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema20"></span><input type="number" id="sg-ema20" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema50"></span><input type="number" id="sg-ema50" inputmode="decimal" step="0.05" placeholder="—" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span data-i18n="sg.rsi"></span><input type="number" id="sg-rsi" inputmode="decimal" step="0.1" placeholder="—" /></label>
+          <label class="field"><span><span data-i18n="sg.vol"></span> <em data-i18n="sg.volHint"></em></span><input type="number" id="sg-vol" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vix"></span><input type="number" id="sg-vix" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.time"></span><input type="time" id="sg-time" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-now" data-i18n="sg.now"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.posTitle"></h2>
+        <p class="muted" data-i18n="sg.posDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc ohlc-3">
+          <label class="field"><span data-i18n="sg.lots"></span><input type="number" id="sg-lots" inputmode="numeric" step="1" min="1" value="1" /></label>
+          <label class="field"><span><span data-i18n="sg.account"></span> <em data-i18n="sg.accountHint"></em></span><input type="number" id="sg-account" inputmode="decimal" step="1000" placeholder="—" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-signal" data-i18n="sg.generate"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="signal-output" hidden>
+      <div class="card verdict-card" id="sg-verdict"></div>
+      <div class="card" id="sg-tiles"></div>
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="sg.checksTitle"></h3></div>
+        <div class="card-body">
+          <div class="signal" id="sg-conf-head" style="margin-bottom:16px"></div>
+          <ul class="checks" id="sg-checks"></ul>
+        </div>
+      </div>
+      <div class="card" id="sg-metrics"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="al.title"></h2>
+        <p class="muted" data-i18n="al.desc"></p>
+      </div>
+      <div class="card-body">
+        <p class="perm" id="al-permission"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost" id="btn-al-enable" data-i18n="al.enable"></button>
+          <button type="button" class="btn btn-ghost" id="btn-al-notify" data-i18n="al.notifyNow"></button>
+        </div>
+        <label class="checkline"><input type="checkbox" id="al-auto" checked /> <span data-i18n="al.auto"></span></label>
+
+        <div class="reminder-row">
+          <label class="field"><span><span data-i18n="al.countLabel"></span> <em data-i18n="al.countHint"></em></span><input type="number" id="al-count" step="1" min="0" value="12" /></label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-al-start" data-i18n="al.startReminders"></button>
+            <button type="button" class="btn btn-ghost" id="btn-al-stop" data-i18n="al.stopReminders" hidden></button>
+          </div>
+        </div>
+        <p class="muted small" id="al-next"></p>
+
+        <h3 class="log-title" data-i18n="al.logTitle"></h3>
+        <ul class="alert-log" id="al-log"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== SOP GUIDE =================== -->
+  <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="g.title"></h2>
+        <p class="muted" data-i18n="g.desc"></p>
+      </div>
+      <div class="card-body guide" id="guide-body"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <div class="wrap">
+    <p><strong data-i18n="foot.warn"></strong> <span data-i18n="foot.body"></span></p>
+    <p class="muted small" data-i18n="foot.privacy"></p>
+  </div>
+</footer>
+
+<script>
+/* Shared helpers. Attached to window.APP so the files load as plain scripts
+   and the page also works when opened straight from disk. */
+window.APP = window.APP || {};
+
+(function (APP) {
+  'use strict';
+
+  function $(id) { return document.getElementById(id); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  /* Parse an input value. Returns NaN for blank/garbage so callers can validate. */
+  function num(value) {
+    if (value === null || value === undefined) return NaN;
+    var s = String(value).trim();
+    if (s === '') return NaN;
+    var n = Number(s);
+    return isFinite(n) ? n : NaN;
+  }
+
+  function fmt(n, decimals) {
+    if (!isFinite(n)) return '—';
+    var d = decimals === undefined ? 2 : decimals;
+    return n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+
+  function pct(fraction, decimals) {
+    if (!isFinite(fraction)) return '—';
+    return fmt(fraction * 100, decimals === undefined ? 1 : decimals) + '%';
+  }
+
+  function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
+
+  /* Round to the nearest tick so displayed levels are actually placeable. */
+  function toTick(value, tick) {
+    if (!isFinite(value)) return NaN;
+    var t = isFinite(tick) && tick > 0 ? tick : 0.05;
+    return Math.round(value / t) * t;
+  }
+
+  /* Read an OHLC group whose inputs are `<prefix>-o|h|l|c`. */
+  function readCandle(prefix) {
+    return {
+      o: num($(prefix + '-o').value),
+      h: num($(prefix + '-h').value),
+      l: num($(prefix + '-l').value),
+      c: num($(prefix + '-c').value)
+    };
+  }
+
+  function writeCandle(prefix, candle) {
+    ['o', 'h', 'l', 'c'].forEach(function (k) {
+      var el = $(prefix + '-' + k);
+      if (el) el.value = isFinite(candle[k]) ? String(candle[k]) : '';
+    });
+  }
+
+  function clearCandle(prefix) {
+    ['o', 'h', 'l', 'c'].forEach(function (k) {
+      var el = $(prefix + '-' + k);
+      if (el) { el.value = ''; el.classList.remove('is-invalid'); }
+    });
+  }
+
+  /* Validate a candle. Returns [] when usable, otherwise a list of messages.
+     Also flags the offending inputs when a prefix is supplied. */
+  function validateCandle(candle, label, prefix) {
+    var t = window.APP.i18n.t;
+    var errors = [];
+    var bad = {};
+    var fieldKeys = { o: 'f.open', h: 'f.high', l: 'f.low', c: 'f.close' };
+
+    Object.keys(fieldKeys).forEach(function (k) {
+      var field = t(fieldKeys[k]);
+      if (!isFinite(candle[k])) { errors.push(t('v.required', { label: label, field: field })); bad[k] = true; }
+      else if (candle[k] <= 0) { errors.push(t('v.positive', { label: label, field: field })); bad[k] = true; }
+    });
+
+    if (!errors.length) {
+      if (candle.h < candle.l) {
+        errors.push(t('v.highLow', { label: label }));
+        bad.h = bad.l = true;
+      }
+      if (candle.h < Math.max(candle.o, candle.c)) {
+        errors.push(t('v.highMax', { label: label }));
+        bad.h = true;
+      }
+      if (candle.l > Math.min(candle.o, candle.c)) {
+        errors.push(t('v.lowMin', { label: label }));
+        bad.l = true;
+      }
+      if (candle.h === candle.l) {
+        errors.push(t('v.noRange', { label: label }));
+        bad.h = bad.l = true;
+      }
+    }
+
+    if (prefix) {
+      ['o', 'h', 'l', 'c'].forEach(function (k) {
+        var el = $(prefix + '-' + k);
+        if (el) el.classList.toggle('is-invalid', !!bad[k]);
+      });
+    }
+    return errors;
+  }
+
+  function showErrors(elId, errors) {
+    var el = $(elId);
+    if (!el) return;
+    el.textContent = errors && errors.length ? errors.join(' ') : '';
+  }
+
+  /* Descriptive stats shared by all three tools. */
+  function candleStats(candle) {
+    var range = candle.h - candle.l;
+    var body = Math.abs(candle.c - candle.o);
+    return {
+      range: range,
+      body: body,
+      bodyRatio: range > 0 ? body / range : 0,
+      closePos: range > 0 ? (candle.c - candle.l) / range : 0.5,
+      upperWick: range > 0 ? (candle.h - candle.c) / range : 0,
+      lowerWick: range > 0 ? (candle.c - candle.l) / range : 0,
+      bullish: candle.c > candle.o,
+      mid: (candle.h + candle.l) / 2,
+      pivot: (candle.h + candle.l + candle.c) / 3
+    };
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  APP.util = {
+    $: $, $$: $$, num: num, fmt: fmt, pct: pct, clamp: clamp, toTick: toTick,
+    readCandle: readCandle, writeCandle: writeCandle, clearCandle: clearCandle,
+    validateCandle: validateCandle, showErrors: showErrors,
+    candleStats: candleStats, escapeHtml: escapeHtml
+  };
+})(window.APP);
+</script>
+<script>
+/* Language layer: English and Tanglish (Tamil + English, as the trading tools
+   are normally spoken). Static markup is tagged with data-i18n attributes;
+   generated markup calls APP.i18n.t() directly. */
+(function (APP) {
+  'use strict';
+
+  var STORAGE_KEY = 'nifty-option-suite:lang';
+  var lang = 'en';
+  var listeners = [];
+
+  var STRINGS = {
+    en: {
+      /* shell */
+      'app.name': 'NIFTY Option Strategy Suite',
+      'app.tagline': 'First-candle SOP · Analyser → T1 Helper → Pullback Entry',
+      'app.settings': 'Formula settings',
+      'app.clearAll': 'Clear all',
+      'app.langSwitch': 'தமிழ்',
+      'tab.analyser': 'Option Analyser',
+      'tab.t1': 'T1 Decision Helper',
+      'tab.pullback': 'Pullback Entry',
+      'tab.guide': 'Execution Guide',
+      'tab.phase12': 'Phase 1–2',
+      'tab.phase3': 'Phase 3',
+      'tab.phase4': 'Phase 4',
+      'tab.sop': 'SOP',
+
+      /* shared field labels */
+      'f.open': 'Open',
+      'f.high': 'High',
+      'f.low': 'Low',
+      'f.close': 'Close',
+      'f.call': 'Call option (CE)',
+      'f.put': 'Put option (PE)',
+      'f.analyse': 'Analyse',
+      'f.sample': 'Load sample',
+      'f.reset': 'Reset',
+
+      /* settings drawer */
+      'cfg.title': 'Formula settings',
+      'cfg.intro': 'The strategy guide defines which values each tool produces, not the arithmetic behind them. Every coefficient below is exposed so the model can be tuned to match your own back-tested numbers. Changes are saved in this browser and apply to all three tools immediately.',
+      'cfg.g1': 'Option Analyser',
+      'cfg.entryBufferPct': 'Entry buffer',
+      'cfg.entryBufferPct.hint': '(% of candle range above high)',
+      'cfg.slBufferPct': 'Stop-loss buffer',
+      'cfg.slBufferPct.hint': '(% of range below low)',
+      'cfg.t1Multiplier': 'Target 1 multiplier',
+      'cfg.t1Multiplier.hint': '(× candle range above entry)',
+      'cfg.tickSize': 'Tick size',
+      'cfg.tickSize.hint': '(confirmation close must clear entry by)',
+      'cfg.g2': 'T1 Decision Helper',
+      'cfg.bodyStrong': 'Strong body threshold',
+      'cfg.bodyStrong.hint': '(body ÷ range for full credit)',
+      'cfg.bodyModerate': 'Moderate body threshold',
+      'cfg.bodyModerate.hint': '(below this the candle is weak)',
+      'cfg.minClosePos': 'Min. close position',
+      'cfg.minClosePos.hint': '(close within candle range)',
+      'cfg.holdThreshold': 'Hold-T2 momentum threshold',
+      'cfg.partialThreshold': 'Partial-book momentum threshold',
+      'cfg.sideAwareDirection': 'Direction convention',
+      'cfg.dir.premium': 'Option premium — a rising candle is good on both sides',
+      'cfg.dir.inverted': 'Side-inverted — a put trade wants a falling candle',
+      'cfg.dirNote': 'You are long the option on both sides, so a rising premium is a gain whether the leg is a call or a put — that is the default. The second option reproduces the side-inverted behaviour of the original helper tool.',
+      'cfg.g4': 'Trade Signal — filters',
+      'cfg.g5': 'Trade Signal — money',
+      'cfg.rsiMin': 'RSI band low (call side)',
+      'cfg.rsiMax': 'RSI band high (call side)',
+      'cfg.volumeMin': 'Min. volume vs average',
+      'cfg.vixMax': 'Max. India VIX',
+      'cfg.atrReachMax': 'Max. target reach (× reference range)',
+      'cfg.minRR': 'Min. risk : reward to T2',
+      'cfg.takeThreshold': 'Confluence needed for a full-size trade',
+      'cfg.lotSize': 'Lot size',
+      'cfg.costPerLot': 'Brokerage & charges per lot',
+      'cfg.baseWinRate': 'Your base win rate',
+      'cfg.baseWinRate.hint': '(from your own journal)',
+      'cfg.winSensitivity': 'Confluence sensitivity',
+      'cfg.winSensitivity.hint': '(how far confluence moves the estimate)',
+      'cfg.winFloor': 'Win estimate floor',
+      'cfg.winCeiling': 'Win estimate ceiling',
+      'cfg.riskPctOfAccount': 'Risk budget per trade (% of account)',
+      'cfg.g3': 'Stoploss Pullback Entry',
+      'cfg.zone1Retrace': 'Zone 1 retracement',
+      'cfg.zone1Retrace.hint': '(fraction of range above low)',
+      'cfg.zone2Retrace': 'Zone 2 retracement',
+      'cfg.zone2Retrace.hint': '(deeper liquidity fill)',
+      'cfg.pullbackTargetMult': 'Target 1 multiplier',
+      'cfg.pullbackTargetMult.hint': '(× range above high)',
+      'cfg.save': 'Save settings',
+      'cfg.restore': 'Restore defaults',
+      'cfg.saved': 'Saved.',
+      'cfg.restored': 'Defaults restored.',
+
+      /* analyser */
+      'an.step1': 'Step 1',
+      'an.step1.title': 'ATM strike selection',
+      'an.step1.desc': 'Open price of the 09:15–09:20 NIFTY candle, rounded down to the 100 strike — 23670 gives 23600.',
+      'an.openLabel': 'NIFTY open price (first 5-min candle)',
+      'an.atmHint': 'Enter the open price to get the ATM strike.',
+      'an.atmRounded': 'Open {open} rounded down to the 100 strike.',
+      'an.steps23': 'Steps 2–3',
+      'an.steps23.title': 'First-candle option data',
+      'an.steps23.desc': 'Record the 09:15–09:20 candle of the ATM Call and Put from your broker terminal, then analyse.',
+      'an.biasCall': 'Call side stronger',
+      'an.biasCallText': 'The call first-candle closed more decisively. Watch the call entry first, but still wait for the confirmation close.',
+      'an.biasPut': 'Put side stronger',
+      'an.biasPutText': 'The put first-candle closed more decisively. Watch the put entry first, but still wait for the confirmation close.',
+      'an.biasFlat': 'No clear side',
+      'an.biasFlatText': 'Both first-candles closed with similar conviction — take whichever side confirms first, and skip if neither does.',
+      'an.primary': 'Primary watch',
+      'an.entryPrice': 'Entry price',
+      'an.target1': 'Target 1',
+      'an.stopLoss': 'Stop loss',
+      'an.range': 'First-candle range',
+      'an.risk': 'Risk per lot unit',
+      'an.reward': 'Reward to T1',
+      'an.rr': 'Risk : reward',
+      'an.riskPct': 'Risk as % of entry',
+      'an.closePos': 'Close position in candle',
+      'an.bodyPct': 'Body of candle',
+      'an.strength': 'First-candle strength',
+      'an.confirm': 'Entry confirms only when a 5-minute candle <b>closes at {close} or higher</b> (above the {entry} entry price).',
+      'an.sendT1': 'Send to T1 Helper',
+      'an.rule': 'Steps 4–5',
+      'an.rule.title': 'Entry confirmation rule',
+      'an.rule.body': 'Do <strong>not</strong> enter the moment price touches the entry price. Wait for a full 5-minute candle on the option chart to <strong>close above</strong> the entry price. Only then is the entry confirmed — and that same candle is the one you feed into the T1 Decision Helper.',
+
+      /* T1 helper */
+      't1.badge': 'T1 Decision Helper',
+      't1.hero': 'Hold to T2, or book here?',
+      't1.heroSub': 'When price touches the T1 level, enter that 5-minute candle once it has closed — you get an exact decision back.',
+      't1.steps67': 'Steps 6–7',
+      't1.steps67.title': 'Trade side & mapped levels',
+      't1.steps67.desc': 'Values come from the Option Analyser, remapped exactly as the strategy guide specifies.',
+      't1.callTrade': 'Call trade',
+      't1.putTrade': 'Put trade',
+      't1.mapEntry': 'Entry',
+      't1.mapEntryFrom': 'Analyser Stop Loss',
+      't1.mapT1': 'T1 level',
+      't1.mapT1From': 'Analyser Entry Price',
+      't1.mapT2': 'T2 level',
+      't1.mapT2From': 'Analyser Target 1',
+      't1.entryLabel': 'Entry price',
+      't1.entryHint': '(your entry)',
+      't1.t1Label': 'T1 level',
+      't1.t1Hint': '(target 1)',
+      't1.t2Label': 'T2 level',
+      't1.t2Hint': '(target 2)',
+      't1.steps89': 'Steps 8–9',
+      't1.steps89.title': 'T1-touch candle values',
+      't1.steps89.desc': 'The exact 5-minute candle that touched the T1 level — enter it once that candle has closed.',
+      't1.decide': 'Decide — hold or book?',
+      't1.body': 'Body',
+      't1.closeOf': 'of range',
+      't1.rangeLabel': 'Range',
+      't1.pts': 'pts',
+      't1.bullish': 'Bullish',
+      't1.bearish': 'Bearish',
+      't1.assessed': '{side} · T1-touch candle assessed',
+      't1.hold': 'HOLD → T2',
+      't1.partial': 'PARTIAL BOOK',
+      't1.book': 'BOOK NOW',
+      't1.wait': 'WAIT — NO BREAKOUT',
+      't1.holdText': 'Momentum strong ({momentum}%). T2 reward ratio good. T2 target: {t2} | Expected: +{expected} pts total.',
+      't1.partialText': 'The signal is mixed ({momentum}%). Book part of the position here to lock in the T1 profit, and let the rest run toward {t2} only while price keeps making progress.',
+      't1.bookText': 'Weakness is showing ({momentum}%). The chance of reversing before T2 is high — protecting the profit already at T1 is the smarter trade.',
+      't1.waitText': 'The candle did not close above the T1 level, so nothing is confirmed yet. There is no position to hold or book — wait for a 5-minute candle to close above {t1}.',
+      't1.signal': 'Signal strength',
+      't1.momentum': 'Momentum score',
+      't1.rewardRatio': 'T1 → T2 reward ratio',
+      't1.checks': 'Condition checks',
+      't1.checksDesc': 'Check 4 is the pre-trade gate the strategy guide requires at step 10.',
+      't1.check': 'Check {n}',
+      't1.decisive': 'Decisive',
+      't1.pass': 'PASS',
+      't1.weak': 'WEAK',
+      't1.fail': 'FAIL',
+      't1.c1': 'Direction',
+      't1.c1.match': 'Candle is bullish — the premium closed up, with the trade',
+      't1.c1.against': 'Candle is bearish — the premium closed down, against the trade',
+      't1.c1.invMatch': 'Candle is bearish — matches the put trade direction',
+      't1.c1.invAgainst': 'Candle is bullish — opposite to the put trade direction',
+      't1.c2': 'Body strength',
+      't1.c2.strong': 'Body {pct} — strong momentum ({min}+)',
+      't1.c2.moderate': 'Body {pct} — moderate ({min}–{max})',
+      't1.c2.weak': 'Body {pct} — weak candle, a reversal is possible',
+      't1.c3': 'Close position',
+      't1.c3.strong': 'Close in the top {pct} of the candle — very strong',
+      't1.c3.weak': 'Close gave back the upper part of the range ({pct} down from the high)',
+      't1.c3.invStrong': 'Close held in the lower part — {pct} up the range, strong for a put',
+      't1.c3.invWeak': 'Close in the top half — {pct} up the range, put weakness',
+      't1.c4': 'T1 breakout strength',
+      't1.c4.pass': 'Close {gap} above T1 — confirmed breakout',
+      't1.c4.fail': 'Close {gap} below T1 — no breakout yet',
+      't1.gatePass': 'Condition check 4 — PASSED',
+      't1.gateFail': 'Condition check 4 — NOT PASSED',
+      't1.gatePassText': 'The pre-trade gate is satisfied — proceed with the trade, managing targets per the verdict above.',
+      't1.gateFailText': 'The pre-trade gate failed — skip the trade. This overrides every other check and the verdict above.',
+      't1.plan': 'Exact action plan',
+      't1.plan.hold1': 'Hold the current position — do not exit here.',
+      't1.plan.hold2': 'Move the stop loss up to your entry price {entry} — the trade is now risk-free.',
+      't1.plan.hold3': 'When T2 {t2} is hit, sell 80% of the position.',
+      't1.plan.hold4': 'Let the remaining 20% run toward T3 on a trailing stop.',
+      't1.plan.hold5': 'If a candle reverses before T2, exit immediately — the stop is already at entry.',
+      't1.plan.partial1': 'Book roughly half the position now, at the T1 level {t1}.',
+      't1.plan.partial2': 'Move the stop loss on the remainder to your entry price {entry}.',
+      't1.plan.partial3': 'Hold the rest toward T2 {t2} only while each candle keeps closing higher.',
+      't1.plan.partial4': 'Exit the remainder on the first candle that closes back below {t1}.',
+      't1.plan.partial5': 'Do not add to the position at this level.',
+      't1.plan.book1': 'Exit the full position now, at market — take the T1 profit.',
+      't1.plan.book2': 'Do not wait for T2; the candle is not supporting a continuation.',
+      't1.plan.book3': 'Do not re-enter on the same candle.',
+      't1.plan.book4': 'Wait for a fresh setup with a decisive body and a strong close.',
+      't1.plan.book5': 'If the trade was not entered yet, skip it entirely.',
+      't1.plan.wait1': 'No entry is confirmed — the candle did not close above T1 {t1}.',
+      't1.plan.wait2': 'Do not enter or add here.',
+      't1.plan.wait3': 'Wait for a 5-minute candle to close above {t1}.',
+      't1.plan.wait4': 'Re-run this check with that candle before doing anything.',
+      't1.plan.wait5': 'If price falls back to {entry}, the setup is done — skip it.',
+      't1.err.required': '{field} is required and must be greater than 0.',
+      't1.err.ladder': 'Levels must rise in order: entry < T1 < T2. Mapped from the analyser that is stop loss < entry price < Target 1.',
+
+      /* pullback */
+      'pb.warnTitle': 'Critical rule — no stop loss',
+      'pb.warnBody': 'This tool is built on liquidity movement and pullback structure. Do <strong>not</strong> place a stop loss on trades taken from it; standard stop-loss placement does not apply to this setup. Size the position so that the full premium at risk is an amount you accept losing.',
+      'pb.steps': 'Steps 11–12',
+      'pb.steps.title': 'Original first-candle data',
+      'pb.steps.desc': 'The same 09:15–09:20 Call and Put candles used in Phase 1. Analyse to get the tradable side.',
+      'pb.import': 'Copy from analyser',
+      'pb.recommended': 'Recommended side · trade only this leg',
+      'pb.callBuy': 'CALL BUY',
+      'pb.putBuy': 'PUT BUY',
+      'pb.reason': 'The {leg} shows the stronger liquidity structure on the first candle ({win} vs {lose}, {confidence} separation). Take the pullback entry on this side only.',
+      'pb.conf.low': 'low',
+      'pb.conf.moderate': 'moderate',
+      'pb.conf.high': 'high',
+      'pb.step13': 'Step 13',
+      'pb.levels': 'Execution levels',
+      'pb.levelsDesc': 'Zone 1 is your entry price. Target 1 is your target.',
+      'pb.zone1': 'Zone 1 — entry',
+      'pb.zone1Note': 'pullback into the first-candle range',
+      'pb.zone2': 'Zone 2 — deeper fill',
+      'pb.zone2Note': 'optional second entry if zone 1 is swept',
+      'pb.target': 'Target 1',
+      'pb.targetNote': 'exit level',
+      'pb.noSl': '⚠ No stop loss — do not place one on this setup.',
+      'pb.compare': 'Side comparison',
+      'pb.compareDesc': 'How the two first-candles scored against each other.',
+      'pb.measure': 'Measure',
+      'pb.colCall': 'Call (CE)',
+      'pb.colPut': 'Put (PE)',
+      'pb.rRange': 'Range',
+      'pb.rClose': 'Close position',
+      'pb.rBody': 'Body of range',
+      'pb.rDirection': 'Direction',
+      'pb.rShare': 'Share of early movement',
+      'pb.rScore': 'Liquidity score',
+      'pb.bullish': 'bullish',
+      'pb.bearish': 'bearish',
+
+      /* validation */
+      'v.required': '{label}: {field} is required.',
+      'v.positive': '{label}: {field} must be greater than 0.',
+      'v.highLow': '{label}: high cannot be below the low.',
+      'v.highMax': '{label}: high must be the largest of the four values.',
+      'v.lowMin': '{label}: low must be the smallest of the four values.',
+      'v.noRange': '{label}: high and low are identical — the candle has no range to work from.',
+      'v.call': 'Call',
+      'v.put': 'Put',
+      'v.t1candle': 'T1-touch candle',
+
+      /* guide */
+      'g.title': 'Execution guide',
+      'g.desc': 'The 13-step standard operating procedure this suite implements, phase by phase.',
+      'g.p1': 'Phase 1 · ATM selection & option data setup',
+      'g.p1s1': '<b>Identify the ATM strike.</b> Open the NIFTY chart, note the open of the first 5-minute candle (09:15–09:20) and round it down to the 100 strike. Open 23670 → 23600 CE and 23600 PE.',
+      'g.p1s2': '<b>Record option OHLC.</b> In your broker app, note the open, high, low and close of that same 09:15–09:20 candle for both the ATM Call and the ATM Put.',
+      'g.p2': 'Phase 2 · Option Analyser (levels & confirmation)',
+      'g.p2s3': '<b>Enter values.</b> Put the CE OHLC into the Call section and the PE OHLC into the Put section, then press <i>Analyse</i>.',
+      'g.p2s4': '<b>Read the output.</b> Three levels are produced for each side: entry price, Target 1 and stop loss.',
+      'g.p2s5': '<b>Wait for confirmation.</b> Never enter on touch. Wait for a 5-minute candle to <i>close above</i> the entry price — entry 150 means a close of 150.05 or higher confirms it.',
+      'g.p3': 'Phase 3 · T1 Decision Helper (target validation)',
+      'g.p3s6': '<b>Select the trade side</b> — call trade or put trade.',
+      'g.p3s7': '<b>Map the levels.</b> Entry field ← analyser stop loss · T1 level ← analyser entry price · T2 level ← analyser Target 1.',
+      'g.p3s8': '<b>Enter the T1-touch candle</b> — the OHLC of the exact candle that reached the T1 level, once it has closed.',
+      'g.p3s9': '<b>Decide.</b> <i>Hold → T2</i> means the probability of reaching target is high and the trade can be held. <i>Book now / partial book</i> means probability is low — exit or avoid.',
+      'g.p3s10': '<b>Check condition 4.</b> Passed → proceed with the trade. Not passed → skip the trade, whatever the other checks say.',
+      'g.p4': 'Phase 4 · Stoploss Pullback Entry (liquidity setup)',
+      'g.p4s11': '<b>Enter the original first-candle data</b> for both Call and Put.',
+      'g.p4s12': '<b>Check direction.</b> The tool returns Call Buy or Put Buy — trade only the recommended side.',
+      'g.p4s13': '<b>Execute.</b> Zone 1 is the entry price, Target 1 is the target. <span class="inline-warn">No stop loss is used with this tool.</span>',
+      'g.p5': 'Phase 5 · Trade Signal (confluence, edge & alerts)',
+      'g.p5s14': '<b>Bring the levels across</b> and read the market-standard filters off the NIFTY chart — VWAP, EMA 20/50, RSI, volume against average, India VIX and the clock. Anything you cannot read is skipped, not guessed.',
+      'g.p5s15': '<b>Check the edge before the size.</b> The win estimate is your own base rate moved by confluence; the breakeven win rate beside it is exact arithmetic. Take the trade only when the estimate clears breakeven and expected value is positive.',
+      'g.p5s16': '<b>Turn on alerts.</b> The signal can fire a browser notification with the win estimate, expected profit and expected value, and a reminder can repeat on every 5-minute candle close while the page stays open.',
+      'g.f5': 'Trade Signal — confluence, edge and expectancy',
+      'g.f5n': 'Skipped filters are excluded from both sides of the ratio, so a partial reading is scored fairly rather than punished. Expected value and the breakeven win rate are ordinary arithmetic; only the win estimate is a judgement call, and it moves around the base rate you supply.',
+      'g.formulas': 'How each number is calculated',
+      'g.formulasDesc': 'The strategy guide specifies which levels each tool outputs, not the arithmetic. This suite uses the transparent first-candle range model below; every coefficient is editable under Formula settings.',
+      'g.f1': 'Option Analyser — entry, Target 1, stop loss',
+      'g.f1n': 'The first candle\'s high is the breakout level and its low is the invalidation level, so risk equals the candle range and Target 1 is a measured move of that same range.',
+      'g.f2': 'Option Analyser — first-candle strength',
+      'g.f2n': 'Only used to flag which side to watch first. It never replaces the confirmation close.',
+      'g.f3': 'T1 Decision Helper — momentum score and gate',
+      'g.f3n': 'Check 4 sits outside the momentum score: it asks whether the breakout above T1 actually happened, and it is the pre-trade gate the guide requires at step 10.',
+      'g.f4': 'Stoploss Pullback Entry — side and zones',
+      'g.f4n': 'Entries sit inside the first-candle range rather than above it — the setup buys the pullback into liquidity, which is why no stop loss is placed.',
+
+      /* trade signal */
+      'tab.signal': 'Trade Signal',
+      'tab.phase5': 'Signal',
+      'sg.badge': 'Trade Signal',
+      'sg.hero': 'Take the trade, or stand aside?',
+      'sg.heroSub': 'Market-standard filters, a win estimate off your own base rate, and the money side of the trade in full. Every reading comes from your chart — leave one blank and that check is skipped, never guessed.',
+      'sg.setupTitle': 'Trade levels',
+      'sg.setupDesc': 'Entry, stop loss and both targets for the option leg you are about to buy.',
+      'sg.callTrade': 'Call trade',
+      'sg.putTrade': 'Put trade',
+      'sg.entry': 'Entry price',
+      'sg.sl': 'Stop loss',
+      'sg.t1': 'Target 1',
+      'sg.t2': 'Target 2',
+      'sg.range': 'Reference range',
+      'sg.rangeHint': '(first-candle range)',
+      'sg.importCall': 'Levels from call',
+      'sg.importPut': 'Levels from put',
+      'sg.err.ladder': 'Levels must rise in order: stop loss < entry < Target 1 ≤ Target 2.',
+      'sg.marketTitle': 'Market confluence readings',
+      'sg.marketDesc': 'Standard intraday filters, read off the NIFTY chart. Anything left blank is skipped rather than assumed.',
+      'sg.spot': 'NIFTY spot now',
+      'sg.vwap': 'VWAP',
+      'sg.ema20': 'EMA 20',
+      'sg.ema50': 'EMA 50',
+      'sg.rsi': 'RSI (14)',
+      'sg.vol': 'Volume vs average',
+      'sg.volHint': '(e.g. 1.65 = 165% of normal)',
+      'sg.vix': 'India VIX',
+      'sg.time': 'Trade time',
+      'sg.now': 'Now',
+      'sg.posTitle': 'Position & account',
+      'sg.posDesc': 'Used for the money metrics — quantity, expected profit, expectancy and position sizing.',
+      'sg.lots': 'Lots',
+      'sg.account': 'Account size',
+      'sg.accountHint': '(optional, for risk sizing)',
+      'sg.generate': 'Generate signal',
+      'sg.take': 'TAKE TRADE',
+      'sg.caution': 'CAUTION — HALF SIZE',
+      'sg.skip': 'SKIP THIS TRADE',
+      'sg.takeText': 'Confluence {score}% with a {win}% win estimate against a {breakeven}% breakeven — the setup carries a positive edge and an expected value of {ev} per trade.',
+      'sg.cautionText': 'Expected value is positive at {ev}, but confluence is only {score}% — the filters are not fully aligned. Half size at most, and manage it tightly.',
+      'sg.skipText': 'A {win}% win estimate does not clear the {breakeven}% breakeven for this risk-reward, so expected value is {ev}. Taking this trade loses money over a run of them.',
+      'sg.winEstimate': 'Win estimate',
+      'sg.expectedProfit': 'Profit at T2',
+      'sg.expectedValue': 'Expected value',
+      'sg.breakevenWin': 'Breakeven win rate',
+      'sg.edgeGood': 'Edge over breakeven: +{edge} points. The setup pays over a run of trades.',
+      'sg.edgeBad': 'Short of breakeven by {edge} points. No edge here — a run of these loses money.',
+      'sg.confluence': 'Confluence score',
+      'sg.coverage': 'Based on {used} of {total} filters — the rest were left blank.',
+      'sg.checksTitle': 'Market-standard checks',
+      'sg.state.pass': 'PASS',
+      'sg.state.fail': 'FAIL',
+      'sg.state.skip': 'SKIPPED',
+      'sg.c.vwap': 'Price vs VWAP',
+      'sg.c.vwapOk': 'Spot {spot} on the right side of VWAP {vwap} by {gap}',
+      'sg.c.vwapNo': 'Spot {spot} is the wrong side of VWAP {vwap} by {gap}',
+      'sg.c.ema': 'Moving-average alignment',
+      'sg.c.emaOk': 'Spot {spot} aligned with EMA20 {ema20} / EMA50 {ema50}',
+      'sg.c.emaNo': 'Spot {spot} against EMA20 {ema20} / EMA50 {ema50}',
+      'sg.c.rsi': 'RSI regime',
+      'sg.c.rsiOk': 'RSI {rsi} inside the {lo}–{hi} band — momentum without exhaustion',
+      'sg.c.rsiNo': 'RSI {rsi} outside the {lo}–{hi} band for this side',
+      'sg.c.volume': 'Volume confirmation',
+      'sg.c.volumeOk': 'Volume {ratio}× the average (need {min}×)',
+      'sg.c.volumeNo': 'Volume only {ratio}× the average (need {min}×) — thin breakout',
+      'sg.c.vix': 'Volatility regime',
+      'sg.c.vixOk': 'India VIX {vix} is inside the normal band (≤ {max})',
+      'sg.c.vixNo': 'India VIX {vix} above {max} — expect wider swings than the levels assume',
+      'sg.c.reach': 'Target reachable',
+      'sg.c.reachOk': 'T2 is {reach}× the {range} reference range (limit {max}×)',
+      'sg.c.reachNo': 'T2 is {reach}× the {range} reference range — beyond the {max}× limit',
+      'sg.c.rr': 'Risk : reward',
+      'sg.c.rrOk': '1 : {rr} to T2, at or above the 1 : {min} minimum',
+      'sg.c.rrNo': 'Only 1 : {rr} to T2, below the 1 : {min} minimum',
+      'sg.c.time': 'Time of day',
+      'sg.c.timeOk': '{time} is inside the productive session',
+      'sg.c.timeEarly': '{time} is before the first candle has completed',
+      'sg.c.timeChop': '{time} falls in the midday chop — premium decays, moves stall',
+      'sg.c.timeLate': '{time} is too close to the bell for a two-target trade',
+      'sg.c.helper': 'T1 Helper momentum',
+      'sg.c.helperOk': 'Helper momentum {momentum}% at or above the {min}% hold threshold',
+      'sg.c.helperNo': 'Helper momentum {momentum}% below the {min}% hold threshold',
+      'sg.c.skip': 'Not provided — skipped',
+      'sg.c.skipHelper': 'Run the T1 Decision Helper to include it',
+      'sg.metrics': 'Trade metrics',
+      'sg.m.qty': 'Quantity',
+      'sg.m.capital': 'Capital deployed',
+      'sg.m.riskPts': 'Risk / reward in points',
+      'sg.m.maxLoss': 'Maximum loss',
+      'sg.m.profitT1': 'Profit at Target 1',
+      'sg.m.profitT2': 'Profit at Target 2',
+      'sg.m.rr': 'Risk : reward',
+      'sg.m.costs': 'Brokerage & charges',
+      'sg.m.evPerRisk': 'Expected value per rupee risked',
+      'sg.m.riskOfAccount': 'Risk as % of account',
+      'sg.m.suggestedLots': 'Lots at your risk limit',
+      'sg.m.kelly': 'Quarter-Kelly size',
+      'sg.metricsNote': 'The win estimate is your base win rate adjusted by confluence — a planning figure, not a backtested probability. The breakeven win rate beside it is exact: compare the two before sizing anything.',
+
+      /* alerts */
+      'al.title': 'Alerts & notifications',
+      'al.desc': 'Browser notifications for the signal, plus a reminder on every 5-minute candle close. The page has to stay open for reminders to fire.',
+      'al.perm.granted': 'Notifications enabled',
+      'al.perm.denied': 'Notifications blocked in browser settings — alerts still appear in the log below',
+      'al.perm.default': 'Notifications not enabled yet',
+      'al.perm.unsupported': 'This browser has no notification support — alerts appear in the log below',
+      'al.enable': 'Enable notifications',
+      'al.notifyNow': 'Send signal notification',
+      'al.auto': 'Notify automatically whenever a signal is generated',
+      'al.startReminders': 'Start candle reminders',
+      'al.stopReminders': 'Stop reminders',
+      'al.countLabel': 'Stop after this many reminders',
+      'al.countHint': '(0 = keep going)',
+      'al.nextAt': 'Next reminder at {time}',
+      'al.stopped': 'Reminders are off',
+      'al.candleTitle': '5-minute candle closed at {time}',
+      'al.candleBody': 'Check the option chart for the confirmation close.',
+      'al.candleBodyLevels': 'Check for a close above {t1}. Entry {entry}.',
+      'al.signalBody': 'Entry {entry} · SL {sl} · T2 {t2} · Win est {win}% · Profit {profit} · EV {ev} · R:R 1:{rr}',
+      'al.noSignal': 'No signal yet',
+      'al.noSignalBody': 'Generate a signal first, then send it as a notification.',
+      'al.logTitle': 'Alert log',
+      'al.logEmpty': 'No alerts yet.',
+
+      /* footer */
+      'foot.warn': 'Educational tool only.',
+      'foot.body': 'Nothing here is investment advice or a recommendation to trade. Options carry substantial risk of loss; levels are derived arithmetically from the values you type and carry no predictive guarantee. Verify every number against your broker terminal before acting.',
+      'foot.privacy': 'All inputs stay in your browser — nothing is uploaded or stored on a server.'
+    },
+
+    ta: {
+      /* shell */
+      'app.name': 'NIFTY Option Strategy Suite',
+      'app.tagline': 'First-candle SOP · Analyser → T1 Helper → Pullback Entry',
+      'app.settings': 'Formula settings',
+      'app.clearAll': 'எல்லாம் clear',
+      'app.langSwitch': 'English',
+      'tab.analyser': 'Option Analyser',
+      'tab.t1': 'T1 Decision Helper',
+      'tab.pullback': 'Pullback Entry',
+      'tab.guide': 'Execution Guide',
+      'tab.phase12': 'Phase 1–2',
+      'tab.phase3': 'Phase 3',
+      'tab.phase4': 'Phase 4',
+      'tab.sop': 'SOP',
+
+      'f.open': 'OPEN',
+      'f.high': 'HIGH',
+      'f.low': 'LOW',
+      'f.close': 'CLOSE',
+      'f.call': 'Call option (CE)',
+      'f.put': 'Put option (PE)',
+      'f.analyse': 'Analyse பண்ணு',
+      'f.sample': 'Sample போடு',
+      'f.reset': 'Reset',
+
+      'cfg.title': 'Formula settings',
+      'cfg.intro': 'எந்த value-ஐ எந்த tool கொடுக்கும்னு strategy guide சொல்லுது, ஆனா அதுக்கான கணக்கு சொல்லலை. கீழே இருக்கிற ஒவ்வொரு coefficient-ஐயும் நீ மாத்தி, உன் back-test numbers-க்கு ஏத்த மாதிரி set பண்ணிக்கலாம். Changes இந்த browser-ல save ஆகும், மூணு tool-லயும் உடனே apply ஆகும்.',
+      'cfg.g1': 'Option Analyser',
+      'cfg.entryBufferPct': 'Entry buffer',
+      'cfg.entryBufferPct.hint': '(high-க்கு மேல range-ல % )',
+      'cfg.slBufferPct': 'Stop-loss buffer',
+      'cfg.slBufferPct.hint': '(low-க்கு கீழ range-ல %)',
+      'cfg.t1Multiplier': 'Target 1 multiplier',
+      'cfg.t1Multiplier.hint': '(entry-க்கு மேல range × எத்தனை)',
+      'cfg.tickSize': 'Tick size',
+      'cfg.tickSize.hint': '(confirmation close இத்தனை தாண்டணும்)',
+      'cfg.g2': 'T1 Decision Helper',
+      'cfg.bodyStrong': 'Strong body threshold',
+      'cfg.bodyStrong.hint': '(full credit-க்கு body ÷ range)',
+      'cfg.bodyModerate': 'Moderate body threshold',
+      'cfg.bodyModerate.hint': '(இதுக்கு கீழ candle weak)',
+      'cfg.minClosePos': 'Min. close position',
+      'cfg.minClosePos.hint': '(candle range-ல close எங்க)',
+      'cfg.holdThreshold': 'Hold-T2 momentum threshold',
+      'cfg.partialThreshold': 'Partial-book momentum threshold',
+      'cfg.sideAwareDirection': 'Direction convention',
+      'cfg.dir.premium': 'Option premium — ரெண்டு side-லயும் ஏறுற candle நல்லது',
+      'cfg.dir.inverted': 'Side-inverted — put trade-க்கு இறங்குற candle வேணும்',
+      'cfg.dirNote': 'Call-ஆ இருந்தாலும் put-ஆ இருந்தாலும் நீ option-ஐ buy பண்றே, அதனால premium ஏறுனா அது லாபம் — அதான் default. ரெண்டாவது option, original helper tool-ஓட side-inverted behaviour-ஐ அப்படியே கொண்டு வரும்.',
+      'cfg.g4': 'Trade Signal — filters',
+      'cfg.g5': 'Trade Signal — money',
+      'cfg.rsiMin': 'RSI band low (call side)',
+      'cfg.rsiMax': 'RSI band high (call side)',
+      'cfg.volumeMin': 'Min. volume vs average',
+      'cfg.vixMax': 'Max. India VIX',
+      'cfg.atrReachMax': 'Max. target reach (× reference range)',
+      'cfg.minRR': 'Min. risk : reward — T2 வரை',
+      'cfg.takeThreshold': 'Full size trade-க்கு வேண்டிய confluence',
+      'cfg.lotSize': 'Lot size',
+      'cfg.costPerLot': 'ஒரு lot-க்கு brokerage & charges',
+      'cfg.baseWinRate': 'உன் base win rate',
+      'cfg.baseWinRate.hint': '(உன் journal-ல இருந்து)',
+      'cfg.winSensitivity': 'Confluence sensitivity',
+      'cfg.winSensitivity.hint': '(confluence estimate-ஐ எவ்ளோ நகர்த்தும்)',
+      'cfg.winFloor': 'Win estimate floor',
+      'cfg.winCeiling': 'Win estimate ceiling',
+      'cfg.riskPctOfAccount': 'ஒரு trade-க்கு risk budget (account-ல %)',
+      'cfg.g3': 'Stoploss Pullback Entry',
+      'cfg.zone1Retrace': 'Zone 1 retracement',
+      'cfg.zone1Retrace.hint': '(low-க்கு மேல range-ல fraction)',
+      'cfg.zone2Retrace': 'Zone 2 retracement',
+      'cfg.zone2Retrace.hint': '(இன்னும் ஆழமான liquidity fill)',
+      'cfg.pullbackTargetMult': 'Target 1 multiplier',
+      'cfg.pullbackTargetMult.hint': '(high-க்கு மேல range × எத்தனை)',
+      'cfg.save': 'Settings save பண்ணு',
+      'cfg.restore': 'Default-க்கு மாத்து',
+      'cfg.saved': 'Save ஆச்சு.',
+      'cfg.restored': 'Default-க்கு போச்சு.',
+
+      'an.step1': 'STEP 1',
+      'an.step1.title': 'ATM strike select பண்ணு',
+      'an.step1.desc': '09:15–09:20 NIFTY candle-ஓட open price-ஐ கீழ 100 strike-க்கு round பண்ணு — 23670 ஆனா 23600.',
+      'an.openLabel': 'NIFTY open price (first 5-min candle)',
+      'an.atmHint': 'ATM strike கிடைக்க open price enter பண்ணு.',
+      'an.atmRounded': 'Open {open} — கீழ 100 strike-க்கு round ஆச்சு.',
+      'an.steps23': 'STEPS 2–3',
+      'an.steps23.title': 'First-candle option data',
+      'an.steps23.desc': 'ATM Call, Put ரெண்டுக்கும் 09:15–09:20 candle-ஐ broker app-ல இருந்து எடுத்து enter பண்ணு, அப்புறம் analyse பண்ணு.',
+      'an.biasCall': 'Call side strong',
+      'an.biasCallText': 'Call first-candle நல்லா close ஆகியிருக்கு. Call entry-ஐ முதல்ல கவனி, ஆனா confirmation close-க்கு wait பண்ணுவது கட்டாயம்.',
+      'an.biasPut': 'Put side strong',
+      'an.biasPutText': 'Put first-candle நல்லா close ஆகியிருக்கு. Put entry-ஐ முதல்ல கவனி, ஆனா confirmation close-க்கு wait பண்ணுவது கட்டாயம்.',
+      'an.biasFlat': 'Clear-ஆ side இல்ல',
+      'an.biasFlatText': 'ரெண்டு first-candle-ம் ஒரே மாதிரி இருக்கு — எது முதல்ல confirm ஆகுதோ அதை எடு, ரெண்டும் ஆகலைனா skip பண்ணு.',
+      'an.primary': 'முதல்ல கவனி',
+      'an.entryPrice': 'ENTRY PRICE',
+      'an.target1': 'TARGET 1',
+      'an.stopLoss': 'STOP LOSS',
+      'an.range': 'First-candle range',
+      'an.risk': 'ஒரு unit-க்கு risk',
+      'an.reward': 'T1 வரை reward',
+      'an.rr': 'Risk : reward',
+      'an.riskPct': 'Entry-ல risk %',
+      'an.closePos': 'Candle-ல close position',
+      'an.bodyPct': 'Candle body',
+      'an.strength': 'First-candle strength',
+      'an.confirm': '5-minute candle <b>{close} அல்லது அதுக்கு மேல close</b> ஆனா மட்டும்தான் entry confirm ({entry} entry price-க்கு மேல).',
+      'an.sendT1': 'T1 Helper-க்கு அனுப்பு',
+      'an.rule': 'STEPS 4–5',
+      'an.rule.title': 'Entry confirmation rule',
+      'an.rule.body': 'Price entry price-ஐ touch பண்ணுன உடனே <strong>enter பண்ணாத</strong>. Option chart-ல ஒரு முழு 5-minute candle entry price-க்கு <strong>மேல close</strong> ஆகணும். அப்பதான் entry confirm — அதே candle-ஐதான் T1 Decision Helper-ல போடணும்.',
+
+      't1.badge': 'T1 DECISION HELPER',
+      't1.hero': 'HOLD போகணுமா, BOOK பண்ணணுமா?',
+      't1.heroSub': 'T1 touch ஆனப்போ அந்த 5-minute candle close ஆனவுடனே values enter பண்ணு → exact decision கிடைக்கும்.',
+      't1.steps67': 'STEPS 6–7',
+      't1.steps67.title': 'Trade side & mapped levels',
+      't1.steps67.desc': 'Option Analyser-ல இருந்து வர்ற values, strategy guide சொன்ன மாதிரியே remap ஆகியிருக்கு.',
+      't1.callTrade': 'CALL TRADE',
+      't1.putTrade': 'PUT TRADE',
+      't1.mapEntry': 'Entry',
+      't1.mapEntryFrom': 'Analyser Stop Loss',
+      't1.mapT1': 'T1 level',
+      't1.mapT1From': 'Analyser Entry Price',
+      't1.mapT2': 'T2 level',
+      't1.mapT2From': 'Analyser Target 1',
+      't1.entryLabel': 'ENTRY PRICE',
+      't1.entryHint': '(உன் ENTRY)',
+      't1.t1Label': 'T1 LEVEL',
+      't1.t1Hint': '(TARGET 1)',
+      't1.t2Label': 'T2 LEVEL',
+      't1.t2Hint': '(TARGET 2)',
+      't1.steps89': 'STEPS 8–9',
+      't1.steps89.title': 'T1 TOUCH ஆன CANDLE VALUES',
+      't1.steps89.desc': 'T1 level-ஐ touch பண்ண அதே 5-minute candle — அது close ஆனவுடனே enter பண்ணு.',
+      't1.decide': 'DECIDE — HOLD போகணுமா BOOK பண்ணணுமா?',
+      't1.body': 'Body',
+      't1.closeOf': 'of range',
+      't1.rangeLabel': 'Range',
+      't1.pts': 'pts',
+      't1.bullish': 'Bullish',
+      't1.bearish': 'Bearish',
+      't1.assessed': '{side} · T1-touch candle check ஆச்சு',
+      't1.hold': 'HOLD → T2',
+      't1.partial': 'PARTIAL BOOK',
+      't1.book': 'BOOK NOW',
+      't1.wait': 'WAIT — BREAKOUT இல்ல',
+      't1.holdText': 'Momentum strong ({momentum}%). T2 reward ratio good. T2 target: {t2} | Expected: +{expected} pts total.',
+      't1.partialText': 'Signal mixed-ஆ இருக்கு ({momentum}%). கொஞ்சம் book பண்ணி T1 profit-ஐ protect பண்ணு, மீதி price முன்னேறுற வரைக்கும் மட்டும் {t2} நோக்கி hold பண்ணு.',
+      't1.bookText': 'Weakness தெரியுது ({momentum}%). T2 போகாம reverse ஆகும் chance அதிகம். T1 profit protect பண்ணுவதே smart trade.',
+      't1.waitText': 'Candle T1 level-க்கு மேல close ஆகல, அதனால எதுவும் confirm ஆகல. Hold பண்ணவோ book பண்ணவோ position இல்ல — {t1}-க்கு மேல ஒரு 5-minute candle close ஆகுற வரைக்கும் wait பண்ணு.',
+      't1.signal': 'SIGNAL STRENGTH',
+      't1.momentum': 'Momentum Score',
+      't1.rewardRatio': 'T1→T2 Reward Ratio',
+      't1.checks': 'CONDITION CHECKS',
+      't1.checksDesc': 'Step 10-ல strategy guide கேட்குற pre-trade gate — அது Check 4.',
+      't1.check': 'Check {n}',
+      't1.decisive': 'DECISIVE',
+      't1.pass': 'PASS',
+      't1.weak': 'WEAK',
+      't1.fail': 'FAIL',
+      't1.c1': 'Direction',
+      't1.c1.match': 'Candle Bullish — premium ஏறியிருக்கு, trade direction-க்கு match ✓',
+      't1.c1.against': 'Candle Bearish — premium இறங்கியிருக்கு, trade-க்கு எதிர் ✗',
+      't1.c1.invMatch': 'Candle Bearish — put trade direction-க்கு match ✓',
+      't1.c1.invAgainst': 'Candle Bullish — trade direction-க்கு opposite ✗',
+      't1.c2': 'Body Strength',
+      't1.c2.strong': 'Body {pct} — Strong momentum ({min}+) ✓',
+      't1.c2.moderate': 'Body {pct} — Moderate ({min}–{max}) ⚠',
+      't1.c2.weak': 'Body {pct} — Weak candle. Reversal possible ✗',
+      't1.c3': 'Close Position',
+      't1.c3.strong': 'Close top {pct} of candle — very strong ✓',
+      't1.c3.weak': 'Close high-ல இருந்து {pct} கீழ இறங்கிடுச்சு ✗',
+      't1.c3.invStrong': 'Close கீழ பாதில — range-ல {pct} மட்டும், put-க்கு strong ✓',
+      't1.c3.invWeak': 'Close top half-ல — PUT weakness தெரியுது ✗',
+      't1.c4': 'T1 Breakout Strength',
+      't1.c4.pass': 'Close {gap} above T1 — confirmed breakout ✓',
+      't1.c4.fail': 'Close {gap} below T1 — breakout ஆகல ✗',
+      't1.gatePass': 'Condition check 4 — PASSED',
+      't1.gateFail': 'Condition check 4 — NOT PASSED',
+      't1.gatePassText': 'Pre-trade gate ok — trade-ஐ proceed பண்ணு, மேல இருக்கிற verdict படி target manage பண்ணு.',
+      't1.gateFailText': 'Pre-trade gate fail — trade-ஐ skip பண்ணு. மேல இருக்கிற எல்லா check-ஐயும் verdict-ஐயும் இது override பண்ணும்.',
+      't1.plan': 'EXACT ACTION PLAN',
+      't1.plan.hold1': 'Current position HOLD பண்ணு — exit வேண்டாம்.',
+      't1.plan.hold2': 'SL-ஐ entry price {entry}-க்கு move பண்ணு (risk-free trade ஆச்சு).',
+      't1.plan.hold3': 'T2 {t2} hit → 80% sell பண்ணு.',
+      't1.plan.hold4': 'மீதி 20% → T3 வரை trailing SL-ல hold.',
+      't1.plan.hold5': 'T2 போகாம candle reverse ஆனா → உடனே exit (SL already at entry).',
+      't1.plan.partial1': 'இப்பவே பாதி position-ஐ T1 level {t1}-ல book பண்ணு.',
+      't1.plan.partial2': 'மீதிக்கு SL-ஐ entry price {entry}-க்கு move பண்ணு.',
+      't1.plan.partial3': 'ஒவ்வொரு candle-ம் மேல close ஆகுற வரைக்கும் மட்டும் மீதியை T2 {t2} நோக்கி hold பண்ணு.',
+      't1.plan.partial4': '{t1}-க்கு கீழ close ஆகுற முதல் candle-ல மீதியை exit பண்ணு.',
+      't1.plan.partial5': 'இந்த level-ல position add பண்ணாத.',
+      't1.plan.book1': 'இப்பவே full position-ஐ market-ல exit பண்ணு — T1 profit-ஐ எடு.',
+      't1.plan.book2': 'T2-க்கு wait பண்ணாத; candle continuation-ஐ support பண்ணல.',
+      't1.plan.book3': 'அதே candle-ல திரும்ப enter பண்ணாத.',
+      't1.plan.book4': 'நல்ல body-ம் strong close-ம் இருக்கிற fresh setup-க்கு wait பண்ணு.',
+      't1.plan.book5': 'இன்னும் enter பண்ணலைனா — இந்த trade-ஐ முழுசா skip பண்ணு.',
+      't1.plan.wait1': 'Entry confirm ஆகல — candle T1 {t1}-க்கு மேல close ஆகல.',
+      't1.plan.wait2': 'இங்க enter பண்ணவோ add பண்ணவோ கூடாது.',
+      't1.plan.wait3': '{t1}-க்கு மேல ஒரு 5-minute candle close ஆகுற வரைக்கும் wait பண்ணு.',
+      't1.plan.wait4': 'அந்த candle வெச்சு இந்த check-ஐ மறுபடி பண்ணு.',
+      't1.plan.wait5': 'Price {entry}-க்கு திரும்ப வந்துடுச்சுனா setup முடிஞ்சது — skip பண்ணு.',
+      't1.err.required': '{field} கட்டாயம் வேணும், 0-க்கு மேல இருக்கணும்.',
+      't1.err.ladder': 'Levels இந்த order-ல ஏறணும்: entry < T1 < T2. Analyser-ல இருந்து அது stop loss < entry price < Target 1.',
+
+      'pb.warnTitle': 'CRITICAL RULE — STOP LOSS வேண்டாம்',
+      'pb.warnBody': 'இந்த tool liquidity movement-ம் pullback structure-ம் வெச்சு வேலை பண்ணுது. இதுல எடுக்குற trade-க்கு stop loss <strong>போடாத</strong>; வழக்கமான stop-loss இந்த setup-க்கு பொருந்தாது. முழு premium-ஐயும் இழக்க தயாரா இருக்குற அளவுக்கு மட்டும் position size வெச்சுக்கோ.',
+      'pb.steps': 'STEPS 11–12',
+      'pb.steps.title': 'Original first-candle data',
+      'pb.steps.desc': 'Phase 1-ல பயன்படுத்துன அதே 09:15–09:20 Call, Put candles. Analyse பண்ணா trade பண்ண வேண்டிய side கிடைக்கும்.',
+      'pb.import': 'Analyser-ல இருந்து copy',
+      'pb.recommended': 'Recommended side · இந்த leg-ல மட்டும் trade பண்ணு',
+      'pb.callBuy': 'CALL BUY',
+      'pb.putBuy': 'PUT BUY',
+      'pb.reason': 'First candle-ல {leg}-க்குதான் liquidity structure strong-ஆ இருக்கு ({win} vs {lose}, {confidence} separation). இந்த side-ல மட்டும் pullback entry எடு.',
+      'pb.conf.low': 'குறைவான',
+      'pb.conf.moderate': 'ஓரளவு',
+      'pb.conf.high': 'அதிக',
+      'pb.step13': 'STEP 13',
+      'pb.levels': 'Execution levels',
+      'pb.levelsDesc': 'Zone 1 தான் உன் entry price. Target 1 தான் உன் target.',
+      'pb.zone1': 'ZONE 1 — ENTRY',
+      'pb.zone1Note': 'first-candle range-க்குள்ள pullback',
+      'pb.zone2': 'ZONE 2 — DEEPER FILL',
+      'pb.zone2Note': 'zone 1 sweep ஆனா optional second entry',
+      'pb.target': 'TARGET 1',
+      'pb.targetNote': 'exit level',
+      'pb.noSl': '⚠ Stop loss வேண்டாம் — இந்த setup-ல போடவே கூடாது.',
+      'pb.compare': 'Side comparison',
+      'pb.compareDesc': 'ரெண்டு first-candle-ம் எப்படி score பண்ணுச்சு.',
+      'pb.measure': 'Measure',
+      'pb.colCall': 'Call (CE)',
+      'pb.colPut': 'Put (PE)',
+      'pb.rRange': 'Range',
+      'pb.rClose': 'Close position',
+      'pb.rBody': 'Body of range',
+      'pb.rDirection': 'Direction',
+      'pb.rShare': 'Early movement share',
+      'pb.rScore': 'Liquidity score',
+      'pb.bullish': 'bullish',
+      'pb.bearish': 'bearish',
+
+      'v.required': '{label}: {field} கட்டாயம் வேணும்.',
+      'v.positive': '{label}: {field} 0-க்கு மேல இருக்கணும்.',
+      'v.highLow': '{label}: high, low-க்கு கீழ இருக்க முடியாது.',
+      'v.highMax': '{label}: நாலு value-ல high தான் பெரிசா இருக்கணும்.',
+      'v.lowMin': '{label}: நாலு value-ல low தான் சின்னதா இருக்கணும்.',
+      'v.noRange': '{label}: high-ம் low-ம் ஒண்ணாவே இருக்கு — candle-க்கு range இல்ல.',
+      'v.call': 'Call',
+      'v.put': 'Put',
+      'v.t1candle': 'T1-touch candle',
+
+      'g.title': 'Execution guide',
+      'g.desc': 'இந்த suite follow பண்ற 13-step standard operating procedure, phase வாரியா.',
+      'g.p1': 'Phase 1 · ATM selection & option data setup',
+      'g.p1s1': '<b>ATM strike கண்டுபிடி.</b> NIFTY chart-ஐ திற, first 5-minute candle-ஓட (09:15–09:20) open-ஐ பாத்து கீழ 100 strike-க்கு round பண்ணு. Open 23670 → 23600 CE, 23600 PE.',
+      'g.p1s2': '<b>Option OHLC எடு.</b> Broker app-ல அதே 09:15–09:20 candle-ஓட open, high, low, close-ஐ ATM Call, ATM Put ரெண்டுக்கும் எடுத்துக்கோ.',
+      'g.p2': 'Phase 2 · Option Analyser (levels & confirmation)',
+      'g.p2s3': '<b>Values enter பண்ணு.</b> CE OHLC-ஐ Call section-லயும், PE OHLC-ஐ Put section-லயும் போட்டு <i>Analyse</i> அழுத்து.',
+      'g.p2s4': '<b>Output-ஐ படி.</b> ஒவ்வொரு side-க்கும் மூணு level வரும்: entry price, Target 1, stop loss.',
+      'g.p2s5': '<b>Confirmation-க்கு wait பண்ணு.</b> Touch ஆனவுடனே enter பண்ணக்கூடாது. 5-minute candle entry price-க்கு <i>மேல close</i> ஆகணும் — entry 150 ஆனா 150.05 அல்லது அதுக்கு மேல close ஆனா confirm.',
+      'g.p3': 'Phase 3 · T1 Decision Helper (target validation)',
+      'g.p3s6': '<b>Trade side select பண்ணு</b> — call trade அல்லது put trade.',
+      'g.p3s7': '<b>Levels map பண்ணு.</b> Entry field ← analyser stop loss · T1 level ← analyser entry price · T2 level ← analyser Target 1.',
+      'g.p3s8': '<b>T1 touch ஆன candle-ஐ enter பண்ணு</b> — T1 level-ஐ எட்டுன அதே candle-ஓட OHLC, அது close ஆனவுடனே.',
+      'g.p3s9': '<b>Decide பண்ணு.</b> <i>Hold → T2</i> ஆனா target reach ஆகுற chance அதிகம், trade-ஐ hold பண்ணலாம். <i>Book now / partial book</i> ஆனா chance குறைவு — exit பண்ணு அல்லது avoid பண்ணு.',
+      'g.p3s10': '<b>Condition 4-ஐ check பண்ணு.</b> Passed → trade-ஐ proceed பண்ணு. Not passed → மத்த check என்ன சொன்னாலும் trade-ஐ skip பண்ணு.',
+      'g.p4': 'Phase 4 · Stoploss Pullback Entry (liquidity setup)',
+      'g.p4s11': '<b>Original first-candle data-ஐ enter பண்ணு</b> — Call, Put ரெண்டுக்கும்.',
+      'g.p4s12': '<b>Direction check பண்ணு.</b> Tool Call Buy அல்லது Put Buy காட்டும் — recommend பண்ண side-ல மட்டும் trade பண்ணு.',
+      'g.p4s13': '<b>Execute பண்ணு.</b> Zone 1 தான் entry price, Target 1 தான் target. <span class="inline-warn">இந்த tool-ல stop loss கிடையாது.</span>',
+      'g.p5': 'Phase 5 · Trade Signal (confluence, edge & alerts)',
+      'g.p5s14': '<b>Levels-ஐ கொண்டு வா</b> — அப்புறம் NIFTY chart-ல இருந்து market-standard filters படி: VWAP, EMA 20/50, RSI, average-க்கு எதிரான volume, India VIX, நேரம். படிக்க முடியலைனா அது skip ஆகும், ஊகம் பண்ணாது.',
+      'g.p5s15': '<b>Size-க்கு முன்னாடி edge-ஐ பாரு.</b> Win estimate-ன்னா உன் base rate-ஐ confluence நகர்த்தினது; பக்கத்துல இருக்கிற breakeven win rate சரியான கணக்கு. Estimate breakeven-ஐ தாண்டி, expected value positive-ஆ இருந்தா மட்டும் trade எடு.',
+      'g.p5s16': '<b>Alerts on பண்ணு.</b> Signal-ஓட win estimate, expected profit, expected value எல்லாம் சேர்த்து browser notification வரும்; page திறந்திருக்கிற வரைக்கும் ஒவ்வொரு 5-minute candle close-க்கும் reminder வரும்.',
+      'g.f5': 'Trade Signal — confluence, edge, expectancy',
+      'g.f5n': 'Skip ஆன filters ratio-ஓட ரெண்டு பக்கத்துலயும் சேராது, அதனால பாதி data இருந்தாலும் நியாயமா score ஆகும். Expected value-ம் breakeven win rate-ம் சாதாரண கணக்கு; win estimate மட்டும்தான் judgement — அது நீ கொடுக்குற base rate-ஐ சுத்திதான் நகரும்.',
+      'g.formulas': 'ஒவ்வொரு number-ம் எப்படி கணக்கிடப்படுது',
+      'g.formulasDesc': 'எந்த level-ஐ எந்த tool கொடுக்கும்னு strategy guide சொல்லுது, கணக்கு சொல்லல. இந்த suite கீழ இருக்கிற first-candle range model-ஐ பயன்படுத்துது; ஒவ்வொரு coefficient-ஐயும் Formula settings-ல மாத்திக்கலாம்.',
+      'g.f1': 'Option Analyser — entry, Target 1, stop loss',
+      'g.f1n': 'First candle-ஓட high தான் breakout level, low தான் invalidation level. அதனால risk = candle range, Target 1 = அதே range-ஓட measured move.',
+      'g.f2': 'Option Analyser — first-candle strength',
+      'g.f2n': 'எந்த side-ஐ முதல்ல கவனிக்கணும்னு காட்ட மட்டும்தான். Confirmation close-க்கு இது மாற்று இல்ல.',
+      'g.f3': 'T1 Decision Helper — momentum score & gate',
+      'g.f3n': 'Check 4 momentum score-க்கு வெளியே இருக்கு: T1-க்கு மேல breakout நிஜமாவே ஆச்சானு கேட்குது, step 10-ல guide கேட்குற pre-trade gate அதுதான்.',
+      'g.f4': 'Stoploss Pullback Entry — side & zones',
+      'g.f4n': 'Entry range-க்கு மேல இல்லாம range-க்குள்ளயே இருக்கு — liquidity-க்குள்ள வர்ற pullback-ஐ buy பண்ற setup, அதனாலதான் stop loss கிடையாது.',
+
+      /* trade signal */
+      'tab.signal': 'Trade Signal',
+      'tab.phase5': 'Signal',
+      'sg.badge': 'TRADE SIGNAL',
+      'sg.hero': 'Trade எடுக்கலாமா, விட்டுடலாமா?',
+      'sg.heroSub': 'Market-standard filters, உன்னோட base rate வெச்சு win estimate, அப்புறம் trade-ஓட முழு பணக் கணக்கு. ஒவ்வொரு reading-ம் உன் chart-ல இருந்துதான் — காலியா விட்டா அந்த check skip ஆகும், ஊகம் பண்ணாது.',
+      'sg.setupTitle': 'Trade levels',
+      'sg.setupDesc': 'நீ buy பண்ணப் போற option leg-ஓட entry, stop loss, ரெண்டு target.',
+      'sg.callTrade': 'CALL TRADE',
+      'sg.putTrade': 'PUT TRADE',
+      'sg.entry': 'ENTRY PRICE',
+      'sg.sl': 'STOP LOSS',
+      'sg.t1': 'TARGET 1',
+      'sg.t2': 'TARGET 2',
+      'sg.range': 'Reference range',
+      'sg.rangeHint': '(first-candle range)',
+      'sg.importCall': 'Call levels எடு',
+      'sg.importPut': 'Put levels எடு',
+      'sg.err.ladder': 'Levels இந்த order-ல ஏறணும்: stop loss < entry < Target 1 ≤ Target 2.',
+      'sg.marketTitle': 'Market confluence readings',
+      'sg.marketDesc': 'NIFTY chart-ல இருந்து படிக்கிற standard intraday filters. காலியா விட்டா அந்த check skip ஆகும்.',
+      'sg.spot': 'NIFTY spot இப்போ',
+      'sg.vwap': 'VWAP',
+      'sg.ema20': 'EMA 20',
+      'sg.ema50': 'EMA 50',
+      'sg.rsi': 'RSI (14)',
+      'sg.vol': 'Volume vs average',
+      'sg.volHint': '(1.65 = normal-ஐ விட 165%)',
+      'sg.vix': 'India VIX',
+      'sg.time': 'Trade நேரம்',
+      'sg.now': 'இப்போ',
+      'sg.posTitle': 'Position & account',
+      'sg.posDesc': 'பணக் கணக்குக்கு — quantity, expected profit, expectancy, position sizing.',
+      'sg.lots': 'Lots',
+      'sg.account': 'Account size',
+      'sg.accountHint': '(optional, risk sizing-க்கு)',
+      'sg.generate': 'Signal எடு',
+      'sg.take': 'TRADE எடு',
+      'sg.caution': 'CAUTION — பாதி size',
+      'sg.skip': 'இந்த TRADE வேண்டாம்',
+      'sg.takeText': 'Confluence {score}%, win estimate {win}%, breakeven {breakeven}% — setup-க்கு edge இருக்கு, ஒரு trade-க்கு expected value {ev}.',
+      'sg.cautionText': 'Expected value {ev} positive-ஆ இருக்கு, ஆனா confluence {score}% மட்டும்தான் — filters முழுசா align ஆகல. அதிகபட்சம் பாதி size, tight-ஆ manage பண்ணு.',
+      'sg.skipText': '{win}% win estimate இந்த risk-reward-க்கான {breakeven}% breakeven-ஐ தாண்டல, அதனால expected value {ev}. இந்த மாதிரி trade-ஐ தொடர்ந்து எடுத்தா நஷ்டம்தான்.',
+      'sg.winEstimate': 'Win estimate',
+      'sg.expectedProfit': 'T2-ல profit',
+      'sg.expectedValue': 'Expected value',
+      'sg.breakevenWin': 'Breakeven win rate',
+      'sg.edgeGood': 'Breakeven-ஐ விட +{edge} points edge. தொடர்ந்து எடுத்தா லாபம்.',
+      'sg.edgeBad': 'Breakeven-க்கு {edge} points குறைவு. இங்க edge இல்ல — தொடர்ந்து எடுத்தா நஷ்டம்.',
+      'sg.confluence': 'Confluence score',
+      'sg.coverage': '{total}-ல {used} filters வெச்சு கணக்கு — மீதி காலியா இருந்தது.',
+      'sg.checksTitle': 'Market-standard checks',
+      'sg.state.pass': 'PASS',
+      'sg.state.fail': 'FAIL',
+      'sg.state.skip': 'SKIPPED',
+      'sg.c.vwap': 'Price vs VWAP',
+      'sg.c.vwapOk': 'Spot {spot}, VWAP {vwap}-ஓட சரியான பக்கம் {gap} தள்ளி',
+      'sg.c.vwapNo': 'Spot {spot}, VWAP {vwap}-ஓட தப்பான பக்கம் {gap} தள்ளி',
+      'sg.c.ema': 'Moving-average alignment',
+      'sg.c.emaOk': 'Spot {spot} — EMA20 {ema20} / EMA50 {ema50}-ஓட align ஆகியிருக்கு',
+      'sg.c.emaNo': 'Spot {spot} — EMA20 {ema20} / EMA50 {ema50}-க்கு எதிரா இருக்கு',
+      'sg.c.rsi': 'RSI regime',
+      'sg.c.rsiOk': 'RSI {rsi} — {lo}–{hi} band-க்குள்ள, momentum இருக்கு ஆனா exhaust ஆகல',
+      'sg.c.rsiNo': 'RSI {rsi} — இந்த side-க்கான {lo}–{hi} band-க்கு வெளியே',
+      'sg.c.volume': 'Volume confirmation',
+      'sg.c.volumeOk': 'Volume average-ஐ விட {ratio}× ({min}× வேணும்)',
+      'sg.c.volumeNo': 'Volume {ratio}× மட்டும்தான் ({min}× வேணும்) — weak breakout',
+      'sg.c.vix': 'Volatility regime',
+      'sg.c.vixOk': 'India VIX {vix} — normal band-க்குள்ள (≤ {max})',
+      'sg.c.vixNo': 'India VIX {vix} — {max}-க்கு மேல, levels எதிர்பார்க்கிறத விட பெரிய swing வரலாம்',
+      'sg.c.reach': 'Target எட்டுமா',
+      'sg.c.reachOk': 'T2 = {range} reference range-ஓட {reach}× ({max}× வரை ok)',
+      'sg.c.reachNo': 'T2 = {range} reference range-ஓட {reach}× — {max}× limit-ஐ தாண்டுது',
+      'sg.c.rr': 'Risk : reward',
+      'sg.c.rrOk': 'T2 வரை 1 : {rr} — 1 : {min} minimum-ஐ தாண்டுது',
+      'sg.c.rrNo': 'T2 வரை 1 : {rr} மட்டும் — 1 : {min} minimum-க்கு கீழ',
+      'sg.c.time': 'நேரம்',
+      'sg.c.timeOk': '{time} — நல்ல session நேரம்',
+      'sg.c.timeEarly': '{time} — first candle முடியுறதுக்கு முன்னாடி',
+      'sg.c.timeChop': '{time} — மதிய chop நேரம், premium decay ஆகும், move நிக்கும்',
+      'sg.c.timeLate': '{time} — ரெண்டு target trade-க்கு close ரொம்ப பக்கத்துல',
+      'sg.c.helper': 'T1 Helper momentum',
+      'sg.c.helperOk': 'Helper momentum {momentum}% — {min}% hold threshold-ஐ தாண்டுது',
+      'sg.c.helperNo': 'Helper momentum {momentum}% — {min}% hold threshold-க்கு கீழ',
+      'sg.c.skip': 'கொடுக்கல — skip ஆச்சு',
+      'sg.c.skipHelper': 'T1 Decision Helper-ஐ run பண்ணா இதுவும் சேரும்',
+      'sg.metrics': 'Trade metrics',
+      'sg.m.qty': 'Quantity',
+      'sg.m.capital': 'போடுற capital',
+      'sg.m.riskPts': 'Risk / reward points-ல',
+      'sg.m.maxLoss': 'அதிகபட்ச நஷ்டம்',
+      'sg.m.profitT1': 'Target 1-ல profit',
+      'sg.m.profitT2': 'Target 2-ல profit',
+      'sg.m.rr': 'Risk : reward',
+      'sg.m.costs': 'Brokerage & charges',
+      'sg.m.evPerRisk': 'Risk பண்ற ஒரு ரூபாய்க்கு expected value',
+      'sg.m.riskOfAccount': 'Account-ல risk %',
+      'sg.m.suggestedLots': 'உன் risk limit-க்கு எத்தனை lots',
+      'sg.m.kelly': 'Quarter-Kelly size',
+      'sg.metricsNote': 'Win estimate-ன்னா உன் base win rate-ஐ confluence வெச்சு adjust பண்ணது — planning-க்கான எண், backtest பண்ண probability இல்ல. பக்கத்துல இருக்கிற breakeven win rate மட்டும் சரியான கணக்கு: size முடிவு பண்றதுக்கு முன்னாடி ரெண்டையும் ஒப்பிடு.',
+
+      /* alerts */
+      'al.title': 'Alerts & notifications',
+      'al.desc': 'Signal-க்கு browser notification, அப்புறம் ஒவ்வொரு 5-minute candle close-க்கும் reminder. Reminder வர page திறந்தே இருக்கணும்.',
+      'al.perm.granted': 'Notifications on ஆச்சு',
+      'al.perm.denied': 'Browser settings-ல notifications block ஆகியிருக்கு — alerts கீழ log-ல வரும்',
+      'al.perm.default': 'Notifications இன்னும் enable ஆகல',
+      'al.perm.unsupported': 'இந்த browser-ல notification support இல்ல — alerts கீழ log-ல வரும்',
+      'al.enable': 'Notifications enable பண்ணு',
+      'al.notifyNow': 'Signal notification அனுப்பு',
+      'al.auto': 'Signal எடுக்கும் போதெல்லாம் தானா notify பண்ணு',
+      'al.startReminders': 'Candle reminders ஆரம்பி',
+      'al.stopReminders': 'Reminders நிறுத்து',
+      'al.countLabel': 'இத்தனை reminder-க்கு அப்புறம் நிறுத்து',
+      'al.countHint': '(0 = தொடர்ந்து)',
+      'al.nextAt': 'அடுத்த reminder {time}-க்கு',
+      'al.stopped': 'Reminders off',
+      'al.candleTitle': '{time}-க்கு 5-minute candle close ஆச்சு',
+      'al.candleBody': 'Option chart-ல confirmation close-ஐ பாரு.',
+      'al.candleBodyLevels': '{t1}-க்கு மேல close ஆகுதானு பாரு. Entry {entry}.',
+      'al.signalBody': 'Entry {entry} · SL {sl} · T2 {t2} · Win est {win}% · Profit {profit} · EV {ev} · R:R 1:{rr}',
+      'al.noSignal': 'இன்னும் signal இல்ல',
+      'al.noSignalBody': 'முதல்ல signal எடு, அப்புறம் notification-ஆ அனுப்பு.',
+      'al.logTitle': 'Alert log',
+      'al.logEmpty': 'இன்னும் alert இல்ல.',
+
+      /* footer */
+      'foot.warn': 'Educational tool மட்டும்தான்.',
+      'foot.body': 'இது investment advice இல்ல, trade பண்ண சொல்ற recommendation-ம் இல்ல. Options-ல நஷ்டம் வர்ற risk அதிகம்; நீ type பண்ற value-ல இருந்து கணக்கு போட்டு வர்ற level-கள் மட்டும்தான் இது, இது நடக்கும்னு எந்த உத்தரவாதமும் இல்ல. Trade பண்றதுக்கு முன்னாடி ஒவ்வொரு number-ஐயும் உன் broker terminal-ல verify பண்ணு.',
+      'foot.privacy': 'எல்லா input-ம் உன் browser-லயே இருக்கும் — எதுவும் upload ஆகாது, server-ல store ஆகாது.'
+    }
+  };
+
+  function t(key, vars) {
+    var table = STRINGS[lang] || STRINGS.en;
+    var str = table[key];
+    if (str === undefined) str = STRINGS.en[key];
+    if (str === undefined) return key;
+    if (!vars) return str;
+    return str.replace(/\{(\w+)\}/g, function (match, name) {
+      return vars[name] !== undefined ? vars[name] : match;
+    });
+  }
+
+  /* Replace the text of every tagged node. data-i18n sets textContent,
+     data-i18n-html sets innerHTML for strings that carry markup. */
+  function apply(root) {
+    var scope = root || document;
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-i18n]'), function (el) {
+      el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-i18n-html]'), function (el) {
+      el.innerHTML = t(el.getAttribute('data-i18n-html'));
+    });
+    document.documentElement.lang = lang === 'ta' ? 'ta' : 'en';
+  }
+
+  function set(next) {
+    lang = next === 'ta' ? 'ta' : 'en';
+    try { window.localStorage.setItem(STORAGE_KEY, lang); } catch (e) { /* ignore */ }
+    apply();
+    listeners.forEach(function (fn) { fn(lang); });
+  }
+
+  function init() {
+    try {
+      var stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored === 'ta' || stored === 'en') lang = stored;
+    } catch (e) { /* ignore */ }
+    apply();
+  }
+
+  APP.i18n = {
+    t: t,
+    apply: apply,
+    set: set,
+    init: init,
+    get: function () { return lang; },
+    onChange: function (fn) { listeners.push(fn); }
+  };
+})(window.APP);
+</script>
+<script>
+/* Tunable model coefficients + browser persistence.
+
+   The strategy guide fixes *what* each tool outputs (entry / T1 / stop loss,
+   hold-vs-book, buy side / zone 1 / target 1) but not the arithmetic. Every
+   number that drives those outputs lives here so it can be re-tuned without
+   touching the tools themselves. */
+(function (APP) {
+  'use strict';
+
+  var STORAGE_KEY = 'nifty-option-suite:v1';
+
+  var DEFAULTS = {
+    /* Option Analyser */
+    entryBufferPct: 0,      // % of range added above the first-candle high
+    slBufferPct: 0,         // % of range subtracted below the first-candle low
+    t1Multiplier: 1.0,      // Target 1 = entry + (multiplier x range)
+    tickSize: 0.05,         // exchange tick; confirmation must clear entry by one
+
+    /* T1 Decision Helper.
+       Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
+       floored. Those weights reproduce the reference tool's published scores. */
+    bodyStrong: 0.65,       // body / range at or above this is strong momentum
+    bodyModerate: 0.45,     // between moderate and strong scores half credit
+    minClosePos: 0.50,      // close must sit in the upper half of its range
+    holdThreshold: 70,      // momentum at or above this => HOLD T2
+    partialThreshold: 40,   // momentum at or above this => PARTIAL BOOK, below => BOOK NOW
+    sideAwareDirection: 0,  // 0 = rising premium is good on both sides (you are long the
+                            // option either way); 1 = a put trade wants a falling candle,
+                            // reproducing the original helper tool's behaviour
+
+    /* Stoploss Pullback Entry */
+    zone1Retrace: 0.382,    // zone 1 = low + (fraction x range)
+    zone2Retrace: 0.236,    // deeper liquidity fill
+    pullbackTargetMult: 1.0, // target 1 = high + (multiplier x range)
+
+    /* Trade Signal — market-standard filter thresholds */
+    rsiMin: 55,             // call wants RSI in [rsiMin, rsiMax]; put mirrors it
+    rsiMax: 78,
+    volumeMin: 1.2,         // breakout volume as a multiple of the average
+    vixMax: 25,             // above this the levels understate the swings
+    atrReachMax: 2.0,       // T2 distance as a multiple of the reference range
+    minRR: 1.5,             // minimum risk:reward to T2
+    takeThreshold: 65,      // confluence needed for a full-size TAKE TRADE
+
+    /* Trade Signal — money and sizing */
+    lotSize: 75,            // NIFTY contract size
+    costPerLot: 50,         // round-trip brokerage and charges per lot
+    baseWinRate: 50,        // your own historical win rate, the anchor
+    winSensitivity: 0.6,    // how far confluence moves the estimate off that base
+    winFloor: 15,           // the estimate never claims more certainty than this
+    winCeiling: 85,
+    riskPctOfAccount: 2     // risk budget per trade, for the sizing suggestion
+  };
+
+  var state = null;
+
+  function load() {
+    var stored = {};
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) stored = JSON.parse(raw) || {};
+    } catch (e) {
+      stored = {}; // private mode / disabled storage / corrupt value
+    }
+    state = {};
+    Object.keys(DEFAULTS).forEach(function (k) {
+      var v = Number(stored[k]);
+      state[k] = isFinite(v) ? v : DEFAULTS[k];
+    });
+    return state;
+  }
+
+  function get() { return state || load(); }
+
+  function save(patch) {
+    var cfg = get();
+    Object.keys(patch || {}).forEach(function (k) {
+      if (!(k in DEFAULTS)) return;
+      var v = Number(patch[k]);
+      if (isFinite(v)) cfg[k] = v;
+    });
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+    } catch (e) { /* nothing persistable — keep the in-memory values */ }
+    return cfg;
+  }
+
+  function reset() {
+    state = null;
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+    return load();
+  }
+
+  APP.config = { DEFAULTS: DEFAULTS, get: get, save: save, reset: reset, load: load };
+})(window.APP);
+</script>
+<script>
+/* Tool 1 — Option Analyser (Phases 1–2, steps 1–5).
+
+   Input : the 09:15–09:20 candle of the ATM call and the ATM put.
+   Output: entry price, Target 1 and stop loss for each side, plus the
+           confirmation level that a later 5-minute candle must close above. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  /* ---------- ATM strike (step 1) ----------
+     The guide's own example rounds 23670 down to 23600, so the strike is the
+     100-multiple at or below the open, not the arithmetically nearest one. */
+  function atmStrike(spotOpen, stepSize) {
+    var step = stepSize || 100;
+    if (!isFinite(spotOpen) || spotOpen <= 0) return NaN;
+    return Math.floor(spotOpen / step) * step;
+  }
+
+  /* ---------- level model (steps 3–4) ---------- */
+  function analyseSide(candle, cfg) {
+    var s = U.candleStats(candle);
+    var range = s.range;
+
+    var entry = U.toTick(candle.h + (cfg.entryBufferPct / 100) * range, cfg.tickSize);
+    var stopLoss = U.toTick(candle.l - (cfg.slBufferPct / 100) * range, cfg.tickSize);
+    var target1 = U.toTick(entry + cfg.t1Multiplier * range, cfg.tickSize);
+
+    var risk = entry - stopLoss;
+    var reward = target1 - entry;
+
+    /* How convincingly the first candle closed — used only to flag which side
+       to watch first, never as a trade signal on its own. */
+    var strength = U.clamp(
+      0.50 * s.closePos + 0.30 * s.bodyRatio + 0.20 * (s.bullish ? 1 : 0),
+      0, 1
+    );
+
+    return {
+      candle: candle,
+      stats: s,
+      range: range,
+      entry: entry,
+      target1: target1,
+      stopLoss: stopLoss,
+      risk: risk,
+      reward: reward,
+      rr: risk > 0 ? reward / risk : NaN,
+      confirmClose: U.toTick(entry + cfg.tickSize, cfg.tickSize),
+      riskPctOfEntry: entry > 0 ? risk / entry : NaN,
+      strength: strength
+    };
+  }
+
+  function analyse(ceCandle, peCandle, cfg) {
+    var ce = analyseSide(ceCandle, cfg);
+    var pe = analyseSide(peCandle, cfg);
+    var gap = ce.strength - pe.strength;
+    var bias = Math.abs(gap) < 0.05 ? 'flat' : (gap > 0 ? 'call' : 'put');
+    return { ce: ce, pe: pe, bias: bias, biasGap: Math.abs(gap) };
+  }
+
+  /* ---------- rendering ---------- */
+  function levelBlock(r) {
+    return '' +
+      '<div class="levels">' +
+        '<div class="level level-entry"><div class="level-label">' + t('an.entryPrice') + '</div><div class="level-value">' + U.fmt(r.entry) + '</div></div>' +
+        '<div class="level level-target"><div class="level-label">' + t('an.target1') + '</div><div class="level-value">' + U.fmt(r.target1) + '</div></div>' +
+        '<div class="level level-sl"><div class="level-label">' + t('an.stopLoss') + '</div><div class="level-value">' + U.fmt(r.stopLoss) + '</div></div>' +
+      '</div>';
+  }
+
+  function metricsBlock(r, isPut) {
+    return '' +
+      '<div class="metrics">' +
+        '<div class="metric"><span>' + t('an.range') + '</span><span>' + U.fmt(r.range) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.risk') + '</span><span>' + U.fmt(r.risk) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.reward') + '</span><span>' + U.fmt(r.reward) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.rr') + '</span><span>' + (isFinite(r.rr) ? '1 : ' + U.fmt(r.rr) : '—') + '</span></div>' +
+        '<div class="metric"><span>' + t('an.riskPct') + '</span><span>' + U.pct(r.riskPctOfEntry) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.closePos') + '</span><span>' + U.pct(r.stats.closePos) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.bodyPct') + '</span><span>' + U.pct(r.stats.bodyRatio) + '</span></div>' +
+        '<div class="metric"><span>' + t('an.strength') + '</span><span>' + U.pct(r.strength, 0) + '</span></div>' +
+      '</div>' +
+      '<div class="bar' + (isPut ? ' bar-put' : '') + '"><i style="width:' + U.fmt(r.strength * 100, 0) + '%"></i></div>';
+  }
+
+  function renderSide(elId, title, r, isPut, isPrimary) {
+    var el = U.$(elId);
+    el.innerHTML = '' +
+      '<h3 class="result-title">' + U.escapeHtml(title) +
+        (isPrimary ? '<span class="badge-primary">' + U.escapeHtml(t('an.primary')) + '</span>' : '') +
+      '</h3>' +
+      levelBlock(r) +
+      metricsBlock(r, isPut) +
+      '<p class="confirm-line">' +
+        t('an.confirm', { close: U.fmt(r.confirmClose), entry: U.fmt(r.entry) }) + '</p>' +
+      '<div class="row-actions">' +
+        '<button type="button" class="btn btn-sm" data-send-t1="' + (isPut ? 'put' : 'call') + '">' +
+          U.escapeHtml(t('an.sendT1')) + '</button>' +
+      '</div>';
+  }
+
+  function renderBias(result) {
+    var el = U.$('analyser-bias');
+    var tag, text;
+    if (result.bias === 'call') {
+      tag = '<span class="bias-tag bias-call">' + U.escapeHtml(t('an.biasCall')) + '</span>';
+      text = t('an.biasCallText');
+    } else if (result.bias === 'put') {
+      tag = '<span class="bias-tag bias-put">' + U.escapeHtml(t('an.biasPut')) + '</span>';
+      text = t('an.biasPutText');
+    } else {
+      tag = '<span class="bias-tag bias-flat">' + U.escapeHtml(t('an.biasFlat')) + '</span>';
+      text = t('an.biasFlatText');
+    }
+    el.innerHTML = tag + '<span class="muted small">' + U.escapeHtml(text) + '</span>';
+  }
+
+  function render(result) {
+    renderSide('res-ce', t('f.call'), result.ce, false, result.bias === 'call');
+    renderSide('res-pe', t('f.put'), result.pe, true, result.bias === 'put');
+    renderBias(result);
+    U.$('analyser-output').hidden = false;
+  }
+
+  function renderAtm() {
+    var el = U.$('atm-result');
+    var open = U.num(U.$('atm-open').value);
+    if (!isFinite(open) || open <= 0) {
+      el.innerHTML = '<span class="muted small">' + U.escapeHtml(t('an.atmHint')) + '</span>';
+      return;
+    }
+    var strike = atmStrike(open);
+    el.innerHTML = '' +
+      '<div>' +
+        '<div class="atm-strike">' + U.fmt(strike, 0) + '</div>' +
+        '<div class="atm-legs">' +
+          '<span class="leg leg-call">' + U.fmt(strike, 0) + ' CE</span>' +
+          '<span class="leg leg-put">' + U.fmt(strike, 0) + ' PE</span>' +
+        '</div>' +
+        '<div class="muted small" style="margin-top:6px">' +
+          U.escapeHtml(t('an.atmRounded', { open: U.fmt(open) })) + '</div>' +
+      '</div>';
+  }
+
+  /* ---------- controller ---------- */
+  function run() {
+    var cfg = APP.config.get();
+    var ce = U.readCandle('an-ce');
+    var pe = U.readCandle('an-pe');
+
+    var ceErrors = U.validateCandle(ce, t('v.call'), 'an-ce');
+    var peErrors = U.validateCandle(pe, t('v.put'), 'an-pe');
+    U.showErrors('an-ce-err', ceErrors);
+    U.showErrors('an-pe-err', peErrors);
+
+    if (ceErrors.length || peErrors.length) {
+      U.$('analyser-output').hidden = true;
+      APP.state.analyser = null;
+      return null;
+    }
+
+    var result = analyse(ce, pe, cfg);
+    APP.state.analyser = result;
+    render(result);
+    return result;
+  }
+
+  function reset() {
+    U.clearCandle('an-ce');
+    U.clearCandle('an-pe');
+    U.$('atm-open').value = '';
+    U.showErrors('an-ce-err', []);
+    U.showErrors('an-pe-err', []);
+    U.$('analyser-output').hidden = true;
+    APP.state.analyser = null;
+    renderAtm();
+  }
+
+  function loadSample() {
+    U.$('atm-open').value = '23670';
+    U.writeCandle('an-ce', { o: 148.5, h: 162.75, l: 141.2, c: 159.9 });
+    U.writeCandle('an-pe', { o: 155.0, h: 158.4, l: 132.6, c: 137.15 });
+    renderAtm();
+    run();
+  }
+
+  function init() {
+    U.$('btn-analyse').addEventListener('click', run);
+    U.$('btn-analyser-reset').addEventListener('click', reset);
+    U.$('btn-analyser-sample').addEventListener('click', loadSample);
+    U.$('atm-open').addEventListener('input', renderAtm);
+
+    /* Enter anywhere in the candle inputs runs the analysis. */
+    U.$$('#panel-analyser .candle-box input').forEach(function (input) {
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    });
+
+    /* Hand-off buttons are rendered with the results, so delegate. */
+    U.$('analyser-output').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-send-t1]');
+      if (btn) APP.t1helper.importFromAnalyser(btn.getAttribute('data-send-t1'));
+    });
+  }
+
+  APP.analyser = {
+    init: init,
+    run: run,
+    reset: reset,
+    analyse: analyse,
+    analyseSide: analyseSide,
+    atmStrike: atmStrike,
+    renderAtm: renderAtm
+  };
+})(window.APP);
+</script>
+<script>
+/* Tool 2 — T1 Decision Helper (Phase 3, steps 6–10).
+
+   Input : the trade side, the three mapped levels (entry = analyser stop loss,
+           T1 = analyser entry price, T2 = analyser Target 1) and the OHLC of
+           the 5-minute candle that touched T1.
+   Output: hold-to-T2 vs partial book vs book now, a momentum score, the
+           T1→T2 reward ratio, four condition checks, the condition-4 gate and
+           a step-by-step action plan.
+
+   Momentum weights are direction 40, body {strong 15, moderate 7.5, weak 0}
+   and close 40, floored — the combination that reproduces the reference
+   tool's own published scores of 0%, 15% and 87%. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  var side = 'call';
+
+  var W_DIRECTION = 40;
+  var W_BODY_STRONG = 15;
+  var W_BODY_MODERATE = 7.5;
+  var W_CLOSE = 40;
+
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
+
+  /* ---------- decision model ---------- */
+  function decide(levels, candle, cfg) {
+    var s = U.candleStats(candle);
+    var isPut = levels.side === 'put';
+    /* You are long the option on both legs, so a rising premium is a gain for a
+       put trade too. The original tool inverts the put side; that is available
+       behind a setting rather than baked in. */
+    var wantFalling = cfg.sideAwareDirection >= 1 && isPut;
+
+    var directionPass = wantFalling ? !s.bullish : s.bullish;
+    var closePass = wantFalling ? (s.closePos <= 1 - cfg.minClosePos) : (s.closePos >= cfg.minClosePos);
+    var bodyStatus = s.bodyRatio >= cfg.bodyStrong ? 'pass'
+                   : (s.bodyRatio >= cfg.bodyModerate ? 'warn' : 'fail');
+    var breakoutPass = candle.c > levels.t1;
+    var breakoutGap = candle.c - levels.t1;
+
+    var bodyDetail = bodyStatus === 'pass'
+      ? t('t1.c2.strong', { pct: U.pct(s.bodyRatio), min: U.pct(cfg.bodyStrong, 0) })
+      : (bodyStatus === 'warn'
+          ? t('t1.c2.moderate', { pct: U.pct(s.bodyRatio), min: U.pct(cfg.bodyModerate, 0), max: U.pct(cfg.bodyStrong, 0) })
+          : t('t1.c2.weak', { pct: U.pct(s.bodyRatio) }));
+
+    var closeDetail = wantFalling
+      ? t(closePass ? 't1.c3.invStrong' : 't1.c3.invWeak', { pct: U.pct(s.closePos) })
+      : t(closePass ? 't1.c3.strong' : 't1.c3.weak', { pct: U.pct(1 - s.closePos) });
+
+    var checks = [
+      {
+        id: 1,
+        status: directionPass ? 'pass' : 'fail',
+        name: t('t1.c1'),
+        detail: wantFalling
+          ? t(s.bullish ? 't1.c1.invAgainst' : 't1.c1.invMatch')
+          : t(s.bullish ? 't1.c1.match' : 't1.c1.against')
+      },
+      { id: 2, status: bodyStatus, name: t('t1.c2'), detail: bodyDetail },
+      { id: 3, status: closePass ? 'pass' : 'fail', name: t('t1.c3'), detail: closeDetail },
+      {
+        id: 4,
+        critical: true,
+        status: breakoutPass ? 'pass' : 'fail',
+        name: t('t1.c4'),
+        detail: t(breakoutPass ? 't1.c4.pass' : 't1.c4.fail', { gap: money(Math.abs(breakoutGap)) })
+      }
+    ];
+
+    /* Momentum is the three candle-quality checks; the breakout is the gate. */
+    var bodyPoints = bodyStatus === 'pass' ? W_BODY_STRONG
+                   : (bodyStatus === 'warn' ? W_BODY_MODERATE : 0);
+    var momentum = Math.floor(
+      (directionPass ? W_DIRECTION : 0) + bodyPoints + (closePass ? W_CLOSE : 0)
+    );
+
+    var riskLeg = levels.t1 - levels.entry;
+    var rewardLeg = levels.t2 - levels.t1;
+    var rewardRatio = riskLeg > 0 ? rewardLeg / riskLeg : NaN;
+    var expected = levels.t2 - levels.entry;
+
+    var verdict, headline, explain;
+    if (!breakoutPass) {
+      verdict = 'wait';
+      headline = t('t1.wait');
+      explain = t('t1.waitText', { t1: money(levels.t1) });
+    } else if (momentum >= cfg.holdThreshold) {
+      verdict = 'hold';
+      headline = t('t1.hold');
+      explain = t('t1.holdText', { momentum: momentum, t2: money(levels.t2), expected: U.fmt(expected) });
+    } else if (momentum >= cfg.partialThreshold) {
+      verdict = 'partial';
+      headline = t('t1.partial');
+      explain = t('t1.partialText', { momentum: momentum, t2: money(levels.t2) });
+    } else {
+      verdict = 'book';
+      headline = t('t1.book');
+      explain = t('t1.bookText', { momentum: momentum });
+    }
+
+    return {
+      side: levels.side,
+      levels: levels,
+      stats: s,
+      checks: checks,
+      check4: checks[3],
+      momentum: momentum,
+      rewardRatio: rewardRatio,
+      expected: expected,
+      breakoutGap: breakoutGap,
+      verdict: verdict,
+      headline: headline,
+      explain: explain,
+      plan: actionPlan(verdict, levels)
+    };
+  }
+
+  /* ---------- action plan ---------- */
+  function actionPlan(verdict, levels) {
+    var vars = { entry: money(levels.entry), t1: money(levels.t1), t2: money(levels.t2) };
+    var prefix = 't1.plan.' + verdict;
+    return [1, 2, 3, 4, 5].map(function (n) { return t(prefix + n, vars); });
+  }
+
+  /* ---------- candle preview ---------- */
+  function renderPreview() {
+    var el = U.$('t1-preview');
+    var c = U.readCandle('t1');
+    var usable = ['o', 'h', 'l', 'c'].every(function (k) { return isFinite(c[k]) && c[k] > 0; }) &&
+                 c.h > c.l && c.h >= Math.max(c.o, c.c) && c.l <= Math.min(c.o, c.c);
+    if (!usable) { el.hidden = true; el.innerHTML = ''; return; }
+
+    var s = U.candleStats(c);
+    var H = 130, PAD = 3, CX = 26;
+    var y = function (price) { return PAD + (c.h - price) / s.range * H; };
+    var top = y(Math.max(c.o, c.c));
+    var height = Math.max(2, Math.abs(y(c.c) - y(c.o)));
+    var colour = s.bullish ? 'var(--call)' : 'var(--put)';
+
+    el.innerHTML = '' +
+      '<svg class="candle-svg" viewBox="0 0 52 ' + (H + PAD * 2) + '" width="52" height="' + (H + PAD * 2) + '" role="img" ' +
+        'aria-label="' + U.fmt(c.l) + ' – ' + U.fmt(c.h) + ', close ' + U.fmt(c.c) + '">' +
+        '<line x1="' + CX + '" y1="' + y(c.h) + '" x2="' + CX + '" y2="' + y(c.l) + '" stroke="' + colour + '" stroke-width="2.5"/>' +
+        '<rect x="' + (CX - 13) + '" y="' + top + '" width="26" height="' + height + '" rx="2" fill="' + colour + '"/>' +
+      '</svg>' +
+      '<div class="candle-facts">' +
+        '<div class="candle-stat"><span>' + t('t1.body') + '</span><b>' + U.pct(s.bodyRatio, 0) + '</b></div>' +
+        '<div class="candle-stat"><span>' + t('f.close') + '</span><b>' + U.pct(s.closePos, 0) + ' ' + t('t1.closeOf') + '</b></div>' +
+        '<div class="candle-stat"><span>' + t('t1.rangeLabel') + '</span><b>' + U.fmt(s.range) + ' ' + t('t1.pts') + '</b></div>' +
+        '<div class="candle-dir ' + (s.bullish ? 'is-bull' : 'is-bear') + '">' +
+          (s.bullish ? '▲ ' + t('t1.bullish') : '▼ ' + t('t1.bearish')) + '</div>' +
+      '</div>';
+    el.hidden = false;
+  }
+
+  /* ---------- rendering ---------- */
+  var VERDICT_CLASS = { hold: 'v-hold', partial: 'v-partial', book: 'v-book', wait: 'v-wait' };
+  var STATUS_ICON = { pass: '✓', warn: '⚠', fail: '✕' };
+  var STATUS_KEY = { pass: 't1.pass', warn: 't1.weak', fail: 't1.fail' };
+
+  function render(result) {
+    var sideLabel = t(result.side === 'put' ? 't1.putTrade' : 't1.callTrade');
+
+    U.$('t1-verdict').innerHTML = '' +
+      '<div class="muted small" style="margin-bottom:12px">' +
+        U.escapeHtml(t('t1.assessed', { side: sideLabel })) + '</div>' +
+      '<div class="verdict-badge ' + VERDICT_CLASS[result.verdict] + '">' + U.escapeHtml(result.headline) + '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(result.explain) + '</p>';
+
+    var ratioPct = isFinite(result.rewardRatio) ? U.clamp(result.rewardRatio / 2, 0, 1) * 100 : 0;
+    U.$('t1-signal').innerHTML = '' +
+      '<div class="card-head"><h3>' + U.escapeHtml(t('t1.signal')) + '</h3></div>' +
+      '<div class="signal">' +
+        '<div class="signal-row">' +
+          '<div class="signal-num"><span>' + U.escapeHtml(t('t1.momentum')) + '</span><b>' + result.momentum + '%</b></div>' +
+          '<div class="bar"><i style="width:' + result.momentum + '%"></i></div>' +
+        '</div>' +
+        '<div class="signal-row">' +
+          '<div class="signal-num"><span>' + U.escapeHtml(t('t1.rewardRatio')) +
+            (isFinite(result.rewardRatio) ? ' (' + U.fmt(result.rewardRatio) + '×)' : '') +
+          '</span><b>' + U.fmt(ratioPct, 0) + '%</b></div>' +
+          '<div class="bar"><i style="width:' + ratioPct + '%"></i></div>' +
+        '</div>' +
+      '</div>';
+
+    U.$('t1-checks').innerHTML = result.checks.map(function (c) {
+      return '' +
+        '<li class="check ' + c.status + (c.critical ? ' is-critical' : '') + '">' +
+          '<span class="check-icon" aria-hidden="true">' + STATUS_ICON[c.status] + '</span>' +
+          '<span class="check-body">' +
+            '<span class="check-name">' + U.escapeHtml(t('t1.check', { n: c.id })) + ' — ' + U.escapeHtml(c.name) +
+              (c.critical ? '<span class="crit-tag">' + U.escapeHtml(t('t1.decisive')) + '</span>' : '') + '</span>' +
+            '<span class="check-detail">' + U.escapeHtml(c.detail) + '</span>' +
+          '</span>' +
+          '<span class="check-verdict">' + U.escapeHtml(t(STATUS_KEY[c.status])) + '</span>' +
+        '</li>';
+    }).join('');
+
+    var passed = result.check4.status === 'pass';
+    U.$('t1-gate').className = 'card gate ' + (passed ? 'pass' : 'fail');
+    U.$('t1-gate').innerHTML = '' +
+      '<h3>' + U.escapeHtml(t(passed ? 't1.gatePass' : 't1.gateFail')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t(passed ? 't1.gatePassText' : 't1.gateFailText')) + '</p>';
+
+    U.$('t1-plan').innerHTML = '' +
+      '<div class="card-head"><h3>' + U.escapeHtml(t('t1.plan')) + '</h3></div>' +
+      '<ol class="action-plan">' +
+        result.plan.map(function (step) { return '<li>' + U.escapeHtml(step) + '</li>'; }).join('') +
+      '</ol>';
+
+    U.$('t1-output').hidden = false;
+  }
+
+  /* ---------- controller ---------- */
+  function setSide(next) {
+    side = next === 'put' ? 'put' : 'call';
+    U.$$('#panel-t1 .side-btn').forEach(function (btn) {
+      var active = btn.getAttribute('data-side') === side;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  }
+
+  function run() {
+    var cfg = APP.config.get();
+    var levels = {
+      side: side,
+      entry: U.num(U.$('t1-entry').value),
+      t1: U.num(U.$('t1-t1').value),
+      t2: U.num(U.$('t1-t2').value)
+    };
+
+    var levelErrors = [];
+    [['entry', 't1.entryLabel'], ['t1', 't1.t1Label'], ['t2', 't1.t2Label']].forEach(function (pair) {
+      if (!isFinite(levels[pair[0]]) || levels[pair[0]] <= 0) {
+        levelErrors.push(t('t1.err.required', { field: t(pair[1]) }));
+      }
+    });
+    if (!levelErrors.length && !(levels.entry < levels.t1 && levels.t1 < levels.t2)) {
+      levelErrors.push(t('t1.err.ladder'));
+    }
+    U.showErrors('t1-levels-err', levelErrors);
+
+    var candle = U.readCandle('t1');
+    var candleErrors = U.validateCandle(candle, t('v.t1candle'), 't1');
+    U.showErrors('t1-candle-err', candleErrors);
+
+    if (levelErrors.length || candleErrors.length) {
+      U.$('t1-output').hidden = true;
+      return null;
+    }
+
+    var result = decide(levels, candle, cfg);
+    APP.state.t1 = result;
+    render(result);
+    return result;
+  }
+
+  function reset() {
+    ['t1-entry', 't1-t1', 't1-t2'].forEach(function (id) { U.$(id).value = ''; });
+    U.clearCandle('t1');
+    U.showErrors('t1-levels-err', []);
+    U.showErrors('t1-candle-err', []);
+    U.$('t1-output').hidden = true;
+    renderPreview();
+    APP.state.t1 = null;
+  }
+
+  function loadSample() {
+    setSide('call');
+    U.$('t1-entry').value = '152';
+    U.$('t1-t1').value = '175';
+    U.$('t1-t2').value = '198';
+    U.writeCandle('t1', { o: 172, h: 181, l: 165, c: 180 });
+    renderPreview();
+    run();
+  }
+
+  /* Steps 6–7: pull the analyser output across with the guide's mapping. */
+  function importFromAnalyser(which) {
+    var a = APP.state.analyser;
+    if (!a) return;
+    var r = which === 'put' ? a.pe : a.ce;
+    setSide(which);
+    U.$('t1-entry').value = r.stopLoss.toFixed(2);   // entry field  <- stop loss
+    U.$('t1-t1').value = r.entry.toFixed(2);         // T1 level     <- entry price
+    U.$('t1-t2').value = r.target1.toFixed(2);       // T2 level     <- Target 1
+    U.showErrors('t1-levels-err', []);
+    U.$('t1-output').hidden = true;
+    APP.tabs.show('t1');
+    U.$('t1-o').focus();
+  }
+
+  function init() {
+    U.$$('#panel-t1 .side-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setSide(btn.getAttribute('data-side'));
+        if (APP.state.t1) run();
+      });
+    });
+    U.$('btn-decide').addEventListener('click', run);
+    U.$('btn-t1-reset').addEventListener('click', reset);
+    U.$('btn-t1-sample').addEventListener('click', loadSample);
+    U.$$('#panel-t1 input').forEach(function (input) {
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    });
+    U.$$('#panel-t1 .ohlc input').forEach(function (input) {
+      input.addEventListener('input', renderPreview);
+    });
+  }
+
+  APP.t1helper = {
+    init: init, run: run, reset: reset, decide: decide,
+    importFromAnalyser: importFromAnalyser, renderPreview: renderPreview
+  };
+})(window.APP);
+</script>
+<script>
+/* Tool 3 — Stoploss Pullback Entry (Phase 4, steps 11–13).
+
+   Input : the original 09:15–09:20 call and put candles.
+   Output: the side to trade (call buy / put buy), zone 1 as the entry price
+           and Target 1. No stop loss is produced — the setup is structural. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  function scoreSide(candle, combinedRange) {
+    var s = U.candleStats(candle);
+    var relRange = combinedRange > 0 ? s.range / combinedRange : 0.5;
+    /* Liquidity score: where the candle closed matters most, then how much of
+       the range was body, then direction, then how much of the session's early
+       movement this side actually captured. */
+    var score = U.clamp(
+      0.45 * s.closePos + 0.30 * s.bodyRatio + 0.15 * (s.bullish ? 1 : 0) + 0.10 * relRange,
+      0, 1
+    );
+    return { stats: s, relRange: relRange, score: score };
+  }
+
+  function levelsFor(candle, cfg) {
+    var range = candle.h - candle.l;
+    return {
+      zone1: U.toTick(candle.l + cfg.zone1Retrace * range, cfg.tickSize),
+      zone2: U.toTick(candle.l + cfg.zone2Retrace * range, cfg.tickSize),
+      target1: U.toTick(candle.h + cfg.pullbackTargetMult * range, cfg.tickSize),
+      range: range
+    };
+  }
+
+  function analyse(ceCandle, peCandle, cfg) {
+    var combined = (ceCandle.h - ceCandle.l) + (peCandle.h - peCandle.l);
+    var ce = scoreSide(ceCandle, combined);
+    var pe = scoreSide(peCandle, combined);
+
+    var side = ce.score >= pe.score ? 'call' : 'put';
+    var chosenCandle = side === 'call' ? ceCandle : peCandle;
+    var margin = Math.abs(ce.score - pe.score);
+
+    return {
+      side: side,
+      margin: margin,
+      confidence: margin < 0.05 ? 'low' : (margin < 0.15 ? 'moderate' : 'high'),
+      ce: ce,
+      pe: pe,
+      ceCandle: ceCandle,
+      peCandle: peCandle,
+      levels: levelsFor(chosenCandle, cfg),
+      chosenCandle: chosenCandle
+    };
+  }
+
+  /* ---------- rendering ---------- */
+  function render(result) {
+    var isCall = result.side === 'call';
+
+    U.$('pb-verdict').innerHTML = '' +
+      '<div class="muted small" style="margin-bottom:12px">' + U.escapeHtml(t('pb.recommended')) + '</div>' +
+      '<div class="pb-side ' + (isCall ? 'pb-call' : 'pb-put') + '">' +
+        U.escapeHtml(t(isCall ? 'pb.callBuy' : 'pb.putBuy')) + '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('pb.reason', {
+        leg: t(isCall ? 'f.call' : 'f.put'),
+        win: U.pct(isCall ? result.ce.score : result.pe.score, 0),
+        lose: U.pct(isCall ? result.pe.score : result.ce.score, 0),
+        confidence: t('pb.conf.' + result.confidence)
+      })) + '</p>';
+
+    U.$('pb-levels').innerHTML = '' +
+      '<div class="card-head"><h3><span class="step-pill">' + U.escapeHtml(t('pb.step13')) + '</span> ' +
+        U.escapeHtml(t('pb.levels')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.levelsDesc')) + '</p></div>' +
+      '<div class="zone-grid">' +
+        '<div class="zone zone-1"><div class="zone-label">' + U.escapeHtml(t('pb.zone1')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.zone1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone1Note')) + '</div></div>' +
+        '<div class="zone zone-2"><div class="zone-label">' + U.escapeHtml(t('pb.zone2')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.zone2) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone2Note')) + '</div></div>' +
+        '<div class="zone zone-t"><div class="zone-label">' + U.escapeHtml(t('pb.target')) + '</div><div class="zone-value">' +
+          U.fmt(result.levels.target1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.targetNote')) + '</div></div>' +
+      '</div>' +
+      '<p class="no-sl">' + U.escapeHtml(t('pb.noSl')) + '</p>';
+
+    function row(name, ceVal, peVal, ceWins) {
+      return '<tr><td>' + U.escapeHtml(name) + '</td>' +
+        '<td class="' + (ceWins === true ? 'win' : '') + '">' + ceVal + '</td>' +
+        '<td class="' + (ceWins === false ? 'win' : '') + '">' + peVal + '</td></tr>';
+    }
+    var c = result.ce, p = result.pe;
+
+    U.$('pb-detail').innerHTML = '' +
+      '<div class="card-head"><h3>' + U.escapeHtml(t('pb.compare')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.compareDesc')) + '</p></div>' +
+      '<div class="table-scroll"><table class="compare">' +
+        '<thead><tr><th>' + U.escapeHtml(t('pb.measure')) + '</th><th>' + U.escapeHtml(t('pb.colCall')) +
+          '</th><th>' + U.escapeHtml(t('pb.colPut')) + '</th></tr></thead><tbody>' +
+        row(t('pb.rRange'), U.fmt(c.stats.range), U.fmt(p.stats.range), c.stats.range > p.stats.range) +
+        row(t('pb.rClose'), U.pct(c.stats.closePos), U.pct(p.stats.closePos), c.stats.closePos > p.stats.closePos) +
+        row(t('pb.rBody'), U.pct(c.stats.bodyRatio), U.pct(p.stats.bodyRatio), c.stats.bodyRatio > p.stats.bodyRatio) +
+        row(t('pb.rDirection'), t(c.stats.bullish ? 'pb.bullish' : 'pb.bearish'),
+            t(p.stats.bullish ? 'pb.bullish' : 'pb.bearish'),
+            c.stats.bullish === p.stats.bullish ? null : c.stats.bullish) +
+        row(t('pb.rShare'), U.pct(c.relRange), U.pct(p.relRange), c.relRange > p.relRange) +
+        row(t('pb.rScore'), U.pct(c.score, 0), U.pct(p.score, 0), c.score >= p.score) +
+        '</tbody></table></div>';
+
+    U.$('pullback-output').hidden = false;
+  }
+
+  /* ---------- controller ---------- */
+  function run() {
+    var cfg = APP.config.get();
+    var ce = U.readCandle('pb-ce');
+    var pe = U.readCandle('pb-pe');
+
+    var ceErrors = U.validateCandle(ce, t('v.call'), 'pb-ce');
+    var peErrors = U.validateCandle(pe, t('v.put'), 'pb-pe');
+    U.showErrors('pb-ce-err', ceErrors);
+    U.showErrors('pb-pe-err', peErrors);
+
+    if (ceErrors.length || peErrors.length) {
+      U.$('pullback-output').hidden = true;
+      return null;
+    }
+
+    var result = analyse(ce, pe, cfg);
+    APP.state.pullback = result;
+    render(result);
+    return result;
+  }
+
+  function reset() {
+    U.clearCandle('pb-ce');
+    U.clearCandle('pb-pe');
+    U.showErrors('pb-ce-err', []);
+    U.showErrors('pb-pe-err', []);
+    U.$('pullback-output').hidden = true;
+    APP.state.pullback = null;
+  }
+
+  /* Step 11 reuses the very same candles typed into the analyser. */
+  function importFromAnalyser() {
+    var a = APP.state.analyser;
+    if (a) {
+      U.writeCandle('pb-ce', a.ce.candle);
+      U.writeCandle('pb-pe', a.pe.candle);
+    } else {
+      U.writeCandle('pb-ce', U.readCandle('an-ce'));
+      U.writeCandle('pb-pe', U.readCandle('an-pe'));
+    }
+    U.showErrors('pb-ce-err', []);
+    U.showErrors('pb-pe-err', []);
+    run();
+  }
+
+  function init() {
+    U.$('btn-pullback').addEventListener('click', run);
+    U.$('btn-pb-reset').addEventListener('click', reset);
+    U.$('btn-pb-import').addEventListener('click', importFromAnalyser);
+    U.$$('#panel-pullback input').forEach(function (input) {
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    });
+  }
+
+  APP.pullback = {
+    init: init, run: run, reset: reset, analyse: analyse,
+    importFromAnalyser: importFromAnalyser
+  };
+})(window.APP);
+</script>
+<script>
+/* Tool 4 — Trade Signal (market-standard confluence, win estimate, expected
+   profit and the full metric set).
+
+   Everything here is computed from values you type. The app has no market
+   data feed, so the indicator readings come from your chart: leave any of
+   them blank and that check is skipped rather than guessed at. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  var side = 'call';
+
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
+  function money0(n) { return '₹' + U.fmt(n, 0); }
+
+  /* ---------- confluence: the market-standard filters ---------- */
+  function confluence(inp, cfg, isCall) {
+    var checks = [];
+
+    function add(id, name, weight, state, detail) {
+      checks.push({ id: id, name: name, weight: weight, state: state, detail: detail });
+    }
+
+    /* 1. Price vs VWAP — the intraday fair-value line. */
+    if (isFinite(inp.spot) && isFinite(inp.vwap)) {
+      var vwapOk = isCall ? inp.spot > inp.vwap : inp.spot < inp.vwap;
+      add('vwap', t('sg.c.vwap'), 20, vwapOk ? 'pass' : 'fail',
+        t(vwapOk ? 'sg.c.vwapOk' : 'sg.c.vwapNo', {
+          spot: U.fmt(inp.spot, 2), vwap: U.fmt(inp.vwap, 2),
+          gap: U.fmt(Math.abs(inp.spot - inp.vwap), 2)
+        }));
+    } else {
+      add('vwap', t('sg.c.vwap'), 20, 'skip', t('sg.c.skip'));
+    }
+
+    /* 2. Moving-average alignment. */
+    if (isFinite(inp.spot) && isFinite(inp.ema20)) {
+      var emaOk = isCall ? inp.spot > inp.ema20 : inp.spot < inp.ema20;
+      if (isFinite(inp.ema50)) {
+        emaOk = emaOk && (isCall ? inp.ema20 >= inp.ema50 : inp.ema20 <= inp.ema50);
+      }
+      add('ema', t('sg.c.ema'), 15, emaOk ? 'pass' : 'fail',
+        t(emaOk ? 'sg.c.emaOk' : 'sg.c.emaNo', {
+          spot: U.fmt(inp.spot, 2), ema20: U.fmt(inp.ema20, 2),
+          ema50: isFinite(inp.ema50) ? U.fmt(inp.ema50, 2) : '—'
+        }));
+    } else {
+      add('ema', t('sg.c.ema'), 15, 'skip', t('sg.c.skip'));
+    }
+
+    /* 3. RSI regime — momentum present, but not already exhausted. */
+    if (isFinite(inp.rsi)) {
+      var lo = isCall ? cfg.rsiMin : 100 - cfg.rsiMax;
+      var hi = isCall ? cfg.rsiMax : 100 - cfg.rsiMin;
+      var rsiOk = inp.rsi >= lo && inp.rsi <= hi;
+      add('rsi', t('sg.c.rsi'), 15, rsiOk ? 'pass' : 'fail',
+        t(rsiOk ? 'sg.c.rsiOk' : 'sg.c.rsiNo', {
+          rsi: U.fmt(inp.rsi, 1), lo: U.fmt(lo, 0), hi: U.fmt(hi, 0)
+        }));
+    } else {
+      add('rsi', t('sg.c.rsi'), 15, 'skip', t('sg.c.skip'));
+    }
+
+    /* 4. Volume confirmation on the breakout candle. */
+    if (isFinite(inp.volRatio)) {
+      var volOk = inp.volRatio >= cfg.volumeMin;
+      add('volume', t('sg.c.volume'), 10, volOk ? 'pass' : 'fail',
+        t(volOk ? 'sg.c.volumeOk' : 'sg.c.volumeNo', {
+          ratio: U.fmt(inp.volRatio, 2), min: U.fmt(cfg.volumeMin, 2)
+        }));
+    } else {
+      add('volume', t('sg.c.volume'), 10, 'skip', t('sg.c.skip'));
+    }
+
+    /* 5. Volatility regime — India VIX. */
+    if (isFinite(inp.vix)) {
+      var vixOk = inp.vix <= cfg.vixMax;
+      add('vix', t('sg.c.vix'), 10, vixOk ? 'pass' : 'fail',
+        t(vixOk ? 'sg.c.vixOk' : 'sg.c.vixNo', { vix: U.fmt(inp.vix, 2), max: U.fmt(cfg.vixMax, 0) }));
+    } else {
+      add('vix', t('sg.c.vix'), 10, 'skip', t('sg.c.skip'));
+    }
+
+    /* 6. Is the target actually reachable in the day's range? */
+    if (isFinite(inp.refRange) && inp.refRange > 0 && isFinite(inp.t2) && isFinite(inp.entry)) {
+      var reach = (inp.t2 - inp.entry) / inp.refRange;
+      var reachOk = reach <= cfg.atrReachMax;
+      add('reach', t('sg.c.reach'), 15, reachOk ? 'pass' : 'fail',
+        t(reachOk ? 'sg.c.reachOk' : 'sg.c.reachNo', {
+          reach: U.fmt(reach, 2), max: U.fmt(cfg.atrReachMax, 2), range: U.fmt(inp.refRange)
+        }));
+    } else {
+      add('reach', t('sg.c.reach'), 15, 'skip', t('sg.c.skip'));
+    }
+
+    /* 7. Risk:reward gate. */
+    var risk = inp.entry - inp.sl;
+    var reward = inp.t2 - inp.entry;
+    if (risk > 0 && reward > 0) {
+      var rr = reward / risk;
+      var rrOk = rr >= cfg.minRR;
+      add('rr', t('sg.c.rr'), 15, rrOk ? 'pass' : 'fail',
+        t(rrOk ? 'sg.c.rrOk' : 'sg.c.rrNo', { rr: U.fmt(rr, 2), min: U.fmt(cfg.minRR, 2) }));
+    } else {
+      add('rr', t('sg.c.rr'), 15, 'skip', t('sg.c.skip'));
+    }
+
+    /* 8. Time of day — avoid the midday chop and the closing scramble. */
+    if (isFinite(inp.minuteOfDay)) {
+      var m = inp.minuteOfDay;
+      var early = m < 9 * 60 + 20;
+      var chop = m >= 11 * 60 + 30 && m < 13 * 60;
+      var late = m > 14 * 60 + 45;
+      var timeOk = !early && !chop && !late;
+      add('time', t('sg.c.time'), 10, timeOk ? 'pass' : 'fail',
+        t(timeOk ? 'sg.c.timeOk' : (early ? 'sg.c.timeEarly' : (chop ? 'sg.c.timeChop' : 'sg.c.timeLate')),
+          { time: inp.timeText }));
+    } else {
+      add('time', t('sg.c.time'), 10, 'skip', t('sg.c.skip'));
+    }
+
+    /* 9. The T1 Decision Helper's own read, when one has been run. */
+    if (APP.state.t1) {
+      var mom = APP.state.t1.momentum;
+      var momOk = mom >= cfg.holdThreshold;
+      add('helper', t('sg.c.helper'), 20, momOk ? 'pass' : 'fail',
+        t(momOk ? 'sg.c.helperOk' : 'sg.c.helperNo', { momentum: mom, min: cfg.holdThreshold }));
+    } else {
+      add('helper', t('sg.c.helper'), 20, 'skip', t('sg.c.skipHelper'));
+    }
+
+    var earned = 0, available = 0, total = 0, used = 0;
+    checks.forEach(function (c) {
+      total += c.weight;
+      if (c.state === 'skip') return;
+      available += c.weight;
+      used += 1;
+      if (c.state === 'pass') earned += c.weight;
+    });
+
+    return {
+      checks: checks,
+      score: available > 0 ? (earned / available) * 100 : NaN,
+      used: used,
+      count: checks.length,
+      coverage: total > 0 ? available / total : 0
+    };
+  }
+
+  /* ---------- money, risk and expectancy ---------- */
+  function metrics(inp, cfg, winPct) {
+    var qty = inp.lots * cfg.lotSize;
+    var costs = inp.lots * cfg.costPerLot;
+
+    var riskPts = inp.entry - inp.sl;
+    var rewardPts = inp.t2 - inp.entry;
+    var rewardT1Pts = inp.t1 - inp.entry;
+
+    var capital = inp.entry * qty;
+    var maxLoss = riskPts * qty + costs;
+    var profitT1 = rewardT1Pts * qty - costs;
+    var profitT2 = rewardPts * qty - costs;
+
+    /* The honest benchmark: below this win rate the setup loses money
+       however good the story around it sounds. */
+    var breakeven = (riskPts + rewardPts) > 0 ? riskPts / (riskPts + rewardPts) * 100 : NaN;
+
+    var p = winPct / 100;
+    var ev = p * profitT2 - (1 - p) * maxLoss;
+    var evPerRisk = maxLoss > 0 ? ev / maxLoss : NaN;
+
+    /* Kelly on the net payoff ratio, reported at quarter size — full Kelly is
+       far too aggressive for a single intraday setup. */
+    var payoff = maxLoss > 0 ? profitT2 / maxLoss : NaN;
+    var kelly = isFinite(payoff) && payoff > 0 ? (p * payoff - (1 - p)) / payoff : NaN;
+
+    var riskPerLot = riskPts * cfg.lotSize + cfg.costPerLot;
+    var allowedRisk = isFinite(inp.account) ? inp.account * (cfg.riskPctOfAccount / 100) : NaN;
+    var suggestedLots = isFinite(allowedRisk) && riskPerLot > 0
+      ? Math.max(0, Math.floor(allowedRisk / riskPerLot)) : NaN;
+
+    return {
+      qty: qty, costs: costs, capital: capital,
+      riskPts: riskPts, rewardPts: rewardPts, rewardT1Pts: rewardT1Pts,
+      maxLoss: maxLoss, profitT1: profitT1, profitT2: profitT2,
+      rr: riskPts > 0 ? rewardPts / riskPts : NaN,
+      rrT1: riskPts > 0 ? rewardT1Pts / riskPts : NaN,
+      breakeven: breakeven,
+      ev: ev, evPerRisk: evPerRisk,
+      kellyQuarter: isFinite(kelly) ? U.clamp(kelly / 4, 0, 0.25) : NaN,
+      riskOfAccount: isFinite(inp.account) && inp.account > 0 ? maxLoss / inp.account * 100 : NaN,
+      suggestedLots: suggestedLots
+    };
+  }
+
+  function evaluate(inp, cfg, tradeSide) {
+    var isCall = tradeSide === 'call';
+    var conf = confluence(inp, cfg, isCall);
+
+    /* The win estimate is your own base rate nudged by how much confluence
+       lined up — not a backtested probability. */
+    var score = isFinite(conf.score) ? conf.score : 50;
+    var winPct = U.clamp(
+      cfg.baseWinRate + (score - 50) * cfg.winSensitivity,
+      cfg.winFloor, cfg.winCeiling
+    );
+
+    var m = metrics(inp, cfg, winPct);
+
+    var verdict, headline;
+    if (!(m.ev > 0) || !(winPct > m.breakeven)) {
+      verdict = 'skip';
+      headline = t('sg.skip');
+    } else if (score >= cfg.takeThreshold) {
+      verdict = 'take';
+      headline = t('sg.take');
+    } else {
+      verdict = 'caution';
+      headline = t('sg.caution');
+    }
+
+    return {
+      side: tradeSide, inputs: inp, conf: conf, score: score,
+      winPct: winPct, m: m, verdict: verdict, headline: headline,
+      edge: winPct - m.breakeven
+    };
+  }
+
+  /* ---------- rendering ---------- */
+  var VERDICT_CLASS = { take: 'v-hold', caution: 'v-partial', skip: 'v-book' };
+  var STATE_ICON = { pass: '✓', fail: '✕', skip: '–' };
+
+  function tile(label, value, cls) {
+    return '<div class="metric-tile ' + (cls || '') + '">' +
+      '<div class="tile-label">' + U.escapeHtml(label) + '</div>' +
+      '<div class="tile-value">' + value + '</div></div>';
+  }
+
+  function render(r) {
+    var m = r.m;
+    var sideLabel = t(r.side === 'put' ? 'sg.putTrade' : 'sg.callTrade');
+
+    U.$('sg-verdict').innerHTML = '' +
+      '<div class="muted small" style="margin-bottom:12px">' + U.escapeHtml(sideLabel) + '</div>' +
+      '<div class="verdict-badge ' + VERDICT_CLASS[r.verdict] + '">' + U.escapeHtml(r.headline) + '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('sg.' + r.verdict + 'Text', {
+        score: U.fmt(r.score, 0),
+        win: U.fmt(r.winPct, 0),
+        breakeven: U.fmt(m.breakeven, 0),
+        ev: money0(m.ev)
+      })) + '</p>';
+
+    U.$('sg-tiles').innerHTML = '' +
+      '<div class="tile-grid">' +
+        tile(t('sg.winEstimate'), U.fmt(r.winPct, 0) + '%', 'tile-primary') +
+        tile(t('sg.expectedProfit'), money0(m.profitT2), m.profitT2 > 0 ? 'tile-good' : 'tile-bad') +
+        tile(t('sg.expectedValue'), money0(m.ev), m.ev > 0 ? 'tile-good' : 'tile-bad') +
+        tile(t('sg.breakevenWin'), U.fmt(m.breakeven, 0) + '%', '') +
+      '</div>' +
+      '<p class="edge-note ' + (r.edge > 0 ? 'is-good' : 'is-bad') + '">' +
+        U.escapeHtml(t(r.edge > 0 ? 'sg.edgeGood' : 'sg.edgeBad', {
+          edge: U.fmt(Math.abs(r.edge), 1)
+        })) + '</p>';
+
+    U.$('sg-checks').innerHTML = r.conf.checks.map(function (c) {
+      return '<li class="check ' + c.state + '">' +
+        '<span class="check-icon" aria-hidden="true">' + STATE_ICON[c.state] + '</span>' +
+        '<span class="check-body">' +
+          '<span class="check-name">' + U.escapeHtml(c.name) +
+            '<span class="weight-tag">' + c.weight + '</span></span>' +
+          '<span class="check-detail">' + U.escapeHtml(c.detail) + '</span>' +
+        '</span>' +
+        '<span class="check-verdict">' + U.escapeHtml(t('sg.state.' + c.state)) + '</span>' +
+      '</li>';
+    }).join('');
+
+    U.$('sg-conf-head').innerHTML = '' +
+      '<div class="signal-num"><span>' + U.escapeHtml(t('sg.confluence')) + '</span><b>' +
+        U.fmt(r.score, 0) + '%</b></div>' +
+      '<div class="bar"><i style="width:' + U.clamp(r.score, 0, 100) + '%"></i></div>' +
+      '<p class="muted small" style="margin-top:8px">' +
+        U.escapeHtml(t('sg.coverage', { used: r.conf.used, total: r.conf.count })) + '</p>';
+
+    function row(label, value) {
+      return '<tr><td>' + U.escapeHtml(label) + '</td><td>' + value + '</td></tr>';
+    }
+    U.$('sg-metrics').innerHTML = '' +
+      '<div class="card-head"><h3>' + U.escapeHtml(t('sg.metrics')) + '</h3></div>' +
+      '<div class="table-scroll"><table class="compare metrics-table"><tbody>' +
+        row(t('sg.m.qty'), U.fmt(m.qty, 0)) +
+        row(t('sg.m.capital'), money0(m.capital)) +
+        row(t('sg.m.riskPts'), U.fmt(m.riskPts) + ' / ' + U.fmt(m.rewardPts)) +
+        row(t('sg.m.maxLoss'), '<span class="neg">' + money0(m.maxLoss) + '</span>') +
+        row(t('sg.m.profitT1'), money0(m.profitT1)) +
+        row(t('sg.m.profitT2'), '<span class="pos">' + money0(m.profitT2) + '</span>') +
+        row(t('sg.m.rr'), '1 : ' + U.fmt(m.rr, 2) + '  (T1 1 : ' + U.fmt(m.rrT1, 2) + ')') +
+        row(t('sg.m.costs'), money0(m.costs)) +
+        row(t('sg.m.evPerRisk'), U.fmt(m.evPerRisk, 2) + '×') +
+        row(t('sg.m.riskOfAccount'), isFinite(m.riskOfAccount) ? U.fmt(m.riskOfAccount, 2) + '%' : '—') +
+        row(t('sg.m.suggestedLots'), isFinite(m.suggestedLots) ? U.fmt(m.suggestedLots, 0) : '—') +
+        row(t('sg.m.kelly'), isFinite(m.kellyQuarter) ? U.pct(m.kellyQuarter, 1) : '—') +
+      '</tbody></table></div>' +
+      '<p class="muted small" style="margin-top:10px">' + U.escapeHtml(t('sg.metricsNote')) + '</p>';
+
+    U.$('signal-output').hidden = false;
+  }
+
+  /* ---------- controller ---------- */
+  function setSide(next) {
+    side = next === 'put' ? 'put' : 'call';
+    U.$$('#panel-signal .side-btn').forEach(function (btn) {
+      var active = btn.getAttribute('data-side') === side;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  }
+
+  function readInputs() {
+    var timeText = U.$('sg-time').value;
+    var minuteOfDay = NaN;
+    if (/^\d{1,2}:\d{2}/.test(timeText)) {
+      var parts = timeText.split(':');
+      minuteOfDay = Number(parts[0]) * 60 + Number(parts[1]);
+    }
+    return {
+      entry: U.num(U.$('sg-entry').value),
+      sl: U.num(U.$('sg-sl').value),
+      t1: U.num(U.$('sg-t1').value),
+      t2: U.num(U.$('sg-t2').value),
+      spot: U.num(U.$('sg-spot').value),
+      vwap: U.num(U.$('sg-vwap').value),
+      ema20: U.num(U.$('sg-ema20').value),
+      ema50: U.num(U.$('sg-ema50').value),
+      rsi: U.num(U.$('sg-rsi').value),
+      volRatio: U.num(U.$('sg-vol').value),
+      vix: U.num(U.$('sg-vix').value),
+      refRange: U.num(U.$('sg-range').value),
+      lots: Math.max(1, Math.round(U.num(U.$('sg-lots').value)) || 1),
+      account: U.num(U.$('sg-account').value),
+      timeText: timeText,
+      minuteOfDay: minuteOfDay
+    };
+  }
+
+  function run() {
+    var cfg = APP.config.get();
+    var inp = readInputs();
+
+    var errors = [];
+    [['entry', 'sg.entry'], ['sl', 'sg.sl'], ['t1', 'sg.t1'], ['t2', 'sg.t2']].forEach(function (pair) {
+      if (!isFinite(inp[pair[0]]) || inp[pair[0]] <= 0) {
+        errors.push(t('t1.err.required', { field: t(pair[1]) }));
+      }
+    });
+    if (!errors.length && !(inp.sl < inp.entry && inp.entry < inp.t1 && inp.t1 <= inp.t2)) {
+      errors.push(t('sg.err.ladder'));
+    }
+    U.showErrors('sg-err', errors);
+    if (errors.length) {
+      U.$('signal-output').hidden = true;
+      APP.state.signal = null;
+      return null;
+    }
+
+    var result = evaluate(inp, cfg, side);
+    APP.state.signal = result;
+    render(result);
+    APP.alerts.onSignal(result);
+    return result;
+  }
+
+  function reset() {
+    ['sg-entry', 'sg-sl', 'sg-t1', 'sg-t2', 'sg-spot', 'sg-vwap', 'sg-ema20',
+     'sg-ema50', 'sg-rsi', 'sg-vol', 'sg-vix', 'sg-range', 'sg-account'
+    ].forEach(function (id) { U.$(id).value = ''; });
+    U.$('sg-lots').value = '1';
+    U.showErrors('sg-err', []);
+    U.$('signal-output').hidden = true;
+    APP.state.signal = null;
+  }
+
+  /* Carry the levels across: the analyser gives entry/SL/T1, and the T1 helper
+     ladder gives T2. Falls back to the analyser's own Target 1 for T2. */
+  function importLevels(which) {
+    var a = APP.state.analyser;
+    if (!a) return;
+    var r = which === 'put' ? a.pe : a.ce;
+    setSide(which);
+    U.$('sg-entry').value = r.entry.toFixed(2);
+    U.$('sg-sl').value = r.stopLoss.toFixed(2);
+    U.$('sg-t1').value = r.target1.toFixed(2);
+    U.$('sg-t2').value = (r.target1 + r.range).toFixed(2);
+    U.$('sg-range').value = r.range.toFixed(2);
+    U.showErrors('sg-err', []);
+  }
+
+  function fillTimeNow() {
+    var now = new Date();
+    U.$('sg-time').value =
+      String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  }
+
+  function loadSample() {
+    setSide('call');
+    U.$('sg-entry').value = '162.75';
+    U.$('sg-sl').value = '141.20';
+    U.$('sg-t1').value = '184.30';
+    U.$('sg-t2').value = '205.85';
+    U.$('sg-range').value = '21.55';
+    U.$('sg-spot').value = '23712.40';
+    U.$('sg-vwap').value = '23680.10';
+    U.$('sg-ema20').value = '23668.75';
+    U.$('sg-ema50').value = '23640.00';
+    U.$('sg-rsi').value = '63.4';
+    U.$('sg-vol').value = '1.65';
+    U.$('sg-vix').value = '13.8';
+    U.$('sg-lots').value = '2';
+    U.$('sg-account').value = '200000';
+    U.$('sg-time').value = '09:35';
+    run();
+  }
+
+  function init() {
+    U.$$('#panel-signal .side-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setSide(btn.getAttribute('data-side'));
+        if (APP.state.signal) run();
+      });
+    });
+    U.$('btn-signal').addEventListener('click', run);
+    U.$('btn-sg-reset').addEventListener('click', reset);
+    U.$('btn-sg-sample').addEventListener('click', loadSample);
+    U.$('btn-sg-now').addEventListener('click', fillTimeNow);
+    U.$('btn-sg-import-call').addEventListener('click', function () { importLevels('call'); });
+    U.$('btn-sg-import-put').addEventListener('click', function () { importLevels('put'); });
+    U.$$('#panel-signal input').forEach(function (input) {
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    });
+  }
+
+  APP.signal = {
+    init: init, run: run, reset: reset,
+    evaluate: evaluate, confluence: confluence, metrics: metrics
+  };
+})(window.APP);
+</script>
+<script>
+/* Notifications and the 5-minute candle-close scheduler.
+
+   Two honest limits, stated in the UI as well: the page must stay open for a
+   reminder to fire, and system notifications only appear once the browser has
+   granted permission. When either is unavailable everything still works — the
+   alert lands in the in-page log instead. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  var timer = null;
+  var fired = 0;
+  var log = [];
+
+  function supported() { return typeof window.Notification !== 'undefined'; }
+  function permission() { return supported() ? window.Notification.permission : 'unsupported'; }
+
+  /* ---------- next 5-minute boundary, plus a second of settle time ---------- */
+  function nextBoundary(from, minutes) {
+    var step = (minutes || 5) * 60000;
+    var base = from ? from.getTime() : Date.now();
+    var next = Math.ceil((base + 1000) / step) * step;
+    return new Date(next + 1000);
+  }
+
+  function clockText(date) {
+    return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+  }
+
+  /* ---------- delivery ---------- */
+  function push(title, body, tag) {
+    log.unshift({ time: clockText(new Date()), title: title, body: body });
+    if (log.length > 12) log.pop();
+    renderLog();
+
+    if (supported() && window.Notification.permission === 'granted') {
+      try {
+        new window.Notification(title, { body: body, tag: tag || 'nifty-suite', lang: APP.i18n.get() });
+      } catch (e) { /* some browsers require a service worker; the log still has it */ }
+    }
+  }
+
+  /* ---------- signal notification ---------- */
+  function signalText(result) {
+    var m = result.m;
+    return t('al.signalBody', {
+      entry: '₹' + U.fmt(result.inputs.entry),
+      sl: '₹' + U.fmt(result.inputs.sl),
+      t2: '₹' + U.fmt(result.inputs.t2),
+      win: U.fmt(result.winPct, 0),
+      profit: '₹' + U.fmt(m.profitT2, 0),
+      ev: '₹' + U.fmt(m.ev, 0),
+      rr: U.fmt(m.rr, 2)
+    });
+  }
+
+  function onSignal(result) {
+    if (!U.$('al-auto').checked) return;
+    var sideLabel = t(result.side === 'put' ? 'sg.putTrade' : 'sg.callTrade');
+    push(result.headline + ' — ' + sideLabel, signalText(result), 'signal');
+  }
+
+  function notifyNow() {
+    var result = APP.state.signal;
+    if (!result) { push(t('al.noSignal'), t('al.noSignalBody'), 'signal'); return; }
+    var sideLabel = t(result.side === 'put' ? 'sg.putTrade' : 'sg.callTrade');
+    push(result.headline + ' — ' + sideLabel, signalText(result), 'signal');
+  }
+
+  /* ---------- candle-close reminders ---------- */
+  function schedule() {
+    var due = nextBoundary();
+    U.$('al-next').textContent = t('al.nextAt', { time: clockText(due) });
+    timer = window.setTimeout(function () {
+      fired += 1;
+      var result = APP.state.signal;
+      var body = result
+        ? t('al.candleBodyLevels', { entry: '₹' + U.fmt(result.inputs.entry), t1: '₹' + U.fmt(result.inputs.t1) })
+        : t('al.candleBody');
+      push(t('al.candleTitle', { time: clockText(new Date()) }), body, 'candle');
+
+      var limit = Number(U.$('al-count').value) || 0;
+      if (limit > 0 && fired >= limit) { stop(); return; }
+      schedule();
+    }, Math.max(1000, due.getTime() - Date.now()));
+  }
+
+  function start() {
+    if (timer) return;
+    fired = 0;
+    U.$('btn-al-start').hidden = true;
+    U.$('btn-al-stop').hidden = false;
+    schedule();
+  }
+
+  function stop() {
+    if (timer) { window.clearTimeout(timer); timer = null; }
+    U.$('btn-al-start').hidden = false;
+    U.$('btn-al-stop').hidden = true;
+    U.$('al-next').textContent = t('al.stopped');
+  }
+
+  /* ---------- permission ---------- */
+  function renderPermission() {
+    var state = permission();
+    var el = U.$('al-permission');
+    el.className = 'perm perm-' + state;
+    el.textContent = t('al.perm.' + state);
+    U.$('btn-al-enable').hidden = (state === 'granted' || state === 'unsupported');
+  }
+
+  function requestPermission() {
+    if (!supported()) { renderPermission(); return; }
+    try {
+      var res = window.Notification.requestPermission(function () { renderPermission(); });
+      if (res && typeof res.then === 'function') res.then(renderPermission).catch(renderPermission);
+    } catch (e) {
+      renderPermission();
+    }
+  }
+
+  /* ---------- log ---------- */
+  function renderLog() {
+    var el = U.$('al-log');
+    if (!log.length) {
+      el.innerHTML = '<li class="log-empty muted small">' + U.escapeHtml(t('al.logEmpty')) + '</li>';
+      return;
+    }
+    el.innerHTML = log.map(function (entry) {
+      return '<li class="log-item">' +
+        '<span class="log-time">' + U.escapeHtml(entry.time) + '</span>' +
+        '<span class="log-body"><b>' + U.escapeHtml(entry.title) + '</b>' +
+          '<span>' + U.escapeHtml(entry.body) + '</span></span>' +
+      '</li>';
+    }).join('');
+  }
+
+  function init() {
+    U.$('btn-al-enable').addEventListener('click', requestPermission);
+    U.$('btn-al-notify').addEventListener('click', notifyNow);
+    U.$('btn-al-start').addEventListener('click', start);
+    U.$('btn-al-stop').addEventListener('click', stop);
+    renderPermission();
+    renderLog();
+    U.$('al-next').textContent = t('al.stopped');
+  }
+
+  APP.alerts = {
+    init: init, onSignal: onSignal, notifyNow: notifyNow,
+    start: start, stop: stop, nextBoundary: nextBoundary,
+    renderLog: renderLog, renderPermission: renderPermission
+  };
+})(window.APP);
+</script>
+<script>
+/* Bootstrap: shared state, tab routing, language toggle, settings drawer and
+   the generated guide / formula reference. */
+(function (APP) {
+  'use strict';
+
+  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null };
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  /* ---------- tabs ---------- */
+  var tabs = {
+    show: function (name) {
+      U.$$('.tab').forEach(function (tab) {
+        var active = tab.getAttribute('data-panel') === name;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      U.$$('.panel').forEach(function (panel) {
+        var active = panel.id === 'panel-' + name;
+        panel.classList.toggle('is-active', active);
+        panel.hidden = !active;
+      });
+      if (window.location.hash !== '#' + name) {
+        try { history.replaceState(null, '', '#' + name); } catch (e) { /* file:// */ }
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+  APP.tabs = tabs;
+
+  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'guide'];
+
+  function panelFromHash() {
+    var hash = (window.location.hash || '').replace('#', '');
+    return PANELS.indexOf(hash) !== -1 ? hash : null;
+  }
+
+  function initTabs() {
+    U.$$('.tab').forEach(function (tab) {
+      tab.addEventListener('click', function () { tabs.show(tab.getAttribute('data-panel')); });
+    });
+    /* A hash-only navigation does not reload the document, so deep links and
+       the back button need this as well as the initial read. */
+    window.addEventListener('hashchange', function () {
+      var name = panelFromHash();
+      if (name) tabs.show(name);
+    });
+    var initial = panelFromHash();
+    if (initial) tabs.show(initial);
+  }
+
+  /* ---------- settings drawer ---------- */
+  var CFG_FIELDS = Object.keys(APP.config.DEFAULTS);
+
+  function fillSettingsInputs() {
+    var cfg = APP.config.get();
+    CFG_FIELDS.forEach(function (key) {
+      var el = U.$('cfg-' + key);
+      if (el) el.value = String(cfg[key]);
+    });
+  }
+
+  function readSettingsInputs() {
+    var patch = {};
+    CFG_FIELDS.forEach(function (key) {
+      var el = U.$('cfg-' + key);
+      if (el) patch[key] = U.num(el.value);
+    });
+    return patch;
+  }
+
+  function flash(message) {
+    var el = U.$('settings-flash');
+    el.textContent = message;
+    window.setTimeout(function () { el.textContent = ''; }, 2200);
+  }
+
+  /* Re-run whichever tools already have results so edits show up immediately. */
+  function recomputeAll() {
+    if (APP.state.analyser) APP.analyser.run();
+    if (APP.state.t1) APP.t1helper.run();
+    if (APP.state.pullback) APP.pullback.run();
+    if (APP.state.signal) APP.signal.run();
+    APP.t1helper.renderPreview();
+    APP.alerts.renderPermission();
+    APP.alerts.renderLog();
+    renderGuide();
+  }
+
+  function initSettings() {
+    var drawer = U.$('settings-drawer');
+    var toggle = U.$('btn-settings');
+
+    toggle.addEventListener('click', function () {
+      var open = drawer.hidden;
+      drawer.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) fillSettingsInputs();
+    });
+
+    U.$('btn-settings-save').addEventListener('click', function () {
+      APP.config.save(readSettingsInputs());
+      fillSettingsInputs();
+      recomputeAll();
+      flash(t('cfg.saved'));
+    });
+
+    U.$('btn-settings-reset').addEventListener('click', function () {
+      APP.config.reset();
+      fillSettingsInputs();
+      recomputeAll();
+      flash(t('cfg.restored'));
+    });
+
+    fillSettingsInputs();
+  }
+
+  /* ---------- language ---------- */
+  function initLanguage() {
+    APP.i18n.init();
+    U.$('btn-lang').addEventListener('click', function () {
+      APP.i18n.set(APP.i18n.get() === 'ta' ? 'en' : 'ta');
+    });
+    /* Generated markup is not covered by data-i18n, so redraw it on switch. */
+    APP.i18n.onChange(function () {
+      APP.analyser.renderAtm();
+      recomputeAll();
+    });
+  }
+
+  /* ---------- guide tab ---------- */
+  var PHASES = [
+    { title: 'g.p1', steps: ['g.p1s1', 'g.p1s2'], start: 1 },
+    { title: 'g.p2', steps: ['g.p2s3', 'g.p2s4', 'g.p2s5'], start: 3 },
+    { title: 'g.p3', steps: ['g.p3s6', 'g.p3s7', 'g.p3s8', 'g.p3s9', 'g.p3s10'], start: 6 },
+    { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 },
+    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 }
+  ];
+
+  function formulaItems(cfg) {
+    var entryTerm = cfg.entryBufferPct ? ' + ' + cfg.entryBufferPct + '% × range' : '';
+    var slTerm = cfg.slBufferPct ? ' − ' + cfg.slBufferPct + '% × range' : '';
+    return [
+      {
+        title: 'g.f1', note: 'g.f1n',
+        code:
+          'range     = high − low\n' +
+          'entry     = high' + entryTerm + '\n' +
+          'stop loss = low' + slTerm + '\n' +
+          'Target 1  = entry + ' + cfg.t1Multiplier + ' × range\n' +
+          'confirm   = a 5-min close ≥ entry + ' + cfg.tickSize
+      },
+      {
+        title: 'g.f2', note: 'g.f2n',
+        code: 'strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)'
+      },
+      {
+        title: 'g.f3', note: 'g.f3n',
+        code:
+          'check 1 (40)   direction — candle closed up' +
+            (cfg.sideAwareDirection >= 1 ? ' (down on a put trade)' : '') + '\n' +
+          'check 2 (15)   body strength — body ÷ range ≥ ' + cfg.bodyStrong + '\n' +
+          '        (7.5)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
+          'check 3 (40)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
+          'momentum = floor(sum of the weights earned)\n' +
+          '\n' +
+          'check 4 (gate) T1 breakout — close > T1 level   ← decisive\n' +
+          '\n' +
+          'verdict = WAIT if check 4 failed, else\n' +
+          '          HOLD → T2 at momentum ≥ ' + cfg.holdThreshold + ',\n' +
+          '          PARTIAL BOOK at ≥ ' + cfg.partialThreshold + ', otherwise BOOK NOW\n' +
+          'reward ratio = (T2 − T1) ÷ (T1 − entry)'
+      },
+      {
+        title: 'g.f4', note: 'g.f4n',
+        code:
+          'liquidity score = 45% × close position + 30% × body ÷ range\n' +
+          '                + 15% × (close > open) + 10% × share of combined range\n' +
+          'side     = whichever of CE / PE scores higher\n' +
+          'zone 1   = low + ' + cfg.zone1Retrace + ' × range\n' +
+          'zone 2   = low + ' + cfg.zone2Retrace + ' × range\n' +
+          'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range'
+      },
+      {
+        title: 'g.f5', note: 'g.f5n',
+        code:
+          'confluence = passed weights ÷ available weights × 100\n' +
+          '  VWAP 20 · EMA 15 · RSI 15 · volume 10 · VIX 10\n' +
+          '  target reach 15 · risk:reward 15 · time 10 · T1 helper 20\n' +
+          '  (a filter left blank is skipped, not counted against you)\n' +
+          '\n' +
+          'win estimate  = clamp(' + cfg.baseWinRate + ' + (confluence − 50) × ' + cfg.winSensitivity + ',\n' +
+          '                      ' + cfg.winFloor + ', ' + cfg.winCeiling + ')\n' +
+          'breakeven win = risk ÷ (risk + reward)\n' +
+          'expected value = win × profit at T2 − (1 − win) × max loss\n' +
+          '\n' +
+          'TAKE TRADE  when EV > 0, win > breakeven and confluence ≥ ' + cfg.takeThreshold + '\n' +
+          'CAUTION     when EV > 0 and win > breakeven but confluence is short\n' +
+          'SKIP        otherwise'
+      }
+    ];
+  }
+
+  function renderGuide() {
+    var cfg = APP.config.get();
+    var html = PHASES.map(function (phase) {
+      var steps = phase.steps.map(function (key) { return '<li>' + t(key) + '</li>'; }).join('');
+      return '<h3 class="phase">' + U.escapeHtml(t(phase.title)) + '</h3>' +
+             '<ol class="sop" start="' + phase.start + '">' + steps + '</ol>';
+    }).join('');
+
+    html += '<h3 class="phase">' + U.escapeHtml(t('g.formulas')) + '</h3>' +
+            '<p class="muted small">' + U.escapeHtml(t('g.formulasDesc')) + '</p>' +
+            '<div class="formula-list">' +
+              formulaItems(cfg).map(function (item) {
+                return '<div class="formula"><h4>' + U.escapeHtml(t(item.title)) + '</h4>' +
+                       '<code>' + U.escapeHtml(item.code) + '</code>' +
+                       '<p>' + U.escapeHtml(t(item.note)) + '</p></div>';
+              }).join('') +
+            '</div>';
+
+    U.$('guide-body').innerHTML = html;
+  }
+
+  /* ---------- clear everything ---------- */
+  function initClearAll() {
+    U.$('btn-clear-all').addEventListener('click', function () {
+      APP.analyser.reset();
+      APP.t1helper.reset();
+      APP.pullback.reset();
+      APP.signal.reset();
+      APP.tabs.show('analyser');
+    });
+  }
+
+  function init() {
+    APP.config.load();
+    initLanguage();
+    initTabs();
+    initSettings();
+    initClearAll();
+    APP.analyser.init();
+    APP.t1helper.init();
+    APP.pullback.init();
+    APP.signal.init();
+    APP.alerts.init();
+    APP.analyser.renderAtm();
+    renderGuide();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})(window.APP);
+</script>
+</body>
+</html>
