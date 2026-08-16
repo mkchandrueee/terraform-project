@@ -32,14 +32,19 @@
     minClosePos: 0.50,      // close must sit in the upper half of its range
     holdThreshold: 70,      // momentum at or above this => HOLD T2
     partialThreshold: 40,   // momentum at or above this => PARTIAL BOOK, below => BOOK NOW
-    sideAwareDirection: 0,  // 0 = rising premium is good on both sides (you are long the
-                            // option either way); 1 = a put trade wants a falling candle,
-                            // reproducing the original helper tool's behaviour
+    sideAwareDirection: 1,  // 1 = a put trade wants a falling candle, matching the original
+                            // tool; 0 = rising premium counts as good on both sides, which is
+                            // the truer reading when the candle is the option's own premium
 
     /* Stoploss Pullback Entry */
-    zone1Retrace: 0.382,    // zone 1 = low + (fraction x range)
-    zone2Retrace: 0.236,    // deeper liquidity fill
-    pullbackTargetMult: 1.0, // target 1 = high + (multiplier x range)
+    pbZone1: 0.25,          // aggressive entry  = low + (fraction x range)
+    pbZone2: 0.38,          // best / average entry
+    pbZone3: 0.50,          // last chance
+    pbSlPct: 5,             // stop loss = low less this %, to the nearest rupee
+    pbT1Mult: 0.8,          // targets are (multiplier x range) above the zone 2 entry,
+    pbT2Mult: 1.4,          // each rounded to the nearest 10 points
+    pbT3Mult: 2.2,
+    pbTargetRound: 10,
 
     /* Trade Signal — market-standard filter thresholds */
     rsiMin: 55,             // call wants RSI in [rsiMin, rsiMax]; put mirrors it

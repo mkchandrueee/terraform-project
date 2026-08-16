@@ -17,10 +17,17 @@
   var U = APP.util;
   var side = 'call';
 
+  /* Weights recovered from every momentum score the original has published:
+       0%  direction fail, body weak,     close fail
+       2%  direction fail, body moderate, close fail
+      15%  direction fail, body strong,   close fail
+      87%  direction pass, body moderate, close pass
+     Body is pinned exactly at 15 / 2 / 0. Direction and close must total 85;
+     no published case separates them, so they are split 40 / 45. */
   var W_DIRECTION = 40;
   var W_BODY_STRONG = 15;
-  var W_BODY_MODERATE = 7.5;
-  var W_CLOSE = 40;
+  var W_BODY_MODERATE = 2;
+  var W_CLOSE = 45;
 
   function t(key, vars) { return APP.i18n.t(key, vars); }
   function money(n) { return '₹' + U.fmt(n); }
@@ -120,10 +127,17 @@
   }
 
   /* ---------- action plan ---------- */
+  var PLAN_STEPS = { hold: 5, partial: 5, book: 4, wait: 5 };
+
   function actionPlan(verdict, levels) {
-    var vars = { entry: money(levels.entry), t1: money(levels.t1), t2: money(levels.t2) };
+    var vars = {
+      entry: money(levels.entry), t1: money(levels.t1), t2: money(levels.t2),
+      profit: U.fmt(levels.t1 - levels.entry)
+    };
     var prefix = 't1.plan.' + verdict;
-    return [1, 2, 3, 4, 5].map(function (n) { return t(prefix + n, vars); });
+    var out = [];
+    for (var n = 1; n <= PLAN_STEPS[verdict]; n++) out.push(t(prefix + n, vars));
+    return out;
   }
 
   /* ---------- what the mapped ladder means in trade terms ---------- */

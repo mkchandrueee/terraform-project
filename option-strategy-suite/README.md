@@ -80,14 +80,15 @@ fourth check sits outside the score as the gate:
 
 | # | Check | Weight | Passes when |
 |---|---|---|---|
-| 1 | Direction | 40 | The candle closed up — the premium gained |
-| 2 | Body strength | 15 strong / 7.5 moderate | Body ÷ range ≥ 0.65 scores full, 0.45–0.65 scores half, below that nothing |
-| 3 | Close position | 40 | Close in the top half of the candle range |
+| 1 | Direction | 40 | Candle direction matches the trade side |
+| 2 | Body strength | 15 strong / 2 moderate | Body ÷ range ≥ 0.65 scores full, 0.45–0.65 scores 2, below that nothing |
+| 3 | Close position | 45 | Close in the favourable half of the candle range |
 | 4 | **T1 breakout strength** | *gate* | Close above the T1 level — the breakout actually happened |
 
-`momentum = floor(sum of the weights earned)`. Those weights are not invented: they are the combination that
-reproduces the reference tool's own published scores exactly — 0%, 15% and 87% across the three worked examples
-in its screenshots, including the three-way PASS / WEAK / FAIL grading on body strength.
+`momentum = floor(sum of the weights earned)`. Those weights are not invented: they reproduce **every**
+momentum score the original has published — 0%, 2%, 15% and 87%. The body tiers are pinned exactly at
+15 / 2 / 0 by those four cases; direction and close must total 85 and no published case separates them, so
+they are split 40 / 45.
 
 Verdict: **WAIT** if check 4 failed (nothing is confirmed, so there is nothing to hold or book); otherwise
 **HOLD → T2** at momentum ≥ 70, **PARTIAL BOOK** at ≥ 40, **BOOK NOW** below that. Check 4 is also rendered as
@@ -111,16 +112,31 @@ app reproduces the reference tool's output number for number (entry 175 / T1 219
 book now; entry 152 / T1 175 / T2 198, candle 172/181/165/180 → call: 87%, hold to T2).
 
 **Stoploss Pullback Entry** — the side with the stronger first-candle liquidity structure is the tradable one,
-and entries sit *inside* the range rather than above it, which is why the setup carries no stop loss:
+and the entries sit *inside* the range, because the setup buys the pullback rather than the breakout:
 
 ```
 liquidity score = 45% × close position + 30% × body ÷ range
                 + 15% × (close > open) + 10% × share of combined range
-side     = whichever of CE / PE scores higher
-zone 1   = low + 0.382 × range
-zone 2   = low + 0.236 × range
-Target 1 = high + 1.0 × range
+side   = whichever of CE / PE scores higher
+
+zone 1 = low + 0.25 × range        aggressive — earliest fill, worst price
+zone 2 = low + 0.38 × range        best (average) — stop and targets measure from here
+zone 3 = low + 0.50 × range        last chance — above this, skip
+
+stop     = low less 5%, to the nearest rupee
+Target 1 = zone 2 + round-to-10(0.8 × range)     book 40%
+Target 2 = zone 2 + round-to-10(1.4 × range)     book 40%
+Target 3 = zone 2 + round-to-10(2.2 × range)     hold 20%
 ```
+
+On the reference leg (O61 H97 L61 C86) that gives zones **₹70 / ₹74.7 / ₹79**, stop **₹58** at −16.7 points,
+and targets **₹104.7 / ₹124.7 / ₹154.7** at +30 / +50 / +80 — the original's numbers exactly. The zone
+fractions are pinned by that leg; the stop rule and the target multipliers fit a single sample, so a second
+pullback screenshot with different numbers would confirm or correct them.
+
+**The guide and the tool disagree about the stop.** Your strategy guide states this tool takes *no stop loss*;
+the original app prints one. Both are shown — the level is there, with a note that the guide forbids acting on
+it — so the choice is yours rather than mine.
 
 One deviation worth naming: the guide says to round the NIFTY open "to the nearest 100" but its own example
 maps 23670 → 23600, so the app rounds **down** to the 100 strike to match the example.

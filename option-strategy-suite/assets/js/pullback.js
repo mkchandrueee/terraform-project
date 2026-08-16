@@ -22,13 +22,29 @@
     return { stats: s, relRange: relRange, score: score };
   }
 
+  /* Reproduces the original tool on the reference leg (O61 H97 L61 C86):
+     zones 70 / 74.7 / 79, stop 58, targets 104.7 / 124.7 / 154.7. */
   function levelsFor(candle, cfg) {
     var range = candle.h - candle.l;
+    var zone2 = candle.l + cfg.pbZone2 * range;
+    var step = cfg.pbTargetRound || 10;
+    var roundStep = function (mult) { return Math.round((mult * range) / step) * step; };
+
+    var t1Step = roundStep(cfg.pbT1Mult);
+    var t2Step = roundStep(cfg.pbT2Mult);
+    var t3Step = roundStep(cfg.pbT3Mult);
+
     return {
-      zone1: U.toTick(candle.l + cfg.zone1Retrace * range, cfg.tickSize),
-      zone2: U.toTick(candle.l + cfg.zone2Retrace * range, cfg.tickSize),
-      target1: U.toTick(candle.h + cfg.pullbackTargetMult * range, cfg.tickSize),
-      range: range
+      range: range,
+      zone1: candle.l + cfg.pbZone1 * range,
+      zone2: zone2,
+      zone3: candle.l + cfg.pbZone3 * range,
+      stopLoss: Math.round(candle.l * (1 - cfg.pbSlPct / 100)),
+      targets: [
+        { level: zone2 + t1Step, step: t1Step },
+        { level: zone2 + t2Step, step: t2Step },
+        { level: zone2 + t3Step, step: t3Step }
+      ]
     };
   }
 
@@ -54,6 +70,13 @@
     };
   }
 
+  /* The original prints one decimal with a trailing .0 trimmed. */
+  function px(n) {
+    if (!isFinite(n)) return '—';
+    var s1 = (Math.round(n * 10) / 10).toFixed(1);
+    return '₹' + (s1.endsWith('.0') ? s1.slice(0, -2) : s1);
+  }
+
   /* ---------- rendering ---------- */
   function render(result) {
     var isCall = result.side === 'call';
@@ -69,19 +92,49 @@
         confidence: t('pb.conf.' + result.confidence)
       })) + '</p>';
 
+    var L = result.levels;
+    function zone(cls, label, value, note) {
+      return '<div class="zone ' + cls + '"><div class="zone-label">' + U.escapeHtml(label) + '</div>' +
+             '<div class="zone-value">' + px(value) + '</div>' +
+             '<div class="zone-note">' + U.escapeHtml(note) + '</div></div>';
+    }
+    function trow(label, value, pts, cls, badge) {
+      return '<tr class="' + cls + '">' +
+        '<td class="tgt-label">' + U.escapeHtml(label) + '</td>' +
+        '<td class="tgt-level">' + px(value) + '</td>' +
+        '<td class="tgt-pts">' + pts + '</td>' +
+        '<td class="tgt-action"><span class="tgt-badge ' + cls + '">' + U.escapeHtml(badge) + '</span></td></tr>';
+    }
+
     U.$('pb-levels').innerHTML = '' +
       '<div class="card-head"><h3><span class="step-pill">' + U.escapeHtml(t('pb.step13')) + '</span> ' +
-        U.escapeHtml(t('pb.levels')) + '</h3>' +
-      '<p class="muted">' + U.escapeHtml(t('pb.levelsDesc')) + '</p></div>' +
+        U.escapeHtml(t('pb.zonesTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.zonesDesc')) + '</p></div>' +
       '<div class="zone-grid">' +
-        '<div class="zone zone-1"><div class="zone-label">' + U.escapeHtml(t('pb.zone1')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.zone1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone1Note')) + '</div></div>' +
-        '<div class="zone zone-2"><div class="zone-label">' + U.escapeHtml(t('pb.zone2')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.zone2) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone2Note')) + '</div></div>' +
-        '<div class="zone zone-t"><div class="zone-label">' + U.escapeHtml(t('pb.target')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.target1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.targetNote')) + '</div></div>' +
+        zone('zone-1', t('pb.zone1'), L.zone1, t('pb.zone1Note')) +
+        zone('zone-2 is-best', t('pb.zone2'), L.zone2, t('pb.zone2Note')) +
+        zone('zone-3', t('pb.zone3'), L.zone3, t('pb.zone3Note')) +
       '</div>' +
-      '<p class="no-sl">' + U.escapeHtml(t('pb.noSl')) + '</p>';
+      '<div class="table-scroll" style="margin-top:16px"><table class="targets"><tbody>' +
+        trow(t('pb.stopLoss'), L.stopLoss, '−' + U.fmt(L.zone2 - L.stopLoss, 1) + t('an.pts'), 'row-sl', t('an.exitAll')) +
+        trow(t('an.target1'), L.targets[0].level, '+' + L.targets[0].step + t('an.pts'), 'row-t1', t('an.book', { pct: 40 })) +
+        trow(t('an.target2'), L.targets[1].level, '+' + L.targets[1].step + t('an.pts'), 'row-t2', t('an.book', { pct: 40 })) +
+        trow(t('an.target3'), L.targets[2].level, '+' + L.targets[2].step + t('an.pts'), 'row-t3', t('an.hold', { pct: 20 })) +
+      '</tbody></table></div>' +
+      '<p class="muted small" style="margin-top:10px">' + U.escapeHtml(t('pb.fromZone2')) + '</p>';
+
+    U.$('pb-rules').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('pb.rulesTitle')) + '</h3></div>' +
+      '<ol class="action-plan">' +
+        [1, 2, 3, 4, 5].map(function (n) {
+          return '<li>' + U.escapeHtml(t('pb.rule' + n, {
+            side: t(isCall ? 'an.buyCall' : 'an.buyPut'),
+            zone1: px(L.zone1), zone2: px(L.zone2), zone3: px(L.zone3),
+            sl: px(L.stopLoss), t1: px(L.targets[0].level),
+            t2: px(L.targets[1].level), t3: px(L.targets[2].level)
+          })) + '</li>';
+        }).join('') +
+      '</ol>';
 
     function row(name, ceVal, peVal, ceWins) {
       return '<tr><td>' + U.escapeHtml(name) + '</td>' +

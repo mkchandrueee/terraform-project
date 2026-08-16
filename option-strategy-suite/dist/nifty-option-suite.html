@@ -590,6 +590,9 @@ input[type=number] { -moz-appearance: textfield; }
 .row-t3 .tgt-badge { color: var(--accent); border-color: rgba(55, 214, 160, .45); background: rgba(55, 214, 160, .1); }
 .row-sl .tgt-level { color: var(--danger); }
 .row-sl .tgt-badge { color: var(--danger); border-color: rgba(255, 95, 109, .45); background: rgba(255, 95, 109, .1); }
+
+.zone.is-best { border-color: rgba(55, 214, 160, .5); box-shadow: inset 0 0 0 1px rgba(55, 214, 160, .18); }
+.zone-3 .zone-value { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -953,6 +956,7 @@ input[type=number] { -moz-appearance: textfield; }
     <div id="pullback-output" hidden>
       <div class="card verdict-card" id="pb-verdict"></div>
       <div class="card" id="pb-levels"></div>
+      <div class="card" id="pb-rules"></div>
       <div class="card" id="pb-detail"></div>
     </div>
   </section>
@@ -1556,10 +1560,10 @@ window.APP = window.APP || {};
       't1.plan.partial3': 'Hold the rest toward your target {t2} only while each candle keeps closing higher.',
       't1.plan.partial4': 'Exit the remainder on the first candle that closes back below {t1}.',
       't1.plan.partial5': 'Do not add to the position at this level.',
-      't1.plan.book1': 'Exit the full position now, at market — take the profit you are holding.',
-      't1.plan.book2': 'Do not wait for T2; the candle is not supporting a continuation.',
-      't1.plan.book3': 'Do not re-enter on the same candle.',
-      't1.plan.book4': 'Wait for a fresh setup with a decisive body and a strong close.',
+      't1.plan.book1': 'Exit the full position now — lock the T1 profit in.',
+      't1.plan.book2': '{profit} points of profit — that is a good trade. Do not get greedy.',
+      't1.plan.book3': 'Re-entry only if the next candle shows a strong setup of its own.',
+      't1.plan.book4': 'Booking at T1 is not weakness — it is discipline.',
       't1.plan.book5': 'If the trade was not entered yet, skip it entirely.',
       't1.plan.wait1': 'The entry is not confirmed — the candle did not close above the T1 level {t1}.',
       't1.plan.wait2': 'Do not enter or add here.',
@@ -1570,8 +1574,8 @@ window.APP = window.APP || {};
       't1.err.ladder': 'Levels must rise in order: entry < T1 < T2. Mapped from the analyser that is stop loss < entry price < Target 1.',
 
       /* pullback */
-      'pb.warnTitle': 'Critical rule — no stop loss',
-      'pb.warnBody': 'This tool is built on liquidity movement and pullback structure. Do <strong>not</strong> place a stop loss on trades taken from it; standard stop-loss placement does not apply to this setup. Size the position so that the full premium at risk is an amount you accept losing.',
+      'pb.warnTitle': 'Stop loss — the guide and the tool disagree',
+      'pb.warnBody': 'Your strategy guide is explicit that this tool takes <strong>no stop loss</strong> — it is built on liquidity movement, where standard stop placement does not apply. The original tool nonetheless prints one, and it is shown below so both readings are in front of you. If you follow the guide, treat that level as information only and size the position so the full premium at risk is an amount you accept losing.',
       'pb.steps': 'Steps 11–12',
       'pb.steps.title': 'Original first-candle data',
       'pb.steps.desc': 'The same 09:15–09:20 Call and Put candles used in Phase 1. Analyse to get the tradable side.',
@@ -1583,16 +1587,25 @@ window.APP = window.APP || {};
       'pb.conf.low': 'low',
       'pb.conf.moderate': 'moderate',
       'pb.conf.high': 'high',
+      'pb.zonesTitle': 'Entry zones',
+      'pb.zonesDesc': 'Three places to buy the pullback. Zone 2 is the one the stop and targets are measured from.',
+      'pb.zone1': 'ZONE 1 — AGGRESSIVE',
+      'pb.zone1Note': 'earliest fill, worst price',
+      'pb.zone2': 'ZONE 2 — BEST (AVG)',
+      'pb.zone2Note': 'the one to work with',
+      'pb.zone3': 'ZONE 3 — LAST CHANCE',
+      'pb.zone3Note': 'past this, skip the trade',
+      'pb.stopLoss': 'STOP LOSS',
+      'pb.fromZone2': 'Stop and targets are measured from the zone 2 entry.',
+      'pb.rulesTitle': 'Step by step',
+      'pb.rule1': 'Trade {side} only — the other leg is not part of this setup.',
+      'pb.rule2': 'Do not chase. Wait for the pullback to reach zone 2 {zone2}; zone 1 {zone1} is an early fill and zone 3 {zone3} is the last acceptable price.',
+      'pb.rule3': 'Above zone 3 {zone3}, skip the trade entirely — the edge is gone.',
+      'pb.rule4': 'Stop at {sl}. Book 40% at {t1}, another 40% at {t2}, and hold the last 20% toward {t3}.',
+      'pb.rule5': 'Once Target 1 {t1} is hit, move the stop to your zone 2 entry {zone2} so the trade cannot turn into a loss.',
       'pb.step13': 'Step 13',
       'pb.levels': 'Execution levels',
       'pb.levelsDesc': 'Zone 1 is your entry price. Target 1 is your target.',
-      'pb.zone1': 'Zone 1 — entry',
-      'pb.zone1Note': 'pullback into the first-candle range',
-      'pb.zone2': 'Zone 2 — deeper fill',
-      'pb.zone2Note': 'optional second entry if zone 1 is swept',
-      'pb.target': 'Target 1',
-      'pb.targetNote': 'exit level',
-      'pb.noSl': '⚠ No stop loss — do not place one on this setup.',
       'pb.compare': 'Side comparison',
       'pb.compareDesc': 'How the two first-candles scored against each other.',
       'pb.measure': 'Measure',
@@ -2059,10 +2072,10 @@ window.APP = window.APP || {};
       't1.plan.partial3': 'ஒவ்வொரு candle-ம் மேல close ஆகுற வரைக்கும் மட்டும் மீதியை உன் target {t2} நோக்கி hold பண்ணு.',
       't1.plan.partial4': '{t1}-க்கு கீழ close ஆகுற முதல் candle-ல மீதியை exit பண்ணு.',
       't1.plan.partial5': 'இந்த level-ல position add பண்ணாத.',
-      't1.plan.book1': 'இப்பவே full position-ஐ market-ல exit பண்ணு — கையில இருக்கிற profit-ஐ எடு.',
-      't1.plan.book2': 'T2-க்கு wait பண்ணாத; candle continuation-ஐ support பண்ணல.',
-      't1.plan.book3': 'அதே candle-ல திரும்ப enter பண்ணாத.',
-      't1.plan.book4': 'நல்ல body-ம் strong close-ம் இருக்கிற fresh setup-க்கு wait பண்ணு.',
+      't1.plan.book1': 'உடனே full position exit பண்ணு — T1 profit lock பண்ணு.',
+      't1.plan.book2': '{profit} pts profit — இது good trade, greedy வேண்டாம்.',
+      't1.plan.book3': 'Re-entry வேணும்னா → next candle strong setup காட்டணும்.',
+      't1.plan.book4': 'T1-ல book பண்ணது weakness இல்ல — discipline தான்.',
       't1.plan.book5': 'இன்னும் enter பண்ணலைனா — இந்த trade-ஐ முழுசா skip பண்ணு.',
       't1.plan.wait1': 'Entry confirm ஆகல — candle T1 level {t1}-க்கு மேல close ஆகல.',
       't1.plan.wait2': 'இங்க enter பண்ணவோ add பண்ணவோ கூடாது.',
@@ -2072,8 +2085,8 @@ window.APP = window.APP || {};
       't1.err.required': '{field} கட்டாயம் வேணும், 0-க்கு மேல இருக்கணும்.',
       't1.err.ladder': 'Levels இந்த order-ல ஏறணும்: entry < T1 < T2. Analyser-ல இருந்து அது stop loss < entry price < Target 1.',
 
-      'pb.warnTitle': 'CRITICAL RULE — STOP LOSS வேண்டாம்',
-      'pb.warnBody': 'இந்த tool liquidity movement-ம் pullback structure-ம் வெச்சு வேலை பண்ணுது. இதுல எடுக்குற trade-க்கு stop loss <strong>போடாத</strong>; வழக்கமான stop-loss இந்த setup-க்கு பொருந்தாது. முழு premium-ஐயும் இழக்க தயாரா இருக்குற அளவுக்கு மட்டும் position size வெச்சுக்கோ.',
+      'pb.warnTitle': 'Stop loss — guide-ம் tool-ம் வேறவேற சொல்லுது',
+      'pb.warnBody': 'உன் strategy guide இந்த tool-க்கு <strong>stop loss வேண்டாம்</strong>ன்னு தெளிவா சொல்லுது — இது liquidity movement மேல கட்டப்பட்டது, வழக்கமான stop இங்க பொருந்தாது. ஆனா original tool ஒரு stop loss காட்டுது, அதனால ரெண்டையும் கீழ வெச்சிருக்கேன். Guide-ஐ follow பண்றேன்னா அந்த level-ஐ தகவலா மட்டும் எடுத்துக்கோ, முழு premium-ஐயும் இழக்க தயாரா இருக்குற அளவுக்கு மட்டும் size வெச்சுக்கோ.',
       'pb.steps': 'STEPS 11–12',
       'pb.steps.title': 'Original first-candle data',
       'pb.steps.desc': 'Phase 1-ல பயன்படுத்துன அதே 09:15–09:20 Call, Put candles. Analyse பண்ணா trade பண்ண வேண்டிய side கிடைக்கும்.',
@@ -2085,16 +2098,25 @@ window.APP = window.APP || {};
       'pb.conf.low': 'குறைவான',
       'pb.conf.moderate': 'ஓரளவு',
       'pb.conf.high': 'அதிக',
+      'pb.zonesTitle': 'Entry zones',
+      'pb.zonesDesc': 'Pullback-ஐ வாங்க மூணு இடம். Zone 2-ல இருந்துதான் stop-ம் target-ம் அளக்கப்படுது.',
+      'pb.zone1': 'ZONE 1 — AGGRESSIVE',
+      'pb.zone1Note': 'சீக்கிரம் fill ஆகும், ஆனா விலை மோசம்',
+      'pb.zone2': 'ZONE 2 — BEST (AVG)',
+      'pb.zone2Note': 'இதுதான் சரியான entry',
+      'pb.zone3': 'ZONE 3 — LAST CHANCE',
+      'pb.zone3Note': 'இதுக்கு மேல போனா skip',
+      'pb.stopLoss': 'STOP LOSS',
+      'pb.fromZone2': 'Stop-ம் targets-ம் zone 2 entry-ல இருந்து அளக்கப்படுது.',
+      'pb.rulesTitle': 'STEP BY STEP',
+      'pb.rule1': '{side} மட்டும் trade பண்ணு — இன்னொரு leg இந்த setup-ல வராது.',
+      'pb.rule2': 'விரட்டாத. Pullback zone 2 {zone2} வரைக்கும் wait பண்ணு; zone 1 {zone1} சீக்கிரமான fill, zone 3 {zone3} கடைசி ஏத்துக்கக்கூடிய விலை.',
+      'pb.rule3': 'Zone 3 {zone3}-க்கு மேல போனா trade-ஐ முழுசா skip பண்ணு — edge போயிடுச்சு.',
+      'pb.rule4': 'SL {sl}. {t1}-ல 40% book, {t2}-ல இன்னும் 40%, மீதி 20%-ஐ {t3} நோக்கி hold.',
+      'pb.rule5': 'Target 1 {t1} hit ஆனவுடனே SL-ஐ zone 2 entry {zone2}-க்கு நகர்த்து — நஷ்டமா மாறவே கூடாது.',
       'pb.step13': 'STEP 13',
       'pb.levels': 'Execution levels',
       'pb.levelsDesc': 'Zone 1 தான் உன் entry price. Target 1 தான் உன் target.',
-      'pb.zone1': 'ZONE 1 — ENTRY',
-      'pb.zone1Note': 'first-candle range-க்குள்ள pullback',
-      'pb.zone2': 'ZONE 2 — DEEPER FILL',
-      'pb.zone2Note': 'zone 1 sweep ஆனா optional second entry',
-      'pb.target': 'TARGET 1',
-      'pb.targetNote': 'exit level',
-      'pb.noSl': '⚠ Stop loss வேண்டாம் — இந்த setup-ல போடவே கூடாது.',
       'pb.compare': 'Side comparison',
       'pb.compareDesc': 'ரெண்டு first-candle-ம் எப்படி score பண்ணுச்சு.',
       'pb.measure': 'Measure',
@@ -2372,14 +2394,19 @@ window.APP = window.APP || {};
     minClosePos: 0.50,      // close must sit in the upper half of its range
     holdThreshold: 70,      // momentum at or above this => HOLD T2
     partialThreshold: 40,   // momentum at or above this => PARTIAL BOOK, below => BOOK NOW
-    sideAwareDirection: 0,  // 0 = rising premium is good on both sides (you are long the
-                            // option either way); 1 = a put trade wants a falling candle,
-                            // reproducing the original helper tool's behaviour
+    sideAwareDirection: 1,  // 1 = a put trade wants a falling candle, matching the original
+                            // tool; 0 = rising premium counts as good on both sides, which is
+                            // the truer reading when the candle is the option's own premium
 
     /* Stoploss Pullback Entry */
-    zone1Retrace: 0.382,    // zone 1 = low + (fraction x range)
-    zone2Retrace: 0.236,    // deeper liquidity fill
-    pullbackTargetMult: 1.0, // target 1 = high + (multiplier x range)
+    pbZone1: 0.25,          // aggressive entry  = low + (fraction x range)
+    pbZone2: 0.38,          // best / average entry
+    pbZone3: 0.50,          // last chance
+    pbSlPct: 5,             // stop loss = low less this %, to the nearest rupee
+    pbT1Mult: 0.8,          // targets are (multiplier x range) above the zone 2 entry,
+    pbT2Mult: 1.4,          // each rounded to the nearest 10 points
+    pbT3Mult: 2.2,
+    pbTargetRound: 10,
 
     /* Trade Signal — market-standard filter thresholds */
     rsiMin: 55,             // call wants RSI in [rsiMin, rsiMax]; put mirrors it
@@ -2983,10 +3010,17 @@ window.APP = window.APP || {};
   var U = APP.util;
   var side = 'call';
 
+  /* Weights recovered from every momentum score the original has published:
+       0%  direction fail, body weak,     close fail
+       2%  direction fail, body moderate, close fail
+      15%  direction fail, body strong,   close fail
+      87%  direction pass, body moderate, close pass
+     Body is pinned exactly at 15 / 2 / 0. Direction and close must total 85;
+     no published case separates them, so they are split 40 / 45. */
   var W_DIRECTION = 40;
   var W_BODY_STRONG = 15;
-  var W_BODY_MODERATE = 7.5;
-  var W_CLOSE = 40;
+  var W_BODY_MODERATE = 2;
+  var W_CLOSE = 45;
 
   function t(key, vars) { return APP.i18n.t(key, vars); }
   function money(n) { return '₹' + U.fmt(n); }
@@ -3086,10 +3120,17 @@ window.APP = window.APP || {};
   }
 
   /* ---------- action plan ---------- */
+  var PLAN_STEPS = { hold: 5, partial: 5, book: 4, wait: 5 };
+
   function actionPlan(verdict, levels) {
-    var vars = { entry: money(levels.entry), t1: money(levels.t1), t2: money(levels.t2) };
+    var vars = {
+      entry: money(levels.entry), t1: money(levels.t1), t2: money(levels.t2),
+      profit: U.fmt(levels.t1 - levels.entry)
+    };
     var prefix = 't1.plan.' + verdict;
-    return [1, 2, 3, 4, 5].map(function (n) { return t(prefix + n, vars); });
+    var out = [];
+    for (var n = 1; n <= PLAN_STEPS[verdict]; n++) out.push(t(prefix + n, vars));
+    return out;
   }
 
   /* ---------- what the mapped ladder means in trade terms ---------- */
@@ -3334,13 +3375,29 @@ window.APP = window.APP || {};
     return { stats: s, relRange: relRange, score: score };
   }
 
+  /* Reproduces the original tool on the reference leg (O61 H97 L61 C86):
+     zones 70 / 74.7 / 79, stop 58, targets 104.7 / 124.7 / 154.7. */
   function levelsFor(candle, cfg) {
     var range = candle.h - candle.l;
+    var zone2 = candle.l + cfg.pbZone2 * range;
+    var step = cfg.pbTargetRound || 10;
+    var roundStep = function (mult) { return Math.round((mult * range) / step) * step; };
+
+    var t1Step = roundStep(cfg.pbT1Mult);
+    var t2Step = roundStep(cfg.pbT2Mult);
+    var t3Step = roundStep(cfg.pbT3Mult);
+
     return {
-      zone1: U.toTick(candle.l + cfg.zone1Retrace * range, cfg.tickSize),
-      zone2: U.toTick(candle.l + cfg.zone2Retrace * range, cfg.tickSize),
-      target1: U.toTick(candle.h + cfg.pullbackTargetMult * range, cfg.tickSize),
-      range: range
+      range: range,
+      zone1: candle.l + cfg.pbZone1 * range,
+      zone2: zone2,
+      zone3: candle.l + cfg.pbZone3 * range,
+      stopLoss: Math.round(candle.l * (1 - cfg.pbSlPct / 100)),
+      targets: [
+        { level: zone2 + t1Step, step: t1Step },
+        { level: zone2 + t2Step, step: t2Step },
+        { level: zone2 + t3Step, step: t3Step }
+      ]
     };
   }
 
@@ -3366,6 +3423,13 @@ window.APP = window.APP || {};
     };
   }
 
+  /* The original prints one decimal with a trailing .0 trimmed. */
+  function px(n) {
+    if (!isFinite(n)) return '—';
+    var s1 = (Math.round(n * 10) / 10).toFixed(1);
+    return '₹' + (s1.endsWith('.0') ? s1.slice(0, -2) : s1);
+  }
+
   /* ---------- rendering ---------- */
   function render(result) {
     var isCall = result.side === 'call';
@@ -3381,19 +3445,49 @@ window.APP = window.APP || {};
         confidence: t('pb.conf.' + result.confidence)
       })) + '</p>';
 
+    var L = result.levels;
+    function zone(cls, label, value, note) {
+      return '<div class="zone ' + cls + '"><div class="zone-label">' + U.escapeHtml(label) + '</div>' +
+             '<div class="zone-value">' + px(value) + '</div>' +
+             '<div class="zone-note">' + U.escapeHtml(note) + '</div></div>';
+    }
+    function trow(label, value, pts, cls, badge) {
+      return '<tr class="' + cls + '">' +
+        '<td class="tgt-label">' + U.escapeHtml(label) + '</td>' +
+        '<td class="tgt-level">' + px(value) + '</td>' +
+        '<td class="tgt-pts">' + pts + '</td>' +
+        '<td class="tgt-action"><span class="tgt-badge ' + cls + '">' + U.escapeHtml(badge) + '</span></td></tr>';
+    }
+
     U.$('pb-levels').innerHTML = '' +
       '<div class="card-head"><h3><span class="step-pill">' + U.escapeHtml(t('pb.step13')) + '</span> ' +
-        U.escapeHtml(t('pb.levels')) + '</h3>' +
-      '<p class="muted">' + U.escapeHtml(t('pb.levelsDesc')) + '</p></div>' +
+        U.escapeHtml(t('pb.zonesTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('pb.zonesDesc')) + '</p></div>' +
       '<div class="zone-grid">' +
-        '<div class="zone zone-1"><div class="zone-label">' + U.escapeHtml(t('pb.zone1')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.zone1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone1Note')) + '</div></div>' +
-        '<div class="zone zone-2"><div class="zone-label">' + U.escapeHtml(t('pb.zone2')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.zone2) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.zone2Note')) + '</div></div>' +
-        '<div class="zone zone-t"><div class="zone-label">' + U.escapeHtml(t('pb.target')) + '</div><div class="zone-value">' +
-          U.fmt(result.levels.target1) + '</div><div class="zone-note">' + U.escapeHtml(t('pb.targetNote')) + '</div></div>' +
+        zone('zone-1', t('pb.zone1'), L.zone1, t('pb.zone1Note')) +
+        zone('zone-2 is-best', t('pb.zone2'), L.zone2, t('pb.zone2Note')) +
+        zone('zone-3', t('pb.zone3'), L.zone3, t('pb.zone3Note')) +
       '</div>' +
-      '<p class="no-sl">' + U.escapeHtml(t('pb.noSl')) + '</p>';
+      '<div class="table-scroll" style="margin-top:16px"><table class="targets"><tbody>' +
+        trow(t('pb.stopLoss'), L.stopLoss, '−' + U.fmt(L.zone2 - L.stopLoss, 1) + t('an.pts'), 'row-sl', t('an.exitAll')) +
+        trow(t('an.target1'), L.targets[0].level, '+' + L.targets[0].step + t('an.pts'), 'row-t1', t('an.book', { pct: 40 })) +
+        trow(t('an.target2'), L.targets[1].level, '+' + L.targets[1].step + t('an.pts'), 'row-t2', t('an.book', { pct: 40 })) +
+        trow(t('an.target3'), L.targets[2].level, '+' + L.targets[2].step + t('an.pts'), 'row-t3', t('an.hold', { pct: 20 })) +
+      '</tbody></table></div>' +
+      '<p class="muted small" style="margin-top:10px">' + U.escapeHtml(t('pb.fromZone2')) + '</p>';
+
+    U.$('pb-rules').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('pb.rulesTitle')) + '</h3></div>' +
+      '<ol class="action-plan">' +
+        [1, 2, 3, 4, 5].map(function (n) {
+          return '<li>' + U.escapeHtml(t('pb.rule' + n, {
+            side: t(isCall ? 'an.buyCall' : 'an.buyPut'),
+            zone1: px(L.zone1), zone2: px(L.zone2), zone3: px(L.zone3),
+            sl: px(L.stopLoss), t1: px(L.targets[0].level),
+            t2: px(L.targets[1].level), t3: px(L.targets[2].level)
+          })) + '</li>';
+        }).join('') +
+      '</ol>';
 
     function row(name, ceVal, peVal, ceWins) {
       return '<tr><td>' + U.escapeHtml(name) + '</td>' +
