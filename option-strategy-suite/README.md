@@ -194,14 +194,21 @@ node tools/nse-fetch.js --dump CE     # the raw tick payload it reads
 which needs an explicit expiry, and the expiry list comes from its own endpoint. Rather than pick one and
 hope, the helper tries them in order and tells you which answered:
 
-1. `/api/option-chain-contract-info` for the expiry list, then `/api/option-chain-v3` for the nearest two
+1. `/api/option-chain-contract-info` for the expiry list, then `/api/option-chain-v3` for each expiry
 2. `/api/option-chain-indices` (legacy, whole chain in one call)
+
+**v3 without a valid expiry answers `200 {}`, not an error**, so an empty object is treated as "wrong
+expiry, keep trying" rather than success. If no endpoint publishes the expiry list, the helper falls back to
+the calendar and tries the next six weekly expiries — NIFTY weeklies are Tuesdays, and `--expiry-day` covers
+the next time NSE moves them.
 
 `--check` prints the winner. If both are dead it lists every URL tried with its status, and you can force one:
 
 ```sh
+node tools/nse-fetch.js --dump expiries              # what it will try, and where from
+node tools/nse-fetch.js --expiry 30-Oct-2025         # skip discovery entirely
+node tools/nse-fetch.js --expiry-day 4               # if weeklies move back to Thursday
 node tools/nse-fetch.js --chain-url "https://www.nseindia.com/api/whatever-works"
-node tools/nse-fetch.js --expiry 30-Oct-2025      # skip expiry discovery
 ```
 
 The payload readers accept `records.data`, a flat `data`, or `filtered.data`, and find the spot from

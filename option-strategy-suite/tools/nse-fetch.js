@@ -5,7 +5,8 @@
  *   node tools/nse-fetch.js --mock       → deterministic fixture data, no network
  *   node tools/nse-fetch.js --check      → does this work on my machine? stage by stage
  *   node tools/nse-fetch.js --dump CE    → print the raw tick payload it is reading
- *   node tools/nse-fetch.js --dump chain → print which chain endpoint answered, and its shape
+ *   node tools/nse-fetch.js --dump chain    → which chain endpoint answered, and its shape
+ *   node tools/nse-fetch.js --dump expiries → the expiry dates it will try
  *
  * Why this exists: nseindia.com sends no CORS headers and gates its APIs behind
  * session cookies set by a browser-like homepage visit. A static page therefore
@@ -30,6 +31,7 @@ const has = (name) => ARGS.includes('--' + name);
 const BASE = (flag('base', 'https://www.nseindia.com')).replace(/\/+$/, '');
 const CHAIN_URL = flag('chain-url', '');     /* force one endpoint */
 const EXPIRY = flag('expiry', '');           /* force one expiry */
+const EXPIRY_DAY = Number(flag('expiry-day', 2)); /* 0=Sun … 2=Tue, NIFTY weekly */
 const PORT = Number(flag('port', 8123));
 const HOST = flag('host', '127.0.0.1');
 const SYMBOL = flag('symbol', 'NIFTY').toUpperCase();
@@ -187,6 +189,8 @@ async function nseJson(url, attempt = 0) {
    replacement is option-chain-v3, which needs an explicit expiry, and the
    expiry list comes from its own endpoint. Rather than pick one and hope, try
    them in order and report which answered — see --check and --dump chain. */
+var lastExpirySource = '';
+
 function chainRows(payload) {
   if (!payload) return [];
   if (Array.isArray(payload.data)) return payload.data;
@@ -222,19 +226,44 @@ function chainExpiries(payload) {
       || [];
 }
 
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** NSE's own format, e.g. 30-Oct-2025. */
+function formatExpiry(ms) {
+  var p = istParts(ms);
+  return String(p.d).padStart(2, '0') + '-' + MONTHS[p.m] + '-' + p.y;
+}
+
+/** Upcoming weekly expiries, so a missing expiry list is not fatal. NIFTY
+    weeklies are Tuesdays; --expiry-day covers the next time NSE moves them. */
+function upcomingExpiries(count) {
+  var out = [];
+  var day = 86400000;
+  var start = Date.now();
+  for (var i = 0; i < 70 && out.length < count; i++) {
+    var ms = start + i * day;
+    var d = new Date(ms + IST_OFFSET_MIN * 60000);
+    if (d.getUTCDay() === EXPIRY_DAY) out.push(formatExpiry(ms));
+  }
+  return out;
+}
+
+/** Returns { list, source } so --check can say where the expiries came from. */
 async function expiryList() {
-  if (EXPIRY) return [EXPIRY];
-  var urls = [
-    BASE + '/api/option-chain-contract-info?symbol=' + encodeURIComponent(SYMBOL),
-    BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL)
+  if (EXPIRY) return { list: [EXPIRY], source: '--expiry flag' };
+
+  var sources = [
+    ['contract-info', BASE + '/api/option-chain-contract-info?symbol=' + encodeURIComponent(SYMBOL)],
+    ['legacy chain', BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL)]
   ];
-  for (var i = 0; i < urls.length; i++) {
+  for (var i = 0; i < sources.length; i++) {
     try {
-      var list = chainExpiries(await nseJson(urls[i]));
-      if (list.length) return list;
+      var list = chainExpiries(await nseJson(sources[i][1]));
+      if (list.length) return { list: list, source: sources[i][0] };
     } catch (e) { /* try the next one */ }
   }
-  return [];
+  /* Nothing published one — fall back to the calendar. */
+  return { list: upcomingExpiries(6), source: 'calendar (next ' + 6 + ' weeklies)' };
 }
 
 /** Returns { payload, url, expiry } from whichever endpoint answers. */
@@ -258,12 +287,14 @@ async function optionChain() {
     throw new Error('forced --chain-url failed:\n  ' + tried.join('\n  '));
   }
 
-  /* 1. current: v3, one expiry at a time */
-  var expiries = await expiryList();
-  for (var i = 0; i < Math.min(expiries.length, 2); i++) {
+  /* 1. current: v3, which needs an explicit expiry — without one it answers
+        200 with an empty object, so every candidate has to be tried. */
+  var found = await expiryList();
+  lastExpirySource = found.source;
+  for (var i = 0; i < found.list.length; i++) {
     var v3 = await attempt(BASE + '/api/option-chain-v3?type=Indices&symbol=' +
-                           encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(expiries[i]));
-    if (v3) { v3.expiry = expiries[i]; return v3; }
+                           encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(found.list[i]));
+    if (v3) { v3.expiry = found.list[i]; v3.expirySource = found.source; return v3; }
   }
 
   /* 2. legacy: whole chain in one call */
@@ -271,8 +302,11 @@ async function optionChain() {
   if (legacy) return legacy;
 
   throw new Error(
-    'no option-chain endpoint answered. Tried:\n  ' + tried.join('\n  ') +
-    '\nNSE moves these paths; pass a working one with --chain-url "<url>".'
+    'no option-chain endpoint returned strike rows. Tried:\n  ' + tried.join('\n  ') +
+    '\nExpiries came from: ' + lastExpirySource +
+    '\nAn empty {} from v3 means the expiry value is wrong. Open' +
+    '\n  ' + BASE + '/api/option-chain-contract-info?symbol=' + SYMBOL +
+    '\nin your browser, then pass a date from it: --expiry 30-Oct-2025'
   );
 }
 
@@ -424,6 +458,14 @@ async function dump(which) {
   const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
                  (chainRows(chain.payload)[0] || {}).expiryDate;
 
+  if (which.toLowerCase() === 'expiries') {
+    var found = await expiryList();
+    console.log('source:', found.source);
+    console.log('expiries:', found.list.join(', ') || '(none)');
+    console.log('calendar guesses would be:', upcomingExpiries(6).join(', '));
+    return;
+  }
+
   if (which.toLowerCase() === 'chain') {
     console.log('endpoint that answered:', chain.url);
     console.log('top-level keys:', Object.keys(chain.payload).join(', '));
@@ -490,8 +532,9 @@ async function selfCheck() {
 
   await step('Option chain endpoint', async () => {
     chain = await optionChain();
-    return `${chainRows(chain.payload).length} strike rows from ${chain.url.replace(BASE, '')}`;
-  }, 'NSE moves these paths. Pass a working one with --chain-url "<url>".');
+    return `${chainRows(chain.payload).length} strike rows from ${chain.url.replace(BASE, '')}` +
+           (chain.expirySource ? ` (expiry via ${chain.expirySource})` : '');
+  }, 'v3 needs a valid expiry — without one it answers {}. See the error above for how to supply one.');
 
   if (!chain) { summarise(results); return results; }
 
@@ -573,5 +616,6 @@ if (require.main === module) {
 
 module.exports = {
   aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
-  chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain, selfCheck, server
+  chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
+  formatExpiry, upcomingExpiries, expiryList, selfCheck, server
 };
