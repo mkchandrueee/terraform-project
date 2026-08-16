@@ -22,15 +22,18 @@ The tools hand off to each other:
 
 | Button | Fills |
 |---|---|
-| *Send CALL / PUT to T1 Helper* | entry ← **entry price**, T1 ← **Target 1**, T2 ← **Target 2** |
+| *Send CALL / PUT to T1 Helper* | entry ← **stop loss**, T1 ← **entry price**, T2 ← **Target 1** — steps 6–7 of the guide, verbatim |
 | *Copy from analyser* (pullback) | the two original first-candle OHLC sets |
 | *Levels from call / put* (signal) | entry ← entry price, stop ← stop loss, T1 ← Target 1, T2 ← Target 1 + range |
 
-The PDF describes the T1 hand-off as *entry ← stop loss, T1 ← entry price, T2 ← Target 1*. That does not match
-the tools: every reference ladder in the original helper is **equally spaced**, which only holds for entry /
-Target 1 / Target 2 under the model above, and it is why its reward ratio always reads 1.00×. The PDF appears
-to describe an older build, so the hand-off uses entry → entry, Target 1 → T1, Target 2 → T2. A line under
-those fields spells the reading out so nothing looks shuffled.
+The T1 hand-off follows the strategy guide's steps 6–7 exactly — entry field ← stop loss, T1 field ← entry
+price, T2 field ← Target 1 — and the T1 Decision Helper's rules are the guide's throughout: the decide
+outcomes are *hold T2* versus *book now / partial book*, and condition check 4 is the step-10 gate that
+decides whether the trade is taken at all. A line under the three fields names what each one holds, since the
+mapping reads oddly at a glance.
+
+Because the ladder is deliberately shifted, its three levels are **not** equally spaced under the analyser
+model above, so the T1→T2 reward ratio reads whatever the two gaps give rather than a constant 1.00×.
 
 ## About the formulas
 
