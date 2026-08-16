@@ -165,6 +165,29 @@
       </div>
     </div>
 
+    <div class="card af-card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="af.pill"></span> <span data-i18n="af.title"></span></h2>
+        <p class="muted" data-i18n="af.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="af-row">
+          <label class="field">
+            <span data-i18n="af.endpoint"></span>
+            <input type="text" id="af-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" />
+          </label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-af-now" data-i18n="af.fetchNow"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-arm" data-i18n="af.arm"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-disarm" data-i18n="af.disarm" hidden></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-af-health" data-i18n="af.check"></button>
+          </div>
+        </div>
+        <p class="af-status af-idle" id="af-status" role="status" aria-live="polite"></p>
+        <p class="muted small af-note" data-i18n-html="af.note"></p>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-head">
         <h2><span class="step-pill" data-i18n="an.steps23"></span> <span data-i18n="an.steps23.title"></span></h2>
@@ -491,6 +514,7 @@
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/analyser.js"></script>
+<script src="assets/js/autofetch.js"></script>
 <script src="assets/js/t1helper.js"></script>
 <script src="assets/js/pullback.js"></script>
 <script src="assets/js/signal.js"></script>

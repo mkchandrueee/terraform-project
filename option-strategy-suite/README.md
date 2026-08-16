@@ -142,6 +142,46 @@ arithmetic, and it is the number that decides whether a setup can pay. The verdi
 a trade is only *take* when the estimate clears breakeven **and** expected value is positive — so an
 optimistic base rate cannot on its own turn a losing structure into a green badge.
 
+## Auto-fetching the first candle from NSE
+
+The Analyser tab can fill the CE/PE OHLC fields itself instead of you typing them at 09:21. Two things make
+this need a helper process rather than a `fetch()` in the page:
+
+- **NSE sends no CORS headers.** A browser blocks the response before your code sees it, whatever you do.
+- **NSE gates its APIs behind session cookies** set by a browser-like visit to the site, with a matching
+  `User-Agent` and `Referer`.
+
+So `tools/nse-fetch.js` does the handshake on your machine and re-serves the result on localhost with CORS
+enabled. Node 18+, no dependencies:
+
+```sh
+node tools/nse-fetch.js            # http://127.0.0.1:8123
+node tools/nse-fetch.js --mock     # fixture data, no network — good for a dry run
+node tools/nse-fetch.js --dump CE  # print the raw NSE payload it reads
+```
+
+Then on the Analyser tab: **Check helper** confirms it is up, **Fetch now** pulls immediately, and
+**Auto-fetch at 09:21** arms it to fire at 09:21:05 — just after the 09:20 candle closes — retrying every 15
+seconds until 09:22:30 if the feed lags. It fills both option candles and the NIFTY open, then runs the
+analysis. If the helper is not running you get the exact command to start it and everything still works typed
+in by hand.
+
+What the helper does: reads the option chain for the nearest expiry, takes the ATM strike (rounded **down**, as
+the guide does), pulls each leg's tick series and folds the ticks between 09:15 and 09:20 IST into one OHLC
+candle. The window is anchored to IST regardless of your machine's timezone, and the closed candle is cached
+for the day.
+
+### Verify this against your own feed before trusting it
+
+NSE's chart endpoint is undocumented and its tick timestamps are the one part of this that could differ from
+what the helper assumes. **This has not been tested against live NSE** — the environment it was written in
+blocks nseindia.com, so it was verified end to end against a fixture instead. Run `--dump CE` once during
+market hours: it prints the raw ticks alongside how the helper reads them, so a mismatch is obvious in one
+glance. If the timestamps are offset, `--from`/`--to` let you correct the window without touching the code.
+
+Whatever the helper fills in, the values land in ordinary editable fields — check them against your broker
+terminal before you trade, exactly as you would if you had typed them.
+
 ## Notifications
 
 The signal can fire a browser notification carrying the verdict, entry, stop, target, win estimate, expected
@@ -199,6 +239,9 @@ needed.
 option-strategy-suite/
 ├── index.html                 markup for all five tabs
 ├── serve.sh                   one-command local server
+├── build.py                   single-file bundler
+├── tools/
+│   └── nse-fetch.js           local NSE helper (session, ticks → 09:15–09:20 candle)
 └── assets/
     ├── css/styles.css
     └── js/
@@ -208,6 +251,7 @@ option-strategy-suite/
         ├── analyser.js        tool 1
         ├── t1helper.js        tool 2
         ├── pullback.js        tool 3
+        ├── autofetch.js       talks to the local NSE helper
         ├── signal.js          tool 4 — confluence, win estimate, metrics
         ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference

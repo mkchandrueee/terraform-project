@@ -489,6 +489,28 @@ input[type=number] { -moz-appearance: textfield; }
 .log-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .log-body span { color: var(--text-dim); font-family: var(--mono); font-size: 12.5px; }
 .log-empty { padding: 10px 2px; }
+
+/* ---------- auto-fetch ---------- */
+.af-card { border-left: 3px solid var(--info); }
+.af-row { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: end; }
+@media (min-width: 820px) { .af-row { grid-template-columns: 280px 1fr; } }
+.af-row .row-actions { margin-top: 0; }
+.af-status {
+  margin-top: 14px; font-size: 13px; padding: 10px 13px;
+  border: 1px solid var(--line); border-left-width: 3px;
+  border-radius: var(--radius-sm); background: #0c141d;
+}
+.af-idle  { border-left-color: var(--line); color: var(--text-dim); }
+.af-busy  { border-left-color: var(--info); color: var(--info); }
+.af-armed { border-left-color: var(--warn); color: var(--warn); }
+.af-ok    { border-left-color: var(--accent); color: var(--accent); }
+.af-err   { border-left-color: var(--danger); color: var(--danger); }
+.af-note { margin-top: 12px; }
+.af-note code {
+  font-family: var(--mono); font-size: 12px;
+  background: #0c141d; border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 5px; color: var(--accent);
+}
 </style>
 </head>
 <body>
@@ -644,6 +666,29 @@ input[type=number] { -moz-appearance: textfield; }
           <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="23670" />
         </label>
         <div class="atm-result" id="atm-result" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="card af-card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="af.pill"></span> <span data-i18n="af.title"></span></h2>
+        <p class="muted" data-i18n="af.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="af-row">
+          <label class="field">
+            <span data-i18n="af.endpoint"></span>
+            <input type="text" id="af-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" />
+          </label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-af-now" data-i18n="af.fetchNow"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-arm" data-i18n="af.arm"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-disarm" data-i18n="af.disarm" hidden></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-af-health" data-i18n="af.check"></button>
+          </div>
+        </div>
+        <p class="af-status af-idle" id="af-status" role="status" aria-live="polite"></p>
+        <p class="muted small af-note" data-i18n-html="af.note"></p>
       </div>
     </div>
 
@@ -1240,6 +1285,29 @@ window.APP = window.APP || {};
       'an.rule.title': 'Entry confirmation rule',
       'an.rule.body': 'Do <strong>not</strong> enter the moment price touches the entry price. Wait for a full 5-minute candle on the option chart to <strong>close above</strong> the entry price. Only then is the entry confirmed — and that same candle is the one you feed into the T1 Decision Helper.',
 
+      /* auto-fetch */
+      'af.pill': 'Automate',
+      'af.title': 'Auto-fetch the first candle from NSE',
+      'af.desc': 'Pulls the 09:15–09:20 candle for the ATM call and put and fills the fields below. Needs the local helper running — the page cannot reach NSE on its own.',
+      'af.endpoint': 'Local helper address',
+      'af.fetchNow': 'Fetch now',
+      'af.arm': 'Auto-fetch at 09:21',
+      'af.disarm': 'Cancel auto-fetch',
+      'af.check': 'Check helper',
+      'af.idle': 'Idle — fetch now, or arm it to fire just after the 09:20 candle closes.',
+      'af.checking': 'Checking the helper…',
+      'af.fetching': 'Fetching from NSE…',
+      'af.armed': 'Armed — will fetch at {time} and retry until 09:22:30 if the feed lags.',
+      'af.filled': 'Filled from {source}: ATM {atm}, 09:15–09:20 candle built from {ticks} ticks, as of {time} IST.',
+      'af.healthy': 'Helper is up — {mode}, {symbol}, its clock reads {ist} IST.',
+      'af.helperOffline': 'No helper at {endpoint}. Start it with: node tools/nse-fetch.js',
+      'af.failed': 'Fetch failed — {reason}',
+      'af.badPayload': 'the helper returned an incomplete candle',
+      'af.windowMissed': 'Gave up at 09:22:30 without a usable candle — enter the values by hand.',
+      'af.mockSource': 'mock data',
+      'af.liveSource': 'live NSE',
+      'af.note': 'NSE sends no CORS headers and requires session cookies, so a browser cannot call it directly — <code>tools/nse-fetch.js</code> does the handshake on your machine and re-serves the candle on localhost. Everything still works typed in by hand if you would rather not run it.',
+
       /* T1 helper */
       't1.badge': 'T1 Decision Helper',
       't1.hero': 'Hold to T2, or book here?',
@@ -1665,6 +1733,29 @@ window.APP = window.APP || {};
       'an.rule': 'STEPS 4–5',
       'an.rule.title': 'Entry confirmation rule',
       'an.rule.body': 'Price entry price-ஐ touch பண்ணுன உடனே <strong>enter பண்ணாத</strong>. Option chart-ல ஒரு முழு 5-minute candle entry price-க்கு <strong>மேல close</strong> ஆகணும். அப்பதான் entry confirm — அதே candle-ஐதான் T1 Decision Helper-ல போடணும்.',
+
+      /* auto-fetch */
+      'af.pill': 'AUTOMATE',
+      'af.title': 'NSE-ல இருந்து first candle-ஐ தானா எடு',
+      'af.desc': 'ATM call, put-ஓட 09:15–09:20 candle-ஐ எடுத்து கீழ இருக்கிற fields-ல நிரப்பும். Local helper ஓடிக்கிட்டு இருக்கணும் — page தானா NSE-ஐ தொட முடியாது.',
+      'af.endpoint': 'Local helper address',
+      'af.fetchNow': 'இப்போ எடு',
+      'af.arm': '09:21-க்கு தானா எடு',
+      'af.disarm': 'Auto-fetch cancel',
+      'af.check': 'Helper-ஐ check பண்ணு',
+      'af.idle': 'Idle — இப்பவே எடு, அல்லது 09:20 candle close ஆனவுடனே எடுக்க arm பண்ணு.',
+      'af.checking': 'Helper-ஐ check பண்றேன்…',
+      'af.fetching': 'NSE-ல இருந்து எடுக்குறேன்…',
+      'af.armed': 'Armed — {time}-க்கு எடுக்கும், feed தாமதம் ஆனா 09:22:30 வரை retry பண்ணும்.',
+      'af.filled': '{source}-ல இருந்து நிரப்பியாச்சு: ATM {atm}, {ticks} ticks வெச்சு 09:15–09:20 candle, {time} IST நிலவரம்.',
+      'af.healthy': 'Helper ஓடுது — {mode}, {symbol}, அதோட clock {ist} IST காட்டுது.',
+      'af.helperOffline': '{endpoint}-ல helper இல்ல. இப்படி start பண்ணு: node tools/nse-fetch.js',
+      'af.failed': 'Fetch fail ஆச்சு — {reason}',
+      'af.badPayload': 'helper முழுசான candle கொடுக்கல',
+      'af.windowMissed': '09:22:30 வரை நல்ல candle கிடைக்கல — கையால values போடு.',
+      'af.mockSource': 'mock data',
+      'af.liveSource': 'live NSE',
+      'af.note': 'NSE CORS headers அனுப்பாது, session cookies-ம் கேட்குது — அதனால browser நேரடியா அதை கூப்பிட முடியாது. <code>tools/nse-fetch.js</code> உன் machine-ல handshake பண்ணி candle-ஐ localhost-ல மறுபடி serve பண்ணும். இதை ஓட்ட விருப்பம் இல்லைனா, கையால type பண்ணுனாலும் எல்லாம் வேலை செய்யும்.',
 
       't1.badge': 'T1 DECISION HELPER',
       't1.hero': 'HOLD போகணுமா, BOOK பண்ணணுமா?',
@@ -2338,6 +2429,205 @@ window.APP = window.APP || {};
     analyseSide: analyseSide,
     atmStrike: atmStrike,
     renderAtm: renderAtm
+  };
+})(window.APP);
+</script>
+<script>
+/* Auto-fill the first-candle values from the local NSE helper.
+
+   The page cannot call nseindia.com itself — NSE sends no CORS headers and
+   gates its APIs behind session cookies, so the browser blocks the request
+   before it leaves the tab. tools/nse-fetch.js does the handshake on your
+   machine and re-serves the candle on localhost; this module talks to that.
+
+   Nothing here is required: if the helper is not running you get a clear
+   message and type the four values in as before. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  var STORAGE_KEY = 'nifty-option-suite:endpoint';
+  var DEFAULT_ENDPOINT = 'http://127.0.0.1:8123';
+
+  /* The window the user asked for: fire just after the 09:20 candle closes and
+     keep retrying for a minute in case the feed lags. */
+  var ARM_AT = { h: 9, m: 21, s: 5 };
+  var RETRY_MS = 15000;
+  var GIVE_UP = { h: 9, m: 22, s: 30 };
+
+  var armTimer = null;
+  var retryTimer = null;
+  var lastPayload = null;
+
+  function endpoint() {
+    var el = U.$('af-endpoint');
+    var value = (el && el.value || '').trim().replace(/\/+$/, '');
+    return value || DEFAULT_ENDPOINT;
+  }
+
+  function saveEndpoint() {
+    try { window.localStorage.setItem(STORAGE_KEY, endpoint()); } catch (e) { /* ignore */ }
+  }
+
+  function loadEndpoint() {
+    var stored = null;
+    try { stored = window.localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+    U.$('af-endpoint').value = stored || DEFAULT_ENDPOINT;
+  }
+
+  function status(kind, message) {
+    var el = U.$('af-status');
+    el.className = 'af-status af-' + kind;
+    el.textContent = message;
+  }
+
+  function clock(date) {
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+  }
+
+  function atTime(spec, from) {
+    var d = new Date(from);
+    d.setHours(spec.h, spec.m, spec.s, 0);
+    return d;
+  }
+
+  /* ---------- fetching ---------- */
+  function request(fresh) {
+    var url = endpoint() + '/first-candle' + (fresh ? '?fresh=1' : '');
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timeout = window.setTimeout(function () { if (controller) controller.abort(); }, 12000);
+
+    return window.fetch(url, { signal: controller ? controller.signal : undefined })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body && body.error ? body.error : 'HTTP ' + res.status);
+          return body;
+        });
+      })
+      .finally(function () { window.clearTimeout(timeout); });
+  }
+
+  function validPayload(p) {
+    if (!p || !p.ce || !p.pe) return false;
+    return ['o', 'h', 'l', 'c'].every(function (k) {
+      return isFinite(p.ce[k]) && p.ce[k] > 0 && isFinite(p.pe[k]) && p.pe[k] > 0;
+    });
+  }
+
+  function applyPayload(p) {
+    U.writeCandle('an-ce', p.ce);
+    U.writeCandle('an-pe', p.pe);
+    if (isFinite(p.underlying)) {
+      U.$('atm-open').value = String(p.underlying);
+      APP.analyser.renderAtm();
+    }
+    lastPayload = p;
+    APP.analyser.run();
+  }
+
+  function fetchNow(fresh, quiet) {
+    status('busy', t('af.fetching'));
+    return request(fresh).then(function (p) {
+      if (!validPayload(p)) throw new Error(t('af.badPayload'));
+      applyPayload(p);
+      status('ok', t('af.filled', {
+        atm: U.fmt(p.atm, 0),
+        time: p.asOf || clock(new Date()),
+        source: p.source === 'mock' ? t('af.mockSource') : p.source,
+        ticks: (p.ce.ticks || 0) + (p.pe.ticks || 0)
+      }));
+      return p;
+    }).catch(function (err) {
+      var msg = String(err && err.message || err);
+      var offline = /Failed to fetch|NetworkError|abort/i.test(msg);
+      status('err', offline
+        ? t('af.helperOffline', { endpoint: endpoint() })
+        : t('af.failed', { reason: msg }));
+      if (!quiet) throw err;
+      return null;
+    });
+  }
+
+  /* ---------- the 09:21 schedule ---------- */
+  function stopRetries() {
+    if (retryTimer) { window.clearInterval(retryTimer); retryTimer = null; }
+  }
+
+  function runWindow() {
+    stopRetries();
+    var giveUp = atTime(GIVE_UP, new Date());
+
+    var attempt = function () {
+      if (Date.now() > giveUp.getTime()) {
+        stopRetries();
+        status('err', t('af.windowMissed'));
+        disarm(true);
+        return;
+      }
+      fetchNow(true, true).then(function (p) {
+        if (p) { stopRetries(); disarm(true); }
+      });
+    };
+
+    attempt();
+    retryTimer = window.setInterval(attempt, RETRY_MS);
+  }
+
+  function arm() {
+    disarm(true);
+    var now = new Date();
+    var due = atTime(ARM_AT, now);
+    if (due.getTime() <= now.getTime()) due.setDate(due.getDate() + 1);
+
+    armTimer = window.setTimeout(runWindow, due.getTime() - now.getTime());
+    U.$('btn-af-arm').hidden = true;
+    U.$('btn-af-disarm').hidden = false;
+    status('armed', t('af.armed', { time: clock(due) }));
+  }
+
+  function disarm(keepStatus) {
+    if (armTimer) { window.clearTimeout(armTimer); armTimer = null; }
+    stopRetries();
+    U.$('btn-af-arm').hidden = false;
+    U.$('btn-af-disarm').hidden = true;
+    if (!keepStatus) status('idle', t('af.idle'));
+  }
+
+  function checkHealth() {
+    status('busy', t('af.checking'));
+    return window.fetch(endpoint() + '/health')
+      .then(function (r) { return r.json(); })
+      .then(function (h) {
+        status('ok', t('af.healthy', {
+          mode: h.mode === 'mock' ? t('af.mockSource') : t('af.liveSource'),
+          symbol: h.symbol || '—',
+          ist: h.ist || '—'
+        }));
+      })
+      .catch(function () {
+        status('err', t('af.helperOffline', { endpoint: endpoint() }));
+      });
+  }
+
+  function init() {
+    loadEndpoint();
+    U.$('af-endpoint').addEventListener('change', saveEndpoint);
+    U.$('btn-af-now').addEventListener('click', function () { fetchNow(true).catch(function () {}); });
+    U.$('btn-af-health').addEventListener('click', checkHealth);
+    U.$('btn-af-arm').addEventListener('click', function () { arm(); });
+    /* not `addEventListener('click', disarm)` — the click Event would arrive as
+       keepStatus and leave the stale "armed" message on screen. */
+    U.$('btn-af-disarm').addEventListener('click', function () { disarm(); });
+    status('idle', t('af.idle'));
+  }
+
+  APP.autofetch = {
+    init: init, fetchNow: fetchNow, arm: arm, disarm: disarm,
+    checkHealth: checkHealth, applyPayload: applyPayload, validPayload: validPayload,
+    last: function () { return lastPayload; }
   };
 })(window.APP);
 </script>
@@ -3684,6 +3974,7 @@ window.APP = window.APP || {};
     initSettings();
     initClearAll();
     APP.analyser.init();
+    APP.autofetch.init();
     APP.t1helper.init();
     APP.pullback.init();
     APP.signal.init();

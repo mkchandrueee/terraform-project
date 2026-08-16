@@ -241,6 +241,7 @@
     initSettings();
     initClearAll();
     APP.analyser.init();
+    APP.autofetch.init();
     APP.t1helper.init();
     APP.pullback.init();
     APP.signal.init();
