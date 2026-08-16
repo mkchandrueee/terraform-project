@@ -24,13 +24,14 @@ fi
 echo "  ctrl-c to stop"
 echo
 
-if command -v python3 >/dev/null 2>&1; then
+if command -v node >/dev/null 2>&1; then
+  # same zero-dependency server the Windows launchers use
+  exec node tools/serve.js "$PORT" $([ "$HOST" = "0.0.0.0" ] && echo lan)
+elif command -v python3 >/dev/null 2>&1; then
   exec python3 -m http.server "$PORT" --bind "$HOST"
-elif command -v npx >/dev/null 2>&1; then
-  exec npx --yes serve --listen "tcp://${HOST}:${PORT}" .
 elif command -v php >/dev/null 2>&1; then
   exec php -S "${HOST}:${PORT}"
 else
-  echo "Need python3, npx or php on PATH to serve static files." >&2
+  echo "Need node, python3 or php on PATH to serve static files." >&2
   exit 1
 fi

@@ -208,6 +208,11 @@ still lands in the in-page alert log.
 
 ## Running it locally
 
+**Windows:** see [WINDOWS.md](WINDOWS.md) for a step-by-step setup — install Node, extract, double-click
+`start.cmd`. That launches the NSE helper and the app together and opens the browser.
+
+**macOS / Linux:**
+
 ```sh
 cd option-strategy-suite
 ./serve.sh              # http://127.0.0.1:8787
@@ -215,13 +220,13 @@ cd option-strategy-suite
 HOST=0.0.0.0 ./serve.sh # also reachable from your phone on the same wifi
 ```
 
-The script uses whichever of `python3`, `npx serve` or `php` it finds — there is nothing to install and nothing
-to build. Any other static server works just as well:
+It prefers `node tools/serve.js` — a zero-dependency static server, the same one the Windows launchers use —
+and falls back to `python3` or `php`. Nothing to install, nothing to build. Any other static server works too:
 
 ```sh
-python3 -m http.server 8787     # or
-npx --yes serve .               # or
-php -S 127.0.0.1:8787
+node tools/serve.js 8787        # or
+node tools/serve.js 8787 lan    # also reachable over wifi
+python3 -m http.server 8787
 ```
 
 Opening `index.html` straight from disk mostly works — the scripts are classic, not modules — but serve it if
