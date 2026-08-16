@@ -18,9 +18,20 @@ remembered.
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy or put buy, zone 1 (entry), zone 2, Target 1 — deliberately no stop loss |
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
 
-The tools hand off to each other. *Send to T1 Helper* on an analyser result applies the guide's mapping
-automatically — entry field ← stop loss, T1 field ← entry price, T2 field ← Target 1 — and *Copy from analyser*
-in the pullback tool reuses the same first-candle data.
+The tools hand off to each other:
+
+| Button | Fills |
+|---|---|
+| *Send to T1 Helper* (per side) | entry ← **stop loss**, T1 ← **entry price**, T2 ← **Target 1** — the guide's own mapping |
+| *Copy from analyser* (pullback) | the two original first-candle OHLC sets |
+| *Levels from call / put* (signal) | entry ← entry price, stop ← stop loss, T1 ← Target 1, T2 ← Target 1 + range |
+
+The T1 Helper's mapping looks scrambled at a glance and is not: the guide shifts the ladder down one notch on
+purpose, because the helper grades the candle that *reached* your entry. Its "Entry price" box therefore holds
+your **stop loss**, its "T1 level" holds your **actual entry**, and its "T2 level" holds your **first target**.
+A line under those three fields spells that out — `Reads as — your stop ₹52 · your entry ₹70 · your target ₹88`
+— so a glance confirms nothing has been shuffled. The action plan names the levels the same way, so "move the
+stop to your entry" points at the level you actually bought at.
 
 ## About the formulas
 

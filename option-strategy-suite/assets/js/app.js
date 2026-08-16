@@ -83,6 +83,7 @@
     if (APP.state.pullback) APP.pullback.run();
     if (APP.state.signal) APP.signal.run();
     APP.t1helper.renderPreview();
+    APP.t1helper.renderReading();
     APP.alerts.renderPermission();
     APP.alerts.renderLog();
     renderGuide();

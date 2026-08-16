@@ -125,6 +125,19 @@
     return [1, 2, 3, 4, 5].map(function (n) { return t(prefix + n, vars); });
   }
 
+  /* ---------- what the mapped ladder means in trade terms ---------- */
+  function renderReading() {
+    var el = U.$('t1-reading');
+    var entry = U.num(U.$('t1-entry').value);
+    var t1 = U.num(U.$('t1-t1').value);
+    var t2 = U.num(U.$('t1-t2').value);
+    if (!(isFinite(entry) && isFinite(t1) && isFinite(t2))) { el.hidden = true; el.innerHTML = ''; return; }
+    el.innerHTML =
+      '<b>' + U.escapeHtml(t('t1.reading', { entry: money(entry), t1: money(t1), t2: money(t2) })) + '</b>' +
+      '<span>' + U.escapeHtml(t('t1.readingHint')) + '</span>';
+    el.hidden = false;
+  }
+
   /* ---------- candle preview ---------- */
   function renderPreview() {
     var el = U.$('t1-preview');
@@ -266,6 +279,7 @@
     U.showErrors('t1-candle-err', []);
     U.$('t1-output').hidden = true;
     renderPreview();
+    renderReading();
     APP.state.t1 = null;
   }
 
@@ -276,6 +290,7 @@
     U.$('t1-t2').value = '198';
     U.writeCandle('t1', { o: 172, h: 181, l: 165, c: 180 });
     renderPreview();
+    renderReading();
     run();
   }
 
@@ -289,6 +304,7 @@
     U.$('t1-t1').value = r.entry.toFixed(2);         // T1 level     <- entry price
     U.$('t1-t2').value = r.target1.toFixed(2);       // T2 level     <- Target 1
     U.showErrors('t1-levels-err', []);
+    renderReading();
     U.$('t1-output').hidden = true;
     APP.tabs.show('t1');
     U.$('t1-o').focus();
@@ -310,10 +326,14 @@
     U.$$('#panel-t1 .ohlc input').forEach(function (input) {
       input.addEventListener('input', renderPreview);
     });
+    ['t1-entry', 't1-t1', 't1-t2'].forEach(function (id) {
+      U.$(id).addEventListener('input', renderReading);
+    });
   }
 
   APP.t1helper = {
     init: init, run: run, reset: reset, decide: decide,
-    importFromAnalyser: importFromAnalyser, renderPreview: renderPreview
+    importFromAnalyser: importFromAnalyser, renderPreview: renderPreview,
+    renderReading: renderReading
   };
 })(window.APP);
