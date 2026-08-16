@@ -1,8 +1,8 @@
 /* Tool 2 — T1 Decision Helper (Phase 3, steps 6–10).
 
-   Input : the trade side, the three mapped levels (entry = analyser stop loss,
-           T1 = analyser entry price, T2 = analyser Target 1) and the OHLC of
-           the 5-minute candle that touched T1.
+   Input : the trade side, the three mapped levels (entry = analyser entry,
+           T1 = analyser Target 1, T2 = analyser Target 2) and the OHLC of
+           the 5-minute candle that touched Target 1.
    Output: hold-to-T2 vs partial book vs book now, a momentum score, the
            T1→T2 reward ratio, four condition checks, the condition-4 gate and
            a step-by-step action plan.
@@ -300,9 +300,12 @@
     if (!a) return;
     var r = which === 'put' ? a.pe : a.ce;
     setSide(which);
-    U.$('t1-entry').value = r.stopLoss.toFixed(2);   // entry field  <- stop loss
-    U.$('t1-t1').value = r.entry.toFixed(2);         // T1 level     <- entry price
-    U.$('t1-t2').value = r.target1.toFixed(2);       // T2 level     <- Target 1
+    /* The original's helper ladder is the analyser's entry / Target 1 /
+       Target 2 — which is why its three levels are always equally spaced and
+       its reward ratio always reads 1.00x. */
+    U.$('t1-entry').value = r.entry.toFixed(2);
+    U.$('t1-t1').value = r.target1.toFixed(2);
+    U.$('t1-t2').value = r.target2.toFixed(2);
     U.showErrors('t1-levels-err', []);
     renderReading();
     U.$('t1-output').hidden = true;

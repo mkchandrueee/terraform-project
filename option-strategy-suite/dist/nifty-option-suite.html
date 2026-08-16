@@ -524,6 +524,72 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .ladder-reading b { font-family: var(--mono); font-size: 13.5px; color: var(--text); font-weight: 700; }
 .ladder-reading span { font-size: 12.5px; color: var(--text-dim); }
+
+/* ---------- analyser: verdict, targets, conditions ---------- */
+.field.is-fixed input { border-color: rgba(255, 180, 84, .55); color: var(--warn); background: #161206; }
+.field.is-fixed > span { color: var(--warn); }
+.field.is-fixed em { color: rgba(255, 180, 84, .7); }
+
+.an-verdict { text-align: left; padding: 20px 18px; }
+.an-verdict.is-yes { border: 1px solid rgba(55, 214, 160, .45); }
+.an-verdict.is-no  { border: 1px solid rgba(255, 180, 84, .45); }
+.an-verdict-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.an-verdict .verdict-badge { font-size: 19px; padding: 10px 20px; }
+.v-put { background: rgba(255, 107, 129, .12); color: var(--put); border: 1px solid rgba(255, 107, 129, .35); }
+.an-confidence { display: flex; flex-direction: column; align-items: flex-end; }
+.an-confidence b { font-family: var(--mono); font-size: 26px; font-weight: 700; color: var(--accent); }
+.an-confidence span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-faint); font-weight: 700; }
+.an-verdict .verdict-sub { margin: 14px 0 0; text-align: left; max-width: none; }
+
+.entry-strip {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 16px; padding: 13px 16px;
+  background: #12100a; border: 1px solid rgba(255, 180, 84, .35);
+  border-radius: var(--radius-sm);
+}
+.entry-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; color: var(--text-faint); }
+.entry-value { font-family: var(--mono); font-size: 25px; font-weight: 700; color: var(--warn); }
+.entry-side { margin-left: auto; font-size: 13px; font-weight: 700; letter-spacing: .05em; padding: 6px 14px; border-radius: 999px; }
+.entry-side.is-call { background: rgba(55, 214, 160, .14); color: var(--call); }
+.entry-side.is-put  { background: rgba(255, 107, 129, .14); color: var(--put); }
+
+.check.info { opacity: .68; }
+.check.info .check-icon, .check.info .check-verdict { color: var(--text-faint); }
+.check.warn .check-verdict { color: var(--warn); }
+
+.target-card { padding: 0; overflow: hidden; border-top: 3px solid var(--line); }
+.target-card.side-call { border-top-color: var(--call); }
+.target-card.side-put  { border-top-color: var(--put); }
+.target-card.is-chosen { box-shadow: 0 0 0 1px rgba(55, 214, 160, .3), var(--shadow); }
+.target-title {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  font-size: 13px; letter-spacing: .09em; text-transform: uppercase;
+  padding: 14px 16px; margin: 0; border-bottom: 1px solid var(--line-soft);
+}
+.side-call .target-title { color: var(--call); background: rgba(55, 214, 160, .05); }
+.side-put  .target-title { color: var(--put);  background: rgba(255, 107, 129, .05); }
+.target-title .badge-primary { margin-left: auto; }
+
+.targets { width: 100%; border-collapse: collapse; font-size: 13px; }
+.targets td { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
+.targets tr:last-child td { border-bottom: 0; }
+.tgt-label { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-faint); font-weight: 700; white-space: nowrap; }
+.tgt-level { font-family: var(--mono); font-size: 18px; font-weight: 700; text-align: right; white-space: nowrap; }
+.tgt-pts { font-family: var(--mono); font-size: 12px; color: var(--text-faint); text-align: right; white-space: nowrap; }
+.tgt-action { text-align: right; }
+.tgt-badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em;
+  border-radius: 6px; padding: 4px 9px; white-space: nowrap; border: 1px solid;
+}
+.row-entry .tgt-level { color: var(--warn); }
+.row-t1 .tgt-level { color: var(--info); }
+.row-t1 .tgt-badge { color: var(--info); border-color: rgba(88, 166, 255, .45); background: rgba(88, 166, 255, .1); }
+.row-t2 .tgt-level { color: var(--accent); }
+.row-t2 .tgt-badge { color: var(--info); border-color: rgba(88, 166, 255, .45); background: rgba(88, 166, 255, .1); }
+.row-t3 .tgt-level { color: var(--text); }
+.row-t3 .tgt-badge { color: var(--accent); border-color: rgba(55, 214, 160, .45); background: rgba(55, 214, 160, .1); }
+.row-sl .tgt-level { color: var(--danger); }
+.row-sl .tgt-badge { color: var(--danger); border-color: rgba(255, 95, 109, .45); background: rgba(255, 95, 109, .1); }
 </style>
 </head>
 <body>
@@ -556,22 +622,16 @@ input[type=number] { -moz-appearance: textfield; }
     <div class="settings-grid">
       <fieldset class="settings-group">
         <legend data-i18n="cfg.g1">Option Analyser</legend>
-        <label class="field">
-          <span><span data-i18n="cfg.entryBufferPct"></span> <em data-i18n="cfg.entryBufferPct.hint"></em></span>
-          <input type="number" id="cfg-entryBufferPct" step="0.1" min="0" max="50" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.slBufferPct"></span> <em data-i18n="cfg.slBufferPct.hint"></em></span>
-          <input type="number" id="cfg-slBufferPct" step="0.1" min="0" max="50" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.t1Multiplier"></span> <em data-i18n="cfg.t1Multiplier.hint"></em></span>
-          <input type="number" id="cfg-t1Multiplier" step="0.05" min="0.1" max="10" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.tickSize"></span> <em data-i18n="cfg.tickSize.hint"></em></span>
-          <input type="number" id="cfg-tickSize" step="0.05" min="0.01" max="10" />
-        </label>
+        <label class="field"><span><span data-i18n="cfg.entryPremiumPct"></span> <em data-i18n="cfg.entryPremiumPct.hint"></em></span><input type="number" id="cfg-entryPremiumPct" step="0.05" min="0" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.targetStepMult"></span> <em data-i18n="cfg.targetStepMult.hint"></em></span><input type="number" id="cfg-targetStepMult" step="0.05" min="0.05" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.minTargetStep"></span> <em data-i18n="cfg.minTargetStep.hint"></em></span><input type="number" id="cfg-minTargetStep" step="1" min="0" max="500" /></label>
+        <label class="field"><span data-i18n="cfg.t2Mult"></span><input type="number" id="cfg-t2Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span data-i18n="cfg.t3Mult"></span><input type="number" id="cfg-t3Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.slRangeMult"></span> <em data-i18n="cfg.slRangeMult.hint"></em></span><input type="number" id="cfg-slRangeMult" step="0.05" min="0" max="5" /></label>
+        <label class="field"><span data-i18n="cfg.takeConfidence"></span><input type="number" id="cfg-takeConfidence" step="1" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.bookT1Pct"></span><input type="number" id="cfg-bookT1Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.bookT2Pct"></span><input type="number" id="cfg-bookT2Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.holdT3Pct"></span><input type="number" id="cfg-holdT3Pct" step="5" min="0" max="100" /></label>
       </fieldset>
 
       <fieldset class="settings-group">
@@ -718,7 +778,7 @@ input[type=number] { -moz-appearance: textfield; }
               <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-ce-err" role="alert"></p>
           </fieldset>
@@ -729,14 +789,16 @@ input[type=number] { -moz-appearance: textfield; }
               <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-pe-err" role="alert"></p>
           </fieldset>
         </div>
 
+        <label class="checkline"><input type="checkbox" id="an-closed" checked /> <span data-i18n="an.closedLabel"></span></label>
+
         <div class="row-actions">
-          <button type="button" class="btn btn-primary" id="btn-analyse" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-primary btn-decide" id="btn-analyse" data-i18n="an.analyse"></button>
           <button type="button" class="btn btn-ghost" id="btn-analyser-sample" data-i18n="f.sample"></button>
           <button type="button" class="btn btn-ghost" id="btn-analyser-reset" data-i18n="f.reset"></button>
         </div>
@@ -744,18 +806,25 @@ input[type=number] { -moz-appearance: textfield; }
     </div>
 
     <div id="analyser-output" hidden>
-      <div class="card" id="analyser-bias-card">
-        <div class="card-body bias-row" id="analyser-bias"></div>
+      <div class="card verdict-card an-verdict" id="an-verdict"></div>
+
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="an.condTitle"></h3>
+        <p class="muted" data-i18n="an.condDesc"></p></div>
+        <div class="card-body"><ul class="checks" id="an-conditions"></ul></div>
       </div>
 
-      <div class="result-grid">
-        <article class="card result-card side-call" id="res-ce"></article>
-        <article class="card result-card side-put" id="res-pe"></article>
-      </div>
+      <div class="result-grid" id="an-targets"></div>
+
+      <div class="card" id="an-rules"></div>
 
       <div class="card note-card">
         <h3><span class="step-pill" data-i18n="an.rule"></span> <span data-i18n="an.rule.title"></span></h3>
         <p data-i18n-html="an.rule.body"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-sm" data-send-t1="call" data-i18n="an.sendT1Call"></button>
+          <button type="button" class="btn btn-sm" data-send-t1="put" data-i18n="an.sendT1Put"></button>
+        </div>
       </div>
     </div>
   </section>
@@ -1222,6 +1291,34 @@ window.APP = window.APP || {};
       'cfg.t1Multiplier.hint': '(× candle range above entry)',
       'cfg.tickSize': 'Tick size',
       'cfg.tickSize.hint': '(confirmation close must clear entry by)',
+      'cfg.entryPremiumPct': 'Entry premium over close',
+      'cfg.entryPremiumPct.hint': '(entry = close + this %)',
+      'cfg.targetStepMult': 'Target step',
+      'cfg.targetStepMult.hint': '(× first-candle range)',
+      'cfg.minTargetStep': 'Minimum target step',
+      'cfg.minTargetStep.hint': '(points floor on that step)',
+      'cfg.t2Mult': 'Target 2 (× step)',
+      'cfg.t3Mult': 'Target 3 (× step)',
+      'cfg.slRangeMult': 'Stop loss below low',
+      'cfg.slRangeMult.hint': '(× range)',
+      'cfg.takeConfidence': 'Confidence needed for a YES',
+      'cfg.bookT1Pct': 'Book at Target 1 (%)',
+      'cfg.bookT2Pct': 'Book at Target 2 (%)',
+      'cfg.holdT3Pct': 'Hold to Target 3 (%)',
+      'cfg.entryPremiumPct': 'Close-க்கு மேல entry premium',
+      'cfg.entryPremiumPct.hint': '(entry = close + இந்த %)',
+      'cfg.targetStepMult': 'Target step',
+      'cfg.targetStepMult.hint': '(first-candle range × எத்தனை)',
+      'cfg.minTargetStep': 'குறைந்தபட்ச target step',
+      'cfg.minTargetStep.hint': '(points floor)',
+      'cfg.t2Mult': 'Target 2 (× step)',
+      'cfg.t3Mult': 'Target 3 (× step)',
+      'cfg.slRangeMult': 'Low-க்கு கீழ stop loss',
+      'cfg.slRangeMult.hint': '(× range)',
+      'cfg.takeConfidence': 'YES சொல்ல வேண்டிய confidence',
+      'cfg.bookT1Pct': 'Target 1-ல book (%)',
+      'cfg.bookT2Pct': 'Target 2-ல book (%)',
+      'cfg.holdT3Pct': 'Target 3 வரை hold (%)',
       'cfg.g2': 'T1 Decision Helper',
       'cfg.bodyStrong': 'Strong body threshold',
       'cfg.bodyStrong.hint': '(body ÷ range for full credit)',
@@ -1266,6 +1363,57 @@ window.APP = window.APP || {};
       'cfg.restored': 'Defaults restored.',
 
       /* analyser */
+      'f.callShort': 'Call',
+      'f.putShort': 'Put',
+      'an.closedLabel': '5-minute candle fully closed (09:15–09:20)',
+      'an.closeFixed': 'drives the entry',
+      'an.analyse': 'Analyse — should I enter?',
+      'an.yes': 'YES — {buy}',
+      'an.noClear': 'NO CLEAR SIDE — STAND ASIDE',
+      'an.confidence': 'confidence',
+      'an.buyCall': 'BUY CALL',
+      'an.buyPut': 'BUY PUT',
+      'an.reason': '{side} candle: {dir} · body {body} · close position {close} of range · PCR {pcr} ({pcrBias}).',
+      'an.entryPrice': 'Entry price',
+      'an.condTitle': 'Entry conditions',
+      'an.condDesc': 'Every one of these should read green before the order goes in.',
+      'an.cond.closed': '5-minute candle fully closed?',
+      'an.cond.closedYes': 'CONFIRMED',
+      'an.cond.closedNo': 'NOT YET',
+      'an.cond.direction': '{side} candle direction',
+      'an.cond.bullish': 'BULLISH ({o} → {c})',
+      'an.cond.bearish': 'BEARISH ({o} → {c})',
+      'an.cond.bullishWord': 'bullish',
+      'an.cond.bearishWord': 'bearish',
+      'an.cond.body': '{side} body strength',
+      'an.cond.closePos': '{side} close position in range',
+      'an.cond.pcr': 'PCR ratio (put close ÷ call close)',
+      'an.pcr.bullish': 'Bullish',
+      'an.pcr.bearish': 'Bearish',
+      'an.pcr.neutral': 'Neutral',
+      'an.callTargets': 'CALL TARGETS',
+      'an.putTargets': 'PUT TARGETS',
+      'an.tradeThis': 'trade this side',
+      'an.entry': 'ENTRY',
+      'an.target1': 'TARGET 1',
+      'an.target2': 'TARGET 2',
+      'an.target3': 'TARGET 3',
+      'an.stopLoss': 'STOP LOSS',
+      'an.pts': 'pts',
+      'an.book': 'BOOK {pct}%',
+      'an.hold': 'HOLD {pct}%',
+      'an.exitAll': 'EXIT ALL',
+      'an.rulesTitle': 'Exact rules — follow these',
+      'an.rulesDesc': 'Written against the side the analysis picked, with its own levels filled in.',
+      'an.rule1': 'Only once the 5-minute candle has fully closed, place the {buy} order at {entry}.',
+      'an.rule2': 'Put the stop loss at {sl} straight away. If it hits, exit everything — no second thoughts.',
+      'an.rule3': 'At Target 1 {t1}, book 40% and lock that profit in.',
+      'an.rule4': 'At Target 2 {t2}, book another 40% — 80% of the position is now closed.',
+      'an.rule5': 'Let the last 20% run to Target 3 {t3}, and move the stop to {entry} so it cannot turn into a loss.',
+      'an.rule6': 'If price falls back below {entry} before Target 1, exit the rest — the setup has failed.',
+      'an.sendT1': 'Send to T1 Helper',
+      'an.sendT1Call': 'Send CALL to T1 Helper',
+      'an.sendT1Put': 'Send PUT to T1 Helper',
       'an.step1': 'Step 1',
       'an.step1.title': 'ATM strike selection',
       'an.step1.desc': 'Open price of the 09:15–09:20 NIFTY candle, rounded down to the 100 strike — 23670 gives 23600.',
@@ -1295,6 +1443,8 @@ window.APP = window.APP || {};
       'an.strength': 'First-candle strength',
       'an.confirm': 'Entry confirms only when a 5-minute candle <b>closes at {close} or higher</b> (above the {entry} entry price).',
       'an.sendT1': 'Send to T1 Helper',
+      'an.sendT1Call': 'Send CALL to T1 Helper',
+      'an.sendT1Put': 'Send PUT to T1 Helper',
       'an.rule': 'Steps 4–5',
       'an.rule.title': 'Entry confirmation rule',
       'an.rule.body': 'Do <strong>not</strong> enter the moment price touches the entry price. Wait for a full 5-minute candle on the option chart to <strong>close above</strong> the entry price. Only then is the entry confirmed — and that same candle is the one you feed into the T1 Decision Helper.',
@@ -1332,13 +1482,13 @@ window.APP = window.APP || {};
       't1.callTrade': 'Call trade',
       't1.putTrade': 'Put trade',
       't1.mapEntry': 'Entry',
-      't1.mapEntryFrom': 'Analyser Stop Loss',
+      't1.mapEntryFrom': 'Analyser Entry Price',
       't1.mapT1': 'T1 level',
-      't1.mapT1From': 'Analyser Entry Price',
+      't1.mapT1From': 'Analyser Target 1',
       't1.mapT2': 'T2 level',
-      't1.mapT2From': 'Analyser Target 1',
-      't1.reading': 'Reads as — your stop {entry} · your entry {t1} · your target {t2}',
-      't1.readingHint': 'The guide shifts the ladder down one notch on purpose: the helper grades the candle that reached your entry, so its "entry" box holds your stop loss.',
+      't1.mapT2From': 'Analyser Target 2',
+      't1.reading': 'Reads as — your entry {entry} · Target 1 {t1} · Target 2 {t2}',
+      't1.readingHint': 'The helper grades the candle that reached Target 1 and asks whether Target 2 is still worth holding for.',
       't1.entryLabel': 'Entry price',
       't1.entryHint': '(your entry)',
       't1.t1Label': 'T1 level',
@@ -1397,25 +1547,25 @@ window.APP = window.APP || {};
       't1.gateFailText': 'The pre-trade gate failed — skip the trade. This overrides every other check and the verdict above.',
       't1.plan': 'Exact action plan',
       't1.plan.hold1': 'Hold the current position — do not exit here.',
-      't1.plan.hold2': 'Move the stop loss up to your entry {t1} — the trade is now risk-free.',
+      't1.plan.hold2': 'Move the stop loss up to your entry {entry} — the trade is now risk-free.',
       't1.plan.hold3': 'When your target {t2} is hit, sell 80% of the position.',
       't1.plan.hold4': 'Let the remaining 20% run toward T3 on a trailing stop.',
       't1.plan.hold5': 'If a candle reverses before T2, exit immediately — the stop is already at entry.',
-      't1.plan.partial1': 'Book roughly half the position now, while price is holding above your entry {t1}.',
-      't1.plan.partial2': 'Move the stop loss on the remainder up to your entry {t1}.',
+      't1.plan.partial1': 'Book roughly half the position now, at Target 1 {t1}.',
+      't1.plan.partial2': 'Move the stop loss on the remainder up to your entry {entry}.',
       't1.plan.partial3': 'Hold the rest toward your target {t2} only while each candle keeps closing higher.',
-      't1.plan.partial4': 'Exit the remainder on the first candle that closes back below your entry {t1}.',
+      't1.plan.partial4': 'Exit the remainder on the first candle that closes back below {t1}.',
       't1.plan.partial5': 'Do not add to the position at this level.',
       't1.plan.book1': 'Exit the full position now, at market — take the profit you are holding.',
       't1.plan.book2': 'Do not wait for T2; the candle is not supporting a continuation.',
       't1.plan.book3': 'Do not re-enter on the same candle.',
       't1.plan.book4': 'Wait for a fresh setup with a decisive body and a strong close.',
       't1.plan.book5': 'If the trade was not entered yet, skip it entirely.',
-      't1.plan.wait1': 'No entry is confirmed — the candle did not close above your entry level {t1}.',
+      't1.plan.wait1': 'Target 1 is not confirmed — the candle did not close above {t1}.',
       't1.plan.wait2': 'Do not enter or add here.',
       't1.plan.wait3': 'Wait for a 5-minute candle to close above {t1}.',
       't1.plan.wait4': 'Re-run this check with that candle before doing anything.',
-      't1.plan.wait5': 'If price falls back to your stop {entry}, the setup is done — skip it.',
+      't1.plan.wait5': 'If price falls back to your entry {entry}, the move is done — stand aside.',
       't1.err.required': '{field} is required and must be greater than 0.',
       't1.err.ladder': 'Levels must rise in order: entry < T1 < T2. Mapped from the analyser that is stop loss < entry price < Target 1.',
 
@@ -1496,10 +1646,10 @@ window.APP = window.APP || {};
       'g.f5n': 'Skipped filters are excluded from both sides of the ratio, so a partial reading is scored fairly rather than punished. Expected value and the breakeven win rate are ordinary arithmetic; only the win estimate is a judgement call, and it moves around the base rate you supply.',
       'g.formulas': 'How each number is calculated',
       'g.formulasDesc': 'The strategy guide specifies which levels each tool outputs, not the arithmetic. This suite uses the transparent first-candle range model below; every coefficient is editable under Formula settings.',
-      'g.f1': 'Option Analyser — entry, Target 1, stop loss',
-      'g.f1n': 'The first candle\'s high is the breakout level and its low is the invalidation level, so risk equals the candle range and Target 1 is a measured move of that same range.',
-      'g.f2': 'Option Analyser — first-candle strength',
-      'g.f2n': 'Only used to flag which side to watch first. It never replaces the confirmation close.',
+      'g.f1': 'Option Analyser — entry, three targets, stop loss',
+      'g.f1n': 'Reproduces the original tool exactly — all twenty values across the four reference legs. The close drives the entry, which is why the original marks that field as fixed; the step is a fraction of the first-candle range with a points floor, and the three targets are multiples of it.',
+      'g.f2': 'Option Analyser — side choice and confidence',
+      'g.f2n': 'Direction, body and close position decide which leg to buy and how confidently. The 24400 put leg scores 20 + 40×0.75 + 40×0.75 = 80%, matching the original.',
       'g.f3': 'T1 Decision Helper — momentum score and gate',
       'g.f3n': 'Check 4 sits outside the momentum score: it asks whether the breakout above T1 actually happened, and it is the pre-trade gate the guide requires at step 10.',
       'g.f4': 'Stoploss Pullback Entry — side and zones',
@@ -1717,6 +1867,57 @@ window.APP = window.APP || {};
       'cfg.saved': 'Save ஆச்சு.',
       'cfg.restored': 'Default-க்கு போச்சு.',
 
+      'f.callShort': 'Call',
+      'f.putShort': 'Put',
+      'an.closedLabel': '5-minute candle முழுசா close ஆயிடுச்சா (09:15–09:20)',
+      'an.closeFixed': 'entry-ஐ இதுதான் தீர்மானிக்குது',
+      'an.analyse': 'ANALYZE — ENTRY எடுக்கலாமா?',
+      'an.yes': 'YES — {buy}',
+      'an.noClear': 'தெளிவான side இல்ல — விட்டுடு',
+      'an.confidence': 'confidence',
+      'an.buyCall': 'BUY CALL',
+      'an.buyPut': 'BUY PUT',
+      'an.reason': '{side} candle: {dir} · body {body} · range-ல close position {close} · PCR {pcr} ({pcrBias}).',
+      'an.entryPrice': 'ENTRY PRICE',
+      'an.condTitle': 'ENTRY CONDITIONS',
+      'an.condDesc': 'Order போடுறதுக்கு முன்னாடி இதெல்லாம் green-ஆ இருக்கணும்.',
+      'an.cond.closed': '5-Min candle முழுசா close ஆச்சா?',
+      'an.cond.closedYes': 'CONFIRMED',
+      'an.cond.closedNo': 'இன்னும் இல்ல',
+      'an.cond.direction': '{side} candle direction',
+      'an.cond.bullish': 'BULLISH ({o} → {c})',
+      'an.cond.bearish': 'BEARISH ({o} → {c})',
+      'an.cond.bullishWord': 'bullish',
+      'an.cond.bearishWord': 'bearish',
+      'an.cond.body': '{side} body strength',
+      'an.cond.closePos': '{side} close position (range-ல top-ல இருக்கா?)',
+      'an.cond.pcr': 'PCR ratio (put close ÷ call close)',
+      'an.pcr.bullish': 'Bullish',
+      'an.pcr.bearish': 'Bearish',
+      'an.pcr.neutral': 'Neutral',
+      'an.callTargets': 'CALL TARGETS',
+      'an.putTargets': 'PUT TARGETS',
+      'an.tradeThis': 'இந்த side-ல trade',
+      'an.entry': 'ENTRY',
+      'an.target1': 'TARGET 1',
+      'an.target2': 'TARGET 2',
+      'an.target3': 'TARGET 3',
+      'an.stopLoss': 'STOP LOSS',
+      'an.pts': 'pts',
+      'an.book': 'BOOK {pct}%',
+      'an.hold': 'HOLD {pct}%',
+      'an.exitAll': 'EXIT ALL',
+      'an.rulesTitle': 'EXACT RULES — FOLLOW பண்ணு',
+      'an.rulesDesc': 'Analysis தேர்ந்தெடுத்த side-க்கு, அதோட levels-ஐ வெச்சு எழுதியிருக்கு.',
+      'an.rule1': '5-min candle முழுசா close ஆனவுடனே → {entry}-ல {buy} order போடு.',
+      'an.rule2': 'SL-ஐ உடனே {sl}-ல வை. Hit ஆனா எல்லாத்தையும் exit பண்ணு — வேற எதுவும் யோசிக்காத.',
+      'an.rule3': 'Target 1 {t1} hit ஆனா → 40% book பண்ணு, அந்த profit-ஐ lock பண்ணு.',
+      'an.rule4': 'Target 2 {t2} hit ஆனா → இன்னும் 40% book பண்ணு (மொத்தம் 80% close ஆச்சு).',
+      'an.rule5': 'மீதி 20%-ஐ Target 3 {t3} வரை hold பண்ணு, SL-ஐ {entry}-க்கு நகர்த்து — நஷ்டமா மாறவே கூடாது.',
+      'an.rule6': 'Target 1-க்கு முன்னாடி price {entry}-க்கு கீழ வந்தா மீதியை exit பண்ணு — setup fail ஆயிடுச்சு.',
+      'an.sendT1': 'T1 Helper-க்கு அனுப்பு',
+      'an.sendT1Call': 'CALL-ஐ T1 Helper-க்கு அனுப்பு',
+      'an.sendT1Put': 'PUT-ஐ T1 Helper-க்கு அனுப்பு',
       'an.step1': 'STEP 1',
       'an.step1.title': 'ATM strike select பண்ணு',
       'an.step1.desc': '09:15–09:20 NIFTY candle-ஓட open price-ஐ கீழ 100 strike-க்கு round பண்ணு — 23670 ஆனா 23600.',
@@ -1746,6 +1947,8 @@ window.APP = window.APP || {};
       'an.strength': 'First-candle strength',
       'an.confirm': '5-minute candle <b>{close} அல்லது அதுக்கு மேல close</b> ஆனா மட்டும்தான் entry confirm ({entry} entry price-க்கு மேல).',
       'an.sendT1': 'T1 Helper-க்கு அனுப்பு',
+      'an.sendT1Call': 'CALL-ஐ T1 Helper-க்கு அனுப்பு',
+      'an.sendT1Put': 'PUT-ஐ T1 Helper-க்கு அனுப்பு',
       'an.rule': 'STEPS 4–5',
       'an.rule.title': 'Entry confirmation rule',
       'an.rule.body': 'Price entry price-ஐ touch பண்ணுன உடனே <strong>enter பண்ணாத</strong>. Option chart-ல ஒரு முழு 5-minute candle entry price-க்கு <strong>மேல close</strong> ஆகணும். அப்பதான் entry confirm — அதே candle-ஐதான் T1 Decision Helper-ல போடணும்.',
@@ -1782,13 +1985,13 @@ window.APP = window.APP || {};
       't1.callTrade': 'CALL TRADE',
       't1.putTrade': 'PUT TRADE',
       't1.mapEntry': 'Entry',
-      't1.mapEntryFrom': 'Analyser Stop Loss',
+      't1.mapEntryFrom': 'Analyser Entry Price',
       't1.mapT1': 'T1 level',
-      't1.mapT1From': 'Analyser Entry Price',
+      't1.mapT1From': 'Analyser Target 1',
       't1.mapT2': 'T2 level',
-      't1.mapT2From': 'Analyser Target 1',
-      't1.reading': 'இதோட அர்த்தம் — உன் stop {entry} · உன் entry {t1} · உன் target {t2}',
-      't1.readingHint': 'Guide வேணும்னே ladder-ஐ ஒரு படி கீழ நகர்த்துது: உன் entry-ஐ எட்டுன candle-ஐ helper மதிப்பிடுது, அதனால அதோட "entry" box-ல உன் stop loss இருக்கும்.',
+      't1.mapT2From': 'Analyser Target 2',
+      't1.reading': 'இதோட அர்த்தம் — உன் entry {entry} · Target 1 {t1} · Target 2 {t2}',
+      't1.readingHint': 'Target 1-ஐ எட்டுன candle-ஐ helper மதிப்பிடுது, Target 2 வரை hold பண்ணலாமானு சொல்லுது.',
       't1.entryLabel': 'ENTRY PRICE',
       't1.entryHint': '(உன் ENTRY)',
       't1.t1Label': 'T1 LEVEL',
@@ -1847,25 +2050,25 @@ window.APP = window.APP || {};
       't1.gateFailText': 'Pre-trade gate fail — trade-ஐ skip பண்ணு. மேல இருக்கிற எல்லா check-ஐயும் verdict-ஐயும் இது override பண்ணும்.',
       't1.plan': 'EXACT ACTION PLAN',
       't1.plan.hold1': 'Current position HOLD பண்ணு — exit வேண்டாம்.',
-      't1.plan.hold2': 'SL-ஐ உன் entry {t1}-க்கு move பண்ணு (risk-free trade ஆச்சு).',
+      't1.plan.hold2': 'SL-ஐ உன் entry {entry}-க்கு move பண்ணு (risk-free trade ஆச்சு).',
       't1.plan.hold3': 'உன் target {t2} hit → 80% sell பண்ணு.',
       't1.plan.hold4': 'மீதி 20% → T3 வரை trailing SL-ல hold.',
       't1.plan.hold5': 'T2 போகாம candle reverse ஆனா → உடனே exit (SL already at entry).',
-      't1.plan.partial1': 'உன் entry {t1}-க்கு மேல price நிக்கும் போதே பாதி position-ஐ book பண்ணு.',
-      't1.plan.partial2': 'மீதிக்கு SL-ஐ உன் entry {t1}-க்கு move பண்ணு.',
+      't1.plan.partial1': 'Target 1 {t1}-ல பாதி position-ஐ book பண்ணு.',
+      't1.plan.partial2': 'மீதிக்கு SL-ஐ உன் entry {entry}-க்கு move பண்ணு.',
       't1.plan.partial3': 'ஒவ்வொரு candle-ம் மேல close ஆகுற வரைக்கும் மட்டும் மீதியை உன் target {t2} நோக்கி hold பண்ணு.',
-      't1.plan.partial4': 'உன் entry {t1}-க்கு கீழ close ஆகுற முதல் candle-ல மீதியை exit பண்ணு.',
+      't1.plan.partial4': '{t1}-க்கு கீழ close ஆகுற முதல் candle-ல மீதியை exit பண்ணு.',
       't1.plan.partial5': 'இந்த level-ல position add பண்ணாத.',
       't1.plan.book1': 'இப்பவே full position-ஐ market-ல exit பண்ணு — கையில இருக்கிற profit-ஐ எடு.',
       't1.plan.book2': 'T2-க்கு wait பண்ணாத; candle continuation-ஐ support பண்ணல.',
       't1.plan.book3': 'அதே candle-ல திரும்ப enter பண்ணாத.',
       't1.plan.book4': 'நல்ல body-ம் strong close-ம் இருக்கிற fresh setup-க்கு wait பண்ணு.',
       't1.plan.book5': 'இன்னும் enter பண்ணலைனா — இந்த trade-ஐ முழுசா skip பண்ணு.',
-      't1.plan.wait1': 'Entry confirm ஆகல — candle உன் entry level {t1}-க்கு மேல close ஆகல.',
+      't1.plan.wait1': 'Target 1 confirm ஆகல — candle {t1}-க்கு மேல close ஆகல.',
       't1.plan.wait2': 'இங்க enter பண்ணவோ add பண்ணவோ கூடாது.',
       't1.plan.wait3': '{t1}-க்கு மேல ஒரு 5-minute candle close ஆகுற வரைக்கும் wait பண்ணு.',
       't1.plan.wait4': 'அந்த candle வெச்சு இந்த check-ஐ மறுபடி பண்ணு.',
-      't1.plan.wait5': 'Price உன் stop {entry}-க்கு திரும்ப வந்துடுச்சுனா setup முடிஞ்சது — skip பண்ணு.',
+      't1.plan.wait5': 'Price உன் entry {entry}-க்கு திரும்ப வந்துடுச்சுனா move முடிஞ்சது — விட்டுடு.',
       't1.err.required': '{field} கட்டாயம் வேணும், 0-க்கு மேல இருக்கணும்.',
       't1.err.ladder': 'Levels இந்த order-ல ஏறணும்: entry < T1 < T2. Analyser-ல இருந்து அது stop loss < entry price < Target 1.',
 
@@ -1943,10 +2146,10 @@ window.APP = window.APP || {};
       'g.f5n': 'Skip ஆன filters ratio-ஓட ரெண்டு பக்கத்துலயும் சேராது, அதனால பாதி data இருந்தாலும் நியாயமா score ஆகும். Expected value-ம் breakeven win rate-ம் சாதாரண கணக்கு; win estimate மட்டும்தான் judgement — அது நீ கொடுக்குற base rate-ஐ சுத்திதான் நகரும்.',
       'g.formulas': 'ஒவ்வொரு number-ம் எப்படி கணக்கிடப்படுது',
       'g.formulasDesc': 'எந்த level-ஐ எந்த tool கொடுக்கும்னு strategy guide சொல்லுது, கணக்கு சொல்லல. இந்த suite கீழ இருக்கிற first-candle range model-ஐ பயன்படுத்துது; ஒவ்வொரு coefficient-ஐயும் Formula settings-ல மாத்திக்கலாம்.',
-      'g.f1': 'Option Analyser — entry, Target 1, stop loss',
-      'g.f1n': 'First candle-ஓட high தான் breakout level, low தான் invalidation level. அதனால risk = candle range, Target 1 = அதே range-ஓட measured move.',
-      'g.f2': 'Option Analyser — first-candle strength',
-      'g.f2n': 'எந்த side-ஐ முதல்ல கவனிக்கணும்னு காட்ட மட்டும்தான். Confirmation close-க்கு இது மாற்று இல்ல.',
+      'g.f1': 'Option Analyser — entry, three targets, stop loss',
+      'g.f1n': 'Original tool-ஓட மதிப்புகளை அப்படியே தருது — நாலு reference legs-ல இருபது values-ம் சரி. Close தான் entry-ஐ தீர்மானிக்குது (அதனாலதான் அது fixed-ஆ காட்டப்படுது), step = first-candle range-ல ஒரு பங்கு (குறைந்தபட்ச points floor-ஓட), மூணு target-ம் அதோட மடங்குகள்.',
+      'g.f2': 'Option Analyser — side choice and confidence',
+      'g.f2n': 'Direction, body, close position மூணும் சேர்ந்து எந்த leg-ஐ வாங்கணும், எவ்ளோ நம்பிக்கையோட-னு சொல்லுது. 24400 put leg = 20 + 40×0.75 + 40×0.75 = 80%, original-ஓட அதே மதிப்பு.',
       'g.f3': 'T1 Decision Helper — momentum score & gate',
       'g.f3n': 'Check 4 momentum score-க்கு வெளியே இருக்கு: T1-க்கு மேல breakout நிஜமாவே ஆச்சானு கேட்குது, step 10-ல guide கேட்குற pre-trade gate அதுதான்.',
       'g.f4': 'Stoploss Pullback Entry — side & zones',
@@ -2147,11 +2350,19 @@ window.APP = window.APP || {};
   var STORAGE_KEY = 'nifty-option-suite:v1';
 
   var DEFAULTS = {
-    /* Option Analyser */
-    entryBufferPct: 0,      // % of range added above the first-candle high
-    slBufferPct: 0,         // % of range subtracted below the first-candle low
-    t1Multiplier: 1.0,      // Target 1 = entry + (multiplier x range)
-    tickSize: 0.05,         // exchange tick; confirmation must clear entry by one
+    /* Option Analyser — reproduces the original tool exactly across all four
+       reference legs (entry, three targets and stop loss, 20 values). */
+    entryPremiumPct: 0.5,   // entry = close + 0.5%
+    targetStepMult: 0.8,    // one target step = 0.8 x first-candle range
+    minTargetStep: 16,      // ...but never less than this many points
+    t2Mult: 2.0,            // Target 2 = entry + 2.0 steps
+    t3Mult: 3.5,            // Target 3 = entry + 3.5 steps
+    slRangeMult: 0.3,       // stop loss = low - 0.3 x range
+    bookT1Pct: 40,          // position management shown against each target
+    bookT2Pct: 40,
+    holdT3Pct: 20,
+    takeConfidence: 60,     // side confidence needed for a YES verdict
+    tickSize: 0.05,         // exchange tick
 
     /* T1 Decision Helper.
        Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
@@ -2232,18 +2443,35 @@ window.APP = window.APP || {};
 })(window.APP);
 </script>
 <script>
-/* Tool 1 — Option Analyser (Phases 1–2, steps 1–5).
+/* Tool 1 — Options Analyser (Phases 1–2).
 
    Input : the 09:15–09:20 candle of the ATM call and the ATM put.
-   Output: entry price, Target 1 and stop loss for each side, plus the
-           confirmation level that a later 5-minute candle must close above. */
+   Output: which side to buy and how confidently, the entry price, three
+           targets with position management, the stop loss, the pre-entry
+           condition checklist and the rules to follow.
+
+   The level model reproduces the original tool exactly — all twenty values
+   across the four reference legs (24300 CE/PE and 24400 CE/PE):
+
+     entry = close × 1.005
+     step  = max(0.8 × range, 16)
+     T1 / T2 / T3 = entry + step × {1, 2, 3.5}
+     stop  = low − 0.3 × range
+
+   The close drives the entry, which is why the original marks that field
+   "CLOSE ★ (FIXED)". */
 (function (APP) {
   'use strict';
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
 
-  /* ---------- ATM strike (step 1) ----------
+  /* toFixed, not Math.round: 121 × 1.005 is 121.60499… in binary floating
+     point, and the original shows 121.60 — the same rounding JS gives here. */
+  function round2(n) { return Number(n.toFixed(2)); }
+
+  /* ---------- ATM strike ----------
      The guide's own example rounds 23670 down to 23600, so the strike is the
      100-multiple at or below the open, not the arithmetically nearest one. */
   function atmStrike(spotOpen, stepSize) {
@@ -2252,110 +2480,198 @@ window.APP = window.APP || {};
     return Math.floor(spotOpen / step) * step;
   }
 
-  /* ---------- level model (steps 3–4) ---------- */
+  /* ---------- one leg ---------- */
   function analyseSide(candle, cfg) {
     var s = U.candleStats(candle);
     var range = s.range;
 
-    var entry = U.toTick(candle.h + (cfg.entryBufferPct / 100) * range, cfg.tickSize);
-    var stopLoss = U.toTick(candle.l - (cfg.slBufferPct / 100) * range, cfg.tickSize);
-    var target1 = U.toTick(entry + cfg.t1Multiplier * range, cfg.tickSize);
+    var entry = round2(candle.c * (1 + cfg.entryPremiumPct / 100));
+    var step = Math.max(cfg.targetStepMult * range, cfg.minTargetStep);
+    var target1 = round2(entry + step);
+    var target2 = round2(entry + cfg.t2Mult * step);
+    var target3 = round2(entry + cfg.t3Mult * step);
+    var stopLoss = round2(candle.l - cfg.slRangeMult * range);
 
-    var risk = entry - stopLoss;
-    var reward = target1 - entry;
-
-    /* How convincingly the first candle closed — used only to flag which side
-       to watch first, never as a trade signal on its own. */
-    var strength = U.clamp(
-      0.50 * s.closePos + 0.30 * s.bodyRatio + 0.20 * (s.bullish ? 1 : 0),
-      0, 1
+    /* Confidence: direction 20, body 40, close position 40. Reproduces the
+       original's 80% on the 24400 put leg (bullish, 75% body, 75% close). */
+    var confidence = U.clamp(
+      20 * (s.bullish ? 1 : 0) + 40 * s.bodyRatio + 40 * s.closePos, 0, 100
     );
 
     return {
       candle: candle,
       stats: s,
       range: range,
+      step: step,
       entry: entry,
       target1: target1,
+      target2: target2,
+      target3: target3,
       stopLoss: stopLoss,
-      risk: risk,
-      reward: reward,
-      rr: risk > 0 ? reward / risk : NaN,
-      confirmClose: U.toTick(entry + cfg.tickSize, cfg.tickSize),
-      riskPctOfEntry: entry > 0 ? risk / entry : NaN,
-      strength: strength
+      risk: entry - stopLoss,
+      confidence: confidence,
+      targets: [
+        { key: 't1', level: target1, action: 'book', pct: cfg.bookT1Pct },
+        { key: 't2', level: target2, action: 'book', pct: cfg.bookT2Pct },
+        { key: 't3', level: target3, action: 'hold', pct: cfg.holdT3Pct }
+      ]
     };
   }
 
+  /* ---------- both legs, and the call ---------- */
   function analyse(ceCandle, peCandle, cfg) {
     var ce = analyseSide(ceCandle, cfg);
     var pe = analyseSide(peCandle, cfg);
-    var gap = ce.strength - pe.strength;
-    var bias = Math.abs(gap) < 0.05 ? 'flat' : (gap > 0 ? 'call' : 'put');
-    return { ce: ce, pe: pe, bias: bias, biasGap: Math.abs(gap) };
+
+    var side = ce.confidence >= pe.confidence ? 'call' : 'put';
+    var chosen = side === 'call' ? ce : pe;
+    var pcr = ceCandle.c > 0 ? peCandle.c / ceCandle.c : NaN;
+    var pcrBias = pcr >= 1.2 ? 'bearish' : (pcr <= 0.8 ? 'bullish' : 'neutral');
+
+    return {
+      ce: ce, pe: pe,
+      side: side,
+      chosen: chosen,
+      confidence: chosen.confidence,
+      verdict: chosen.confidence >= cfg.takeConfidence ? 'yes' : 'no',
+      pcr: pcr,
+      pcrBias: pcrBias,
+      conditions: conditions(ce, pe, pcr, pcrBias, side)
+    };
+  }
+
+  /* ---------- pre-entry condition checklist ---------- */
+  function conditions(ce, pe, pcr, pcrBias, side) {
+    var list = [];
+    function add(name, state, detail) { list.push({ name: name, state: state, detail: detail }); }
+
+    add(t('an.cond.closed'), U.$('an-closed').checked ? 'pass' : 'fail',
+        t(U.$('an-closed').checked ? 'an.cond.closedYes' : 'an.cond.closedNo'));
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      var wanted = key === side;
+      add(t('an.cond.direction', { side: t('f.' + key + 'Short') }),
+          leg.stats.bullish ? 'pass' : (wanted ? 'fail' : 'info'),
+          t(leg.stats.bullish ? 'an.cond.bullish' : 'an.cond.bearish',
+            { o: U.fmt(leg.candle.o), c: U.fmt(leg.candle.c) }));
+    });
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      add(t('an.cond.body', { side: t('f.' + key + 'Short') }),
+          leg.stats.bodyRatio >= 0.6 ? 'pass' : (key === side ? 'fail' : 'info'),
+          U.pct(leg.stats.bodyRatio));
+    });
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      add(t('an.cond.closePos', { side: t('f.' + key + 'Short') }),
+          leg.stats.closePos >= 0.6 ? 'pass' : (key === side ? 'fail' : 'info'),
+          U.pct(leg.stats.closePos));
+    });
+
+    add(t('an.cond.pcr'), pcrBias === 'neutral' ? 'warn' : 'pass',
+        U.fmt(pcr, 2) + ' — ' + t('an.pcr.' + pcrBias));
+
+    return list;
   }
 
   /* ---------- rendering ---------- */
-  function levelBlock(r) {
-    return '' +
-      '<div class="levels">' +
-        '<div class="level level-entry"><div class="level-label">' + t('an.entryPrice') + '</div><div class="level-value">' + U.fmt(r.entry) + '</div></div>' +
-        '<div class="level level-target"><div class="level-label">' + t('an.target1') + '</div><div class="level-value">' + U.fmt(r.target1) + '</div></div>' +
-        '<div class="level level-sl"><div class="level-label">' + t('an.stopLoss') + '</div><div class="level-value">' + U.fmt(r.stopLoss) + '</div></div>' +
-      '</div>';
-  }
+  var STATE_ICON = { pass: '✓', fail: '✕', warn: '⚠', info: '·' };
 
-  function metricsBlock(r, isPut) {
-    return '' +
-      '<div class="metrics">' +
-        '<div class="metric"><span>' + t('an.range') + '</span><span>' + U.fmt(r.range) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.risk') + '</span><span>' + U.fmt(r.risk) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.reward') + '</span><span>' + U.fmt(r.reward) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.rr') + '</span><span>' + (isFinite(r.rr) ? '1 : ' + U.fmt(r.rr) : '—') + '</span></div>' +
-        '<div class="metric"><span>' + t('an.riskPct') + '</span><span>' + U.pct(r.riskPctOfEntry) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.closePos') + '</span><span>' + U.pct(r.stats.closePos) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.bodyPct') + '</span><span>' + U.pct(r.stats.bodyRatio) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.strength') + '</span><span>' + U.pct(r.strength, 0) + '</span></div>' +
+  function renderVerdict(r, cfg) {
+    var isCall = r.side === 'call';
+    var leg = r.chosen;
+    var buyLabel = t(isCall ? 'an.buyCall' : 'an.buyPut');
+    var yes = r.verdict === 'yes';
+
+    U.$('an-verdict').className = 'card verdict-card an-verdict ' + (yes ? 'is-yes' : 'is-no');
+    U.$('an-verdict').innerHTML = '' +
+      '<div class="an-verdict-top">' +
+        '<div class="verdict-badge ' + (isCall ? 'v-hold' : 'v-put') + '">' +
+          (yes ? '✅ ' : '⚠ ') + U.escapeHtml(yes ? t('an.yes', { buy: buyLabel }) : t('an.noClear')) +
+        '</div>' +
+        '<div class="an-confidence"><b>' + U.fmt(r.confidence, 0) + '%</b>' +
+          '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' +
       '</div>' +
-      '<div class="bar' + (isPut ? ' bar-put' : '') + '"><i style="width:' + U.fmt(r.strength * 100, 0) + '%"></i></div>';
-  }
-
-  function renderSide(elId, title, r, isPut, isPrimary) {
-    var el = U.$(elId);
-    el.innerHTML = '' +
-      '<h3 class="result-title">' + U.escapeHtml(title) +
-        (isPrimary ? '<span class="badge-primary">' + U.escapeHtml(t('an.primary')) + '</span>' : '') +
-      '</h3>' +
-      levelBlock(r) +
-      metricsBlock(r, isPut) +
-      '<p class="confirm-line">' +
-        t('an.confirm', { close: U.fmt(r.confirmClose), entry: U.fmt(r.entry) }) + '</p>' +
-      '<div class="row-actions">' +
-        '<button type="button" class="btn btn-sm" data-send-t1="' + (isPut ? 'put' : 'call') + '">' +
-          U.escapeHtml(t('an.sendT1')) + '</button>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('an.reason', {
+        side: t(isCall ? 'f.call' : 'f.put'),
+        dir: t(leg.stats.bullish ? 'an.cond.bullishWord' : 'an.cond.bearishWord'),
+        body: U.pct(leg.stats.bodyRatio),
+        close: U.pct(leg.stats.closePos),
+        pcr: U.fmt(r.pcr, 2),
+        pcrBias: t('an.pcr.' + r.pcrBias)
+      })) + '</p>' +
+      '<div class="entry-strip">' +
+        '<span class="entry-label">' + U.escapeHtml(t('an.entryPrice')) + '</span>' +
+        '<span class="entry-value">' + money(leg.entry) + '</span>' +
+        '<span class="entry-side ' + (isCall ? 'is-call' : 'is-put') + '">' + U.escapeHtml(buyLabel) + '</span>' +
       '</div>';
   }
 
-  function renderBias(result) {
-    var el = U.$('analyser-bias');
-    var tag, text;
-    if (result.bias === 'call') {
-      tag = '<span class="bias-tag bias-call">' + U.escapeHtml(t('an.biasCall')) + '</span>';
-      text = t('an.biasCallText');
-    } else if (result.bias === 'put') {
-      tag = '<span class="bias-tag bias-put">' + U.escapeHtml(t('an.biasPut')) + '</span>';
-      text = t('an.biasPutText');
-    } else {
-      tag = '<span class="bias-tag bias-flat">' + U.escapeHtml(t('an.biasFlat')) + '</span>';
-      text = t('an.biasFlatText');
-    }
-    el.innerHTML = tag + '<span class="muted small">' + U.escapeHtml(text) + '</span>';
+  function renderConditions(r) {
+    U.$('an-conditions').innerHTML = r.conditions.map(function (c) {
+      return '<li class="check ' + c.state + '">' +
+        '<span class="check-icon" aria-hidden="true">' + STATE_ICON[c.state] + '</span>' +
+        '<span class="check-body"><span class="check-name">' + U.escapeHtml(c.name) + '</span></span>' +
+        '<span class="check-verdict">' + U.escapeHtml(c.detail) + '</span>' +
+      '</li>';
+    }).join('');
   }
 
-  function render(result) {
-    renderSide('res-ce', t('f.call'), result.ce, false, result.bias === 'call');
-    renderSide('res-pe', t('f.put'), result.pe, true, result.bias === 'put');
-    renderBias(result);
+  function targetTable(leg, isPut, isChosen) {
+    function row(label, level, delta, badge, cls) {
+      return '<tr class="' + cls + '">' +
+        '<td class="tgt-label">' + U.escapeHtml(label) + '</td>' +
+        '<td class="tgt-level">' + money(level) + '</td>' +
+        '<td class="tgt-pts">' + (delta >= 0 ? '+' : '−') + U.fmt(Math.abs(delta), 0) + t('an.pts') + '</td>' +
+        '<td class="tgt-action">' + (badge ? '<span class="tgt-badge ' + cls + '">' + U.escapeHtml(badge) + '</span>' : '') + '</td>' +
+      '</tr>';
+    }
+    return '' +
+      '<article class="card target-card ' + (isPut ? 'side-put' : 'side-call') + (isChosen ? ' is-chosen' : '') + '">' +
+        '<h3 class="target-title"><span class="dot ' + (isPut ? 'dot-put' : 'dot-call') + '"></span>' +
+          U.escapeHtml(t(isPut ? 'an.putTargets' : 'an.callTargets')) +
+          (isChosen ? '<span class="badge-primary">' + U.escapeHtml(t('an.tradeThis')) + '</span>' : '') +
+        '</h3>' +
+        '<div class="table-scroll"><table class="targets"><tbody>' +
+          row(t('an.entry'), leg.entry, 0, '', 'row-entry').replace('<td class="tgt-pts">+0' + t('an.pts') + '</td>', '<td class="tgt-pts"></td>') +
+          row(t('an.target1'), leg.target1, leg.target1 - leg.entry, t('an.book', { pct: 40 }), 'row-t1') +
+          row(t('an.target2'), leg.target2, leg.target2 - leg.entry, t('an.book', { pct: 40 }), 'row-t2') +
+          row(t('an.target3'), leg.target3, leg.target3 - leg.entry, t('an.hold', { pct: 20 }), 'row-t3') +
+          row(t('an.stopLoss'), leg.stopLoss, leg.stopLoss - leg.entry, t('an.exitAll'), 'row-sl') +
+        '</tbody></table></div>' +
+      '</article>';
+  }
+
+  function renderTargets(r) {
+    U.$('an-targets').innerHTML =
+      targetTable(r.ce, false, r.side === 'call') +
+      targetTable(r.pe, true, r.side === 'put');
+  }
+
+  function renderRules(r) {
+    var leg = r.chosen;
+    var buy = t(r.side === 'call' ? 'an.buyCall' : 'an.buyPut');
+    var vars = {
+      buy: buy, entry: money(leg.entry), sl: money(leg.stopLoss),
+      t1: money(leg.target1), t2: money(leg.target2), t3: money(leg.target3)
+    };
+    var rules = [1, 2, 3, 4, 5, 6].map(function (n) { return t('an.rule' + n, vars); });
+    U.$('an-rules').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('an.rulesTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('an.rulesDesc')) + '</p></div>' +
+      '<ol class="action-plan">' +
+        rules.map(function (x) { return '<li>' + U.escapeHtml(x) + '</li>'; }).join('') +
+      '</ol>';
+  }
+
+  function render(result, cfg) {
+    renderVerdict(result, cfg);
+    renderConditions(result);
+    renderTargets(result);
+    renderRules(result);
     U.$('analyser-output').hidden = false;
   }
 
@@ -2398,7 +2714,7 @@ window.APP = window.APP || {};
 
     var result = analyse(ce, pe, cfg);
     APP.state.analyser = result;
-    render(result);
+    render(result, cfg);
     return result;
   }
 
@@ -2406,6 +2722,7 @@ window.APP = window.APP || {};
     U.clearCandle('an-ce');
     U.clearCandle('an-pe');
     U.$('atm-open').value = '';
+    U.$('an-closed').checked = true;
     U.showErrors('an-ce-err', []);
     U.showErrors('an-pe-err', []);
     U.$('analyser-output').hidden = true;
@@ -2414,9 +2731,10 @@ window.APP = window.APP || {};
   }
 
   function loadSample() {
-    U.$('atm-open').value = '23670';
-    U.writeCandle('an-ce', { o: 148.5, h: 162.75, l: 141.2, c: 159.9 });
-    U.writeCandle('an-pe', { o: 155.0, h: 158.4, l: 132.6, c: 137.15 });
+    U.$('atm-open').value = '24400';
+    U.writeCandle('an-ce', { o: 143, h: 143, l: 110, c: 110 });
+    U.writeCandle('an-pe', { o: 94, h: 130, l: 94, c: 121 });
+    U.$('an-closed').checked = true;
     renderAtm();
     run();
   }
@@ -2426,27 +2744,23 @@ window.APP = window.APP || {};
     U.$('btn-analyser-reset').addEventListener('click', reset);
     U.$('btn-analyser-sample').addEventListener('click', loadSample);
     U.$('atm-open').addEventListener('input', renderAtm);
+    U.$('an-closed').addEventListener('change', function () { if (APP.state.analyser) run(); });
 
-    /* Enter anywhere in the candle inputs runs the analysis. */
     U.$$('#panel-analyser .candle-box input').forEach(function (input) {
       input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
     });
 
     /* Hand-off buttons are rendered with the results, so delegate. */
     U.$('analyser-output').addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-send-t1]');
+      var btn = e.target.closest && e.target.closest('[data-send-t1]');
       if (btn) APP.t1helper.importFromAnalyser(btn.getAttribute('data-send-t1'));
     });
   }
 
   APP.analyser = {
-    init: init,
-    run: run,
-    reset: reset,
-    analyse: analyse,
-    analyseSide: analyseSide,
-    atmStrike: atmStrike,
-    renderAtm: renderAtm
+    init: init, run: run, reset: reset,
+    analyse: analyse, analyseSide: analyseSide,
+    atmStrike: atmStrike, renderAtm: renderAtm
   };
 })(window.APP);
 </script>
@@ -2652,9 +2966,9 @@ window.APP = window.APP || {};
 <script>
 /* Tool 2 — T1 Decision Helper (Phase 3, steps 6–10).
 
-   Input : the trade side, the three mapped levels (entry = analyser stop loss,
-           T1 = analyser entry price, T2 = analyser Target 1) and the OHLC of
-           the 5-minute candle that touched T1.
+   Input : the trade side, the three mapped levels (entry = analyser entry,
+           T1 = analyser Target 1, T2 = analyser Target 2) and the OHLC of
+           the 5-minute candle that touched Target 1.
    Output: hold-to-T2 vs partial book vs book now, a momentum score, the
            T1→T2 reward ratio, four condition checks, the condition-4 gate and
            a step-by-step action plan.
@@ -2952,9 +3266,12 @@ window.APP = window.APP || {};
     if (!a) return;
     var r = which === 'put' ? a.pe : a.ce;
     setSide(which);
-    U.$('t1-entry').value = r.stopLoss.toFixed(2);   // entry field  <- stop loss
-    U.$('t1-t1').value = r.entry.toFixed(2);         // T1 level     <- entry price
-    U.$('t1-t2').value = r.target1.toFixed(2);       // T2 level     <- Target 1
+    /* The original's helper ladder is the analyser's entry / Target 1 /
+       Target 2 — which is why its three levels are always equally spaced and
+       its reward ratio always reads 1.00x. */
+    U.$('t1-entry').value = r.entry.toFixed(2);
+    U.$('t1-t1').value = r.target1.toFixed(2);
+    U.$('t1-t2').value = r.target2.toFixed(2);
     U.showErrors('t1-levels-err', []);
     renderReading();
     U.$('t1-output').hidden = true;
@@ -3556,7 +3873,7 @@ window.APP = window.APP || {};
     U.$('sg-entry').value = r.entry.toFixed(2);
     U.$('sg-sl').value = r.stopLoss.toFixed(2);
     U.$('sg-t1').value = r.target1.toFixed(2);
-    U.$('sg-t2').value = (r.target1 + r.range).toFixed(2);
+    U.$('sg-t2').value = r.target2.toFixed(2);
     U.$('sg-range').value = r.range.toFixed(2);
     U.showErrors('sg-err', []);
   }
@@ -3911,21 +4228,25 @@ window.APP = window.APP || {};
   ];
 
   function formulaItems(cfg) {
-    var entryTerm = cfg.entryBufferPct ? ' + ' + cfg.entryBufferPct + '% × range' : '';
-    var slTerm = cfg.slBufferPct ? ' − ' + cfg.slBufferPct + '% × range' : '';
     return [
       {
         title: 'g.f1', note: 'g.f1n',
         code:
-          'range     = high − low\n' +
-          'entry     = high' + entryTerm + '\n' +
-          'stop loss = low' + slTerm + '\n' +
-          'Target 1  = entry + ' + cfg.t1Multiplier + ' × range\n' +
-          'confirm   = a 5-min close ≥ entry + ' + cfg.tickSize
+          'range    = high − low\n' +
+          'entry    = close × ' + (1 + cfg.entryPremiumPct / 100) + '\n' +
+          'step     = max(' + cfg.targetStepMult + ' × range, ' + cfg.minTargetStep + ')\n' +
+          'Target 1 = entry + step\n' +
+          'Target 2 = entry + ' + cfg.t2Mult + ' × step\n' +
+          'Target 3 = entry + ' + cfg.t3Mult + ' × step\n' +
+          'stop     = low − ' + cfg.slRangeMult + ' × range'
       },
       {
         title: 'g.f2', note: 'g.f2n',
-        code: 'strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)'
+        code:
+          'confidence = 20 × (close > open) + 40 × body ÷ range + 40 × close position\n' +
+          'side       = whichever of CE / PE scores higher\n' +
+          'verdict    = YES at confidence ≥ ' + cfg.takeConfidence + '\n' +
+          'PCR        = put close ÷ call close'
       },
       {
         title: 'g.f3', note: 'g.f3n',

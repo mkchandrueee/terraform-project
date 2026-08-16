@@ -22,16 +22,15 @@ The tools hand off to each other:
 
 | Button | Fills |
 |---|---|
-| *Send to T1 Helper* (per side) | entry ← **stop loss**, T1 ← **entry price**, T2 ← **Target 1** — the guide's own mapping |
+| *Send CALL / PUT to T1 Helper* | entry ← **entry price**, T1 ← **Target 1**, T2 ← **Target 2** |
 | *Copy from analyser* (pullback) | the two original first-candle OHLC sets |
 | *Levels from call / put* (signal) | entry ← entry price, stop ← stop loss, T1 ← Target 1, T2 ← Target 1 + range |
 
-The T1 Helper's mapping looks scrambled at a glance and is not: the guide shifts the ladder down one notch on
-purpose, because the helper grades the candle that *reached* your entry. Its "Entry price" box therefore holds
-your **stop loss**, its "T1 level" holds your **actual entry**, and its "T2 level" holds your **first target**.
-A line under those three fields spells that out — `Reads as — your stop ₹52 · your entry ₹70 · your target ₹88`
-— so a glance confirms nothing has been shuffled. The action plan names the levels the same way, so "move the
-stop to your entry" points at the level you actually bought at.
+The PDF describes the T1 hand-off as *entry ← stop loss, T1 ← entry price, T2 ← Target 1*. That does not match
+the tools: every reference ladder in the original helper is **equally spaced**, which only holds for entry /
+Target 1 / Target 2 under the model above, and it is why its reward ratio always reads 1.00×. The PDF appears
+to describe an older build, so the hand-off uses entry → entry, Target 1 → T1, Target 2 → T2. A line under
+those fields spells the reading out so nothing looks shuffled.
 
 ## About the formulas
 
@@ -46,19 +45,32 @@ Two things the reference examples confirm rather than assume: the analyser's lad
 exactly what `stop loss = low`, `entry = high`, `Target 1 = high + range` produces; and the T1 helper's
 momentum weights below reproduce its published scores exactly.
 
-**Option Analyser** — the first candle's high is the breakout level and its low is the invalidation level, so
-risk equals the candle range and Target 1 is a measured move of that same range:
+**Options Analyser** — this is the original tool's model, recovered exactly from screenshots of four legs
+(24300 CE/PE and 24400 CE/PE). All twenty values — entry, three targets and the stop on each leg — reproduce
+to the paisa:
 
 ```
-range     = high − low
-entry     = high            (+ optional buffer, default 0)
-stop loss = low             (− optional buffer, default 0)
-Target 1  = entry + 1.0 × range
-confirm   = a 5-minute close ≥ entry + one tick (0.05)
+range    = high − low
+entry    = close × 1.005                 ← the close drives it, hence "CLOSE ★ (FIXED)"
+step     = max(0.8 × range, 16)
+Target 1 = entry + step                  book 40%
+Target 2 = entry + 2.0 × step            book 40%
+Target 3 = entry + 3.5 × step            hold 20%
+stop     = low − 0.3 × range             exit all
 ```
 
-`strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)` flags which side to watch first.
-It never substitutes for the confirmation close.
+Which leg to buy, and how confidently:
+
+```
+confidence = 20 × (close > open) + 40 × body ÷ range + 40 × close position
+side       = whichever of CE / PE scores higher
+verdict    = YES at confidence ≥ 60
+PCR        = put close ÷ call close      ≥1.2 bearish, ≤0.8 bullish, else neutral
+```
+
+On the 24400 legs that gives the put 20 + 40×0.75 + 40×0.75 = **80%** and a **BUY PUT** verdict with PCR
+**1.10 Neutral** — the same numbers the original prints. Below the verdict sit the eight entry conditions and
+six numbered rules, both filled in with the chosen side's own levels.
 
 **T1 Decision Helper** — three weighted checks on the T1-touch candle produce a 0–100 momentum score, and a
 fourth check sits outside the score as the gate:

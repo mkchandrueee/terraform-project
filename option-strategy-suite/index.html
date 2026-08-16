@@ -39,22 +39,16 @@
     <div class="settings-grid">
       <fieldset class="settings-group">
         <legend data-i18n="cfg.g1">Option Analyser</legend>
-        <label class="field">
-          <span><span data-i18n="cfg.entryBufferPct"></span> <em data-i18n="cfg.entryBufferPct.hint"></em></span>
-          <input type="number" id="cfg-entryBufferPct" step="0.1" min="0" max="50" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.slBufferPct"></span> <em data-i18n="cfg.slBufferPct.hint"></em></span>
-          <input type="number" id="cfg-slBufferPct" step="0.1" min="0" max="50" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.t1Multiplier"></span> <em data-i18n="cfg.t1Multiplier.hint"></em></span>
-          <input type="number" id="cfg-t1Multiplier" step="0.05" min="0.1" max="10" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="cfg.tickSize"></span> <em data-i18n="cfg.tickSize.hint"></em></span>
-          <input type="number" id="cfg-tickSize" step="0.05" min="0.01" max="10" />
-        </label>
+        <label class="field"><span><span data-i18n="cfg.entryPremiumPct"></span> <em data-i18n="cfg.entryPremiumPct.hint"></em></span><input type="number" id="cfg-entryPremiumPct" step="0.05" min="0" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.targetStepMult"></span> <em data-i18n="cfg.targetStepMult.hint"></em></span><input type="number" id="cfg-targetStepMult" step="0.05" min="0.05" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.minTargetStep"></span> <em data-i18n="cfg.minTargetStep.hint"></em></span><input type="number" id="cfg-minTargetStep" step="1" min="0" max="500" /></label>
+        <label class="field"><span data-i18n="cfg.t2Mult"></span><input type="number" id="cfg-t2Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span data-i18n="cfg.t3Mult"></span><input type="number" id="cfg-t3Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.slRangeMult"></span> <em data-i18n="cfg.slRangeMult.hint"></em></span><input type="number" id="cfg-slRangeMult" step="0.05" min="0" max="5" /></label>
+        <label class="field"><span data-i18n="cfg.takeConfidence"></span><input type="number" id="cfg-takeConfidence" step="1" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.bookT1Pct"></span><input type="number" id="cfg-bookT1Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.bookT2Pct"></span><input type="number" id="cfg-bookT2Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.holdT3Pct"></span><input type="number" id="cfg-holdT3Pct" step="5" min="0" max="100" /></label>
       </fieldset>
 
       <fieldset class="settings-group">
@@ -201,7 +195,7 @@
               <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-ce-err" role="alert"></p>
           </fieldset>
@@ -212,14 +206,16 @@
               <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
               <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
-              <label class="field"><span data-i18n="f.close"></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
             </div>
             <p class="err" id="an-pe-err" role="alert"></p>
           </fieldset>
         </div>
 
+        <label class="checkline"><input type="checkbox" id="an-closed" checked /> <span data-i18n="an.closedLabel"></span></label>
+
         <div class="row-actions">
-          <button type="button" class="btn btn-primary" id="btn-analyse" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-primary btn-decide" id="btn-analyse" data-i18n="an.analyse"></button>
           <button type="button" class="btn btn-ghost" id="btn-analyser-sample" data-i18n="f.sample"></button>
           <button type="button" class="btn btn-ghost" id="btn-analyser-reset" data-i18n="f.reset"></button>
         </div>
@@ -227,18 +223,25 @@
     </div>
 
     <div id="analyser-output" hidden>
-      <div class="card" id="analyser-bias-card">
-        <div class="card-body bias-row" id="analyser-bias"></div>
+      <div class="card verdict-card an-verdict" id="an-verdict"></div>
+
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="an.condTitle"></h3>
+        <p class="muted" data-i18n="an.condDesc"></p></div>
+        <div class="card-body"><ul class="checks" id="an-conditions"></ul></div>
       </div>
 
-      <div class="result-grid">
-        <article class="card result-card side-call" id="res-ce"></article>
-        <article class="card result-card side-put" id="res-pe"></article>
-      </div>
+      <div class="result-grid" id="an-targets"></div>
+
+      <div class="card" id="an-rules"></div>
 
       <div class="card note-card">
         <h3><span class="step-pill" data-i18n="an.rule"></span> <span data-i18n="an.rule.title"></span></h3>
         <p data-i18n-html="an.rule.body"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-sm" data-send-t1="call" data-i18n="an.sendT1Call"></button>
+          <button type="button" class="btn btn-sm" data-send-t1="put" data-i18n="an.sendT1Put"></button>
+        </div>
       </div>
     </div>
   </section>

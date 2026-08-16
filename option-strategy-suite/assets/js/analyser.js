@@ -1,15 +1,32 @@
-/* Tool 1 — Option Analyser (Phases 1–2, steps 1–5).
+/* Tool 1 — Options Analyser (Phases 1–2).
 
    Input : the 09:15–09:20 candle of the ATM call and the ATM put.
-   Output: entry price, Target 1 and stop loss for each side, plus the
-           confirmation level that a later 5-minute candle must close above. */
+   Output: which side to buy and how confidently, the entry price, three
+           targets with position management, the stop loss, the pre-entry
+           condition checklist and the rules to follow.
+
+   The level model reproduces the original tool exactly — all twenty values
+   across the four reference legs (24300 CE/PE and 24400 CE/PE):
+
+     entry = close × 1.005
+     step  = max(0.8 × range, 16)
+     T1 / T2 / T3 = entry + step × {1, 2, 3.5}
+     stop  = low − 0.3 × range
+
+   The close drives the entry, which is why the original marks that field
+   "CLOSE ★ (FIXED)". */
 (function (APP) {
   'use strict';
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
 
-  /* ---------- ATM strike (step 1) ----------
+  /* toFixed, not Math.round: 121 × 1.005 is 121.60499… in binary floating
+     point, and the original shows 121.60 — the same rounding JS gives here. */
+  function round2(n) { return Number(n.toFixed(2)); }
+
+  /* ---------- ATM strike ----------
      The guide's own example rounds 23670 down to 23600, so the strike is the
      100-multiple at or below the open, not the arithmetically nearest one. */
   function atmStrike(spotOpen, stepSize) {
@@ -18,110 +35,198 @@
     return Math.floor(spotOpen / step) * step;
   }
 
-  /* ---------- level model (steps 3–4) ---------- */
+  /* ---------- one leg ---------- */
   function analyseSide(candle, cfg) {
     var s = U.candleStats(candle);
     var range = s.range;
 
-    var entry = U.toTick(candle.h + (cfg.entryBufferPct / 100) * range, cfg.tickSize);
-    var stopLoss = U.toTick(candle.l - (cfg.slBufferPct / 100) * range, cfg.tickSize);
-    var target1 = U.toTick(entry + cfg.t1Multiplier * range, cfg.tickSize);
+    var entry = round2(candle.c * (1 + cfg.entryPremiumPct / 100));
+    var step = Math.max(cfg.targetStepMult * range, cfg.minTargetStep);
+    var target1 = round2(entry + step);
+    var target2 = round2(entry + cfg.t2Mult * step);
+    var target3 = round2(entry + cfg.t3Mult * step);
+    var stopLoss = round2(candle.l - cfg.slRangeMult * range);
 
-    var risk = entry - stopLoss;
-    var reward = target1 - entry;
-
-    /* How convincingly the first candle closed — used only to flag which side
-       to watch first, never as a trade signal on its own. */
-    var strength = U.clamp(
-      0.50 * s.closePos + 0.30 * s.bodyRatio + 0.20 * (s.bullish ? 1 : 0),
-      0, 1
+    /* Confidence: direction 20, body 40, close position 40. Reproduces the
+       original's 80% on the 24400 put leg (bullish, 75% body, 75% close). */
+    var confidence = U.clamp(
+      20 * (s.bullish ? 1 : 0) + 40 * s.bodyRatio + 40 * s.closePos, 0, 100
     );
 
     return {
       candle: candle,
       stats: s,
       range: range,
+      step: step,
       entry: entry,
       target1: target1,
+      target2: target2,
+      target3: target3,
       stopLoss: stopLoss,
-      risk: risk,
-      reward: reward,
-      rr: risk > 0 ? reward / risk : NaN,
-      confirmClose: U.toTick(entry + cfg.tickSize, cfg.tickSize),
-      riskPctOfEntry: entry > 0 ? risk / entry : NaN,
-      strength: strength
+      risk: entry - stopLoss,
+      confidence: confidence,
+      targets: [
+        { key: 't1', level: target1, action: 'book', pct: cfg.bookT1Pct },
+        { key: 't2', level: target2, action: 'book', pct: cfg.bookT2Pct },
+        { key: 't3', level: target3, action: 'hold', pct: cfg.holdT3Pct }
+      ]
     };
   }
 
+  /* ---------- both legs, and the call ---------- */
   function analyse(ceCandle, peCandle, cfg) {
     var ce = analyseSide(ceCandle, cfg);
     var pe = analyseSide(peCandle, cfg);
-    var gap = ce.strength - pe.strength;
-    var bias = Math.abs(gap) < 0.05 ? 'flat' : (gap > 0 ? 'call' : 'put');
-    return { ce: ce, pe: pe, bias: bias, biasGap: Math.abs(gap) };
+
+    var side = ce.confidence >= pe.confidence ? 'call' : 'put';
+    var chosen = side === 'call' ? ce : pe;
+    var pcr = ceCandle.c > 0 ? peCandle.c / ceCandle.c : NaN;
+    var pcrBias = pcr >= 1.2 ? 'bearish' : (pcr <= 0.8 ? 'bullish' : 'neutral');
+
+    return {
+      ce: ce, pe: pe,
+      side: side,
+      chosen: chosen,
+      confidence: chosen.confidence,
+      verdict: chosen.confidence >= cfg.takeConfidence ? 'yes' : 'no',
+      pcr: pcr,
+      pcrBias: pcrBias,
+      conditions: conditions(ce, pe, pcr, pcrBias, side)
+    };
+  }
+
+  /* ---------- pre-entry condition checklist ---------- */
+  function conditions(ce, pe, pcr, pcrBias, side) {
+    var list = [];
+    function add(name, state, detail) { list.push({ name: name, state: state, detail: detail }); }
+
+    add(t('an.cond.closed'), U.$('an-closed').checked ? 'pass' : 'fail',
+        t(U.$('an-closed').checked ? 'an.cond.closedYes' : 'an.cond.closedNo'));
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      var wanted = key === side;
+      add(t('an.cond.direction', { side: t('f.' + key + 'Short') }),
+          leg.stats.bullish ? 'pass' : (wanted ? 'fail' : 'info'),
+          t(leg.stats.bullish ? 'an.cond.bullish' : 'an.cond.bearish',
+            { o: U.fmt(leg.candle.o), c: U.fmt(leg.candle.c) }));
+    });
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      add(t('an.cond.body', { side: t('f.' + key + 'Short') }),
+          leg.stats.bodyRatio >= 0.6 ? 'pass' : (key === side ? 'fail' : 'info'),
+          U.pct(leg.stats.bodyRatio));
+    });
+
+    [['call', ce], ['put', pe]].forEach(function (pair) {
+      var key = pair[0], leg = pair[1];
+      add(t('an.cond.closePos', { side: t('f.' + key + 'Short') }),
+          leg.stats.closePos >= 0.6 ? 'pass' : (key === side ? 'fail' : 'info'),
+          U.pct(leg.stats.closePos));
+    });
+
+    add(t('an.cond.pcr'), pcrBias === 'neutral' ? 'warn' : 'pass',
+        U.fmt(pcr, 2) + ' — ' + t('an.pcr.' + pcrBias));
+
+    return list;
   }
 
   /* ---------- rendering ---------- */
-  function levelBlock(r) {
-    return '' +
-      '<div class="levels">' +
-        '<div class="level level-entry"><div class="level-label">' + t('an.entryPrice') + '</div><div class="level-value">' + U.fmt(r.entry) + '</div></div>' +
-        '<div class="level level-target"><div class="level-label">' + t('an.target1') + '</div><div class="level-value">' + U.fmt(r.target1) + '</div></div>' +
-        '<div class="level level-sl"><div class="level-label">' + t('an.stopLoss') + '</div><div class="level-value">' + U.fmt(r.stopLoss) + '</div></div>' +
-      '</div>';
-  }
+  var STATE_ICON = { pass: '✓', fail: '✕', warn: '⚠', info: '·' };
 
-  function metricsBlock(r, isPut) {
-    return '' +
-      '<div class="metrics">' +
-        '<div class="metric"><span>' + t('an.range') + '</span><span>' + U.fmt(r.range) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.risk') + '</span><span>' + U.fmt(r.risk) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.reward') + '</span><span>' + U.fmt(r.reward) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.rr') + '</span><span>' + (isFinite(r.rr) ? '1 : ' + U.fmt(r.rr) : '—') + '</span></div>' +
-        '<div class="metric"><span>' + t('an.riskPct') + '</span><span>' + U.pct(r.riskPctOfEntry) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.closePos') + '</span><span>' + U.pct(r.stats.closePos) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.bodyPct') + '</span><span>' + U.pct(r.stats.bodyRatio) + '</span></div>' +
-        '<div class="metric"><span>' + t('an.strength') + '</span><span>' + U.pct(r.strength, 0) + '</span></div>' +
+  function renderVerdict(r, cfg) {
+    var isCall = r.side === 'call';
+    var leg = r.chosen;
+    var buyLabel = t(isCall ? 'an.buyCall' : 'an.buyPut');
+    var yes = r.verdict === 'yes';
+
+    U.$('an-verdict').className = 'card verdict-card an-verdict ' + (yes ? 'is-yes' : 'is-no');
+    U.$('an-verdict').innerHTML = '' +
+      '<div class="an-verdict-top">' +
+        '<div class="verdict-badge ' + (isCall ? 'v-hold' : 'v-put') + '">' +
+          (yes ? '✅ ' : '⚠ ') + U.escapeHtml(yes ? t('an.yes', { buy: buyLabel }) : t('an.noClear')) +
+        '</div>' +
+        '<div class="an-confidence"><b>' + U.fmt(r.confidence, 0) + '%</b>' +
+          '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' +
       '</div>' +
-      '<div class="bar' + (isPut ? ' bar-put' : '') + '"><i style="width:' + U.fmt(r.strength * 100, 0) + '%"></i></div>';
-  }
-
-  function renderSide(elId, title, r, isPut, isPrimary) {
-    var el = U.$(elId);
-    el.innerHTML = '' +
-      '<h3 class="result-title">' + U.escapeHtml(title) +
-        (isPrimary ? '<span class="badge-primary">' + U.escapeHtml(t('an.primary')) + '</span>' : '') +
-      '</h3>' +
-      levelBlock(r) +
-      metricsBlock(r, isPut) +
-      '<p class="confirm-line">' +
-        t('an.confirm', { close: U.fmt(r.confirmClose), entry: U.fmt(r.entry) }) + '</p>' +
-      '<div class="row-actions">' +
-        '<button type="button" class="btn btn-sm" data-send-t1="' + (isPut ? 'put' : 'call') + '">' +
-          U.escapeHtml(t('an.sendT1')) + '</button>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('an.reason', {
+        side: t(isCall ? 'f.call' : 'f.put'),
+        dir: t(leg.stats.bullish ? 'an.cond.bullishWord' : 'an.cond.bearishWord'),
+        body: U.pct(leg.stats.bodyRatio),
+        close: U.pct(leg.stats.closePos),
+        pcr: U.fmt(r.pcr, 2),
+        pcrBias: t('an.pcr.' + r.pcrBias)
+      })) + '</p>' +
+      '<div class="entry-strip">' +
+        '<span class="entry-label">' + U.escapeHtml(t('an.entryPrice')) + '</span>' +
+        '<span class="entry-value">' + money(leg.entry) + '</span>' +
+        '<span class="entry-side ' + (isCall ? 'is-call' : 'is-put') + '">' + U.escapeHtml(buyLabel) + '</span>' +
       '</div>';
   }
 
-  function renderBias(result) {
-    var el = U.$('analyser-bias');
-    var tag, text;
-    if (result.bias === 'call') {
-      tag = '<span class="bias-tag bias-call">' + U.escapeHtml(t('an.biasCall')) + '</span>';
-      text = t('an.biasCallText');
-    } else if (result.bias === 'put') {
-      tag = '<span class="bias-tag bias-put">' + U.escapeHtml(t('an.biasPut')) + '</span>';
-      text = t('an.biasPutText');
-    } else {
-      tag = '<span class="bias-tag bias-flat">' + U.escapeHtml(t('an.biasFlat')) + '</span>';
-      text = t('an.biasFlatText');
-    }
-    el.innerHTML = tag + '<span class="muted small">' + U.escapeHtml(text) + '</span>';
+  function renderConditions(r) {
+    U.$('an-conditions').innerHTML = r.conditions.map(function (c) {
+      return '<li class="check ' + c.state + '">' +
+        '<span class="check-icon" aria-hidden="true">' + STATE_ICON[c.state] + '</span>' +
+        '<span class="check-body"><span class="check-name">' + U.escapeHtml(c.name) + '</span></span>' +
+        '<span class="check-verdict">' + U.escapeHtml(c.detail) + '</span>' +
+      '</li>';
+    }).join('');
   }
 
-  function render(result) {
-    renderSide('res-ce', t('f.call'), result.ce, false, result.bias === 'call');
-    renderSide('res-pe', t('f.put'), result.pe, true, result.bias === 'put');
-    renderBias(result);
+  function targetTable(leg, isPut, isChosen) {
+    function row(label, level, delta, badge, cls) {
+      return '<tr class="' + cls + '">' +
+        '<td class="tgt-label">' + U.escapeHtml(label) + '</td>' +
+        '<td class="tgt-level">' + money(level) + '</td>' +
+        '<td class="tgt-pts">' + (delta >= 0 ? '+' : '−') + U.fmt(Math.abs(delta), 0) + t('an.pts') + '</td>' +
+        '<td class="tgt-action">' + (badge ? '<span class="tgt-badge ' + cls + '">' + U.escapeHtml(badge) + '</span>' : '') + '</td>' +
+      '</tr>';
+    }
+    return '' +
+      '<article class="card target-card ' + (isPut ? 'side-put' : 'side-call') + (isChosen ? ' is-chosen' : '') + '">' +
+        '<h3 class="target-title"><span class="dot ' + (isPut ? 'dot-put' : 'dot-call') + '"></span>' +
+          U.escapeHtml(t(isPut ? 'an.putTargets' : 'an.callTargets')) +
+          (isChosen ? '<span class="badge-primary">' + U.escapeHtml(t('an.tradeThis')) + '</span>' : '') +
+        '</h3>' +
+        '<div class="table-scroll"><table class="targets"><tbody>' +
+          row(t('an.entry'), leg.entry, 0, '', 'row-entry').replace('<td class="tgt-pts">+0' + t('an.pts') + '</td>', '<td class="tgt-pts"></td>') +
+          row(t('an.target1'), leg.target1, leg.target1 - leg.entry, t('an.book', { pct: 40 }), 'row-t1') +
+          row(t('an.target2'), leg.target2, leg.target2 - leg.entry, t('an.book', { pct: 40 }), 'row-t2') +
+          row(t('an.target3'), leg.target3, leg.target3 - leg.entry, t('an.hold', { pct: 20 }), 'row-t3') +
+          row(t('an.stopLoss'), leg.stopLoss, leg.stopLoss - leg.entry, t('an.exitAll'), 'row-sl') +
+        '</tbody></table></div>' +
+      '</article>';
+  }
+
+  function renderTargets(r) {
+    U.$('an-targets').innerHTML =
+      targetTable(r.ce, false, r.side === 'call') +
+      targetTable(r.pe, true, r.side === 'put');
+  }
+
+  function renderRules(r) {
+    var leg = r.chosen;
+    var buy = t(r.side === 'call' ? 'an.buyCall' : 'an.buyPut');
+    var vars = {
+      buy: buy, entry: money(leg.entry), sl: money(leg.stopLoss),
+      t1: money(leg.target1), t2: money(leg.target2), t3: money(leg.target3)
+    };
+    var rules = [1, 2, 3, 4, 5, 6].map(function (n) { return t('an.rule' + n, vars); });
+    U.$('an-rules').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('an.rulesTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('an.rulesDesc')) + '</p></div>' +
+      '<ol class="action-plan">' +
+        rules.map(function (x) { return '<li>' + U.escapeHtml(x) + '</li>'; }).join('') +
+      '</ol>';
+  }
+
+  function render(result, cfg) {
+    renderVerdict(result, cfg);
+    renderConditions(result);
+    renderTargets(result);
+    renderRules(result);
     U.$('analyser-output').hidden = false;
   }
 
@@ -164,7 +269,7 @@
 
     var result = analyse(ce, pe, cfg);
     APP.state.analyser = result;
-    render(result);
+    render(result, cfg);
     return result;
   }
 
@@ -172,6 +277,7 @@
     U.clearCandle('an-ce');
     U.clearCandle('an-pe');
     U.$('atm-open').value = '';
+    U.$('an-closed').checked = true;
     U.showErrors('an-ce-err', []);
     U.showErrors('an-pe-err', []);
     U.$('analyser-output').hidden = true;
@@ -180,9 +286,10 @@
   }
 
   function loadSample() {
-    U.$('atm-open').value = '23670';
-    U.writeCandle('an-ce', { o: 148.5, h: 162.75, l: 141.2, c: 159.9 });
-    U.writeCandle('an-pe', { o: 155.0, h: 158.4, l: 132.6, c: 137.15 });
+    U.$('atm-open').value = '24400';
+    U.writeCandle('an-ce', { o: 143, h: 143, l: 110, c: 110 });
+    U.writeCandle('an-pe', { o: 94, h: 130, l: 94, c: 121 });
+    U.$('an-closed').checked = true;
     renderAtm();
     run();
   }
@@ -192,26 +299,22 @@
     U.$('btn-analyser-reset').addEventListener('click', reset);
     U.$('btn-analyser-sample').addEventListener('click', loadSample);
     U.$('atm-open').addEventListener('input', renderAtm);
+    U.$('an-closed').addEventListener('change', function () { if (APP.state.analyser) run(); });
 
-    /* Enter anywhere in the candle inputs runs the analysis. */
     U.$$('#panel-analyser .candle-box input').forEach(function (input) {
       input.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
     });
 
     /* Hand-off buttons are rendered with the results, so delegate. */
     U.$('analyser-output').addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-send-t1]');
+      var btn = e.target.closest && e.target.closest('[data-send-t1]');
       if (btn) APP.t1helper.importFromAnalyser(btn.getAttribute('data-send-t1'));
     });
   }
 
   APP.analyser = {
-    init: init,
-    run: run,
-    reset: reset,
-    analyse: analyse,
-    analyseSide: analyseSide,
-    atmStrike: atmStrike,
-    renderAtm: renderAtm
+    init: init, run: run, reset: reset,
+    analyse: analyse, analyseSide: analyseSide,
+    atmStrike: atmStrike, renderAtm: renderAtm
   };
 })(window.APP);

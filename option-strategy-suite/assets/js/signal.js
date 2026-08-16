@@ -390,7 +390,7 @@
     U.$('sg-entry').value = r.entry.toFixed(2);
     U.$('sg-sl').value = r.stopLoss.toFixed(2);
     U.$('sg-t1').value = r.target1.toFixed(2);
-    U.$('sg-t2').value = (r.target1 + r.range).toFixed(2);
+    U.$('sg-t2').value = r.target2.toFixed(2);
     U.$('sg-range').value = r.range.toFixed(2);
     U.showErrors('sg-err', []);
   }

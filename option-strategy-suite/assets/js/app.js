@@ -140,21 +140,25 @@
   ];
 
   function formulaItems(cfg) {
-    var entryTerm = cfg.entryBufferPct ? ' + ' + cfg.entryBufferPct + '% × range' : '';
-    var slTerm = cfg.slBufferPct ? ' − ' + cfg.slBufferPct + '% × range' : '';
     return [
       {
         title: 'g.f1', note: 'g.f1n',
         code:
-          'range     = high − low\n' +
-          'entry     = high' + entryTerm + '\n' +
-          'stop loss = low' + slTerm + '\n' +
-          'Target 1  = entry + ' + cfg.t1Multiplier + ' × range\n' +
-          'confirm   = a 5-min close ≥ entry + ' + cfg.tickSize
+          'range    = high − low\n' +
+          'entry    = close × ' + (1 + cfg.entryPremiumPct / 100) + '\n' +
+          'step     = max(' + cfg.targetStepMult + ' × range, ' + cfg.minTargetStep + ')\n' +
+          'Target 1 = entry + step\n' +
+          'Target 2 = entry + ' + cfg.t2Mult + ' × step\n' +
+          'Target 3 = entry + ' + cfg.t3Mult + ' × step\n' +
+          'stop     = low − ' + cfg.slRangeMult + ' × range'
       },
       {
         title: 'g.f2', note: 'g.f2n',
-        code: 'strength = 50% × close position + 30% × body ÷ range + 20% × (close > open)'
+        code:
+          'confidence = 20 × (close > open) + 40 × body ÷ range + 40 × close position\n' +
+          'side       = whichever of CE / PE scores higher\n' +
+          'verdict    = YES at confidence ≥ ' + cfg.takeConfidence + '\n' +
+          'PCR        = put close ÷ call close'
       },
       {
         title: 'g.f3', note: 'g.f3n',

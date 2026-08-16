@@ -10,11 +10,19 @@
   var STORAGE_KEY = 'nifty-option-suite:v1';
 
   var DEFAULTS = {
-    /* Option Analyser */
-    entryBufferPct: 0,      // % of range added above the first-candle high
-    slBufferPct: 0,         // % of range subtracted below the first-candle low
-    t1Multiplier: 1.0,      // Target 1 = entry + (multiplier x range)
-    tickSize: 0.05,         // exchange tick; confirmation must clear entry by one
+    /* Option Analyser — reproduces the original tool exactly across all four
+       reference legs (entry, three targets and stop loss, 20 values). */
+    entryPremiumPct: 0.5,   // entry = close + 0.5%
+    targetStepMult: 0.8,    // one target step = 0.8 x first-candle range
+    minTargetStep: 16,      // ...but never less than this many points
+    t2Mult: 2.0,            // Target 2 = entry + 2.0 steps
+    t3Mult: 3.5,            // Target 3 = entry + 3.5 steps
+    slRangeMult: 0.3,       // stop loss = low - 0.3 x range
+    bookT1Pct: 40,          // position management shown against each target
+    bookT2Pct: 40,
+    holdT3Pct: 20,
+    takeConfidence: 60,     // side confidence needed for a YES verdict
+    tickSize: 0.05,         // exchange tick
 
     /* T1 Decision Helper.
        Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
