@@ -155,10 +155,16 @@ So `tools/nse-fetch.js` does the handshake on your machine and re-serves the res
 enabled. Node 18+, no dependencies:
 
 ```sh
+node tools/nse-fetch.js --check    # will this work on my machine? answers stage by stage
 node tools/nse-fetch.js            # http://127.0.0.1:8123
 node tools/nse-fetch.js --mock     # fixture data, no network — good for a dry run
 node tools/nse-fetch.js --dump CE  # print the raw NSE payload it reads
 ```
+
+Run `--check` first, during market hours. It walks the whole live pipeline — Node version, reaching NSE and
+getting session cookies, the option chain, ATM strike and nearest expiry, the tick series, and whether the
+timestamps actually land inside 09:15–09:20 IST — printing a tick or cross per stage with what to do about a
+failure. It exits non-zero if anything failed, so it also works as a pre-market smoke test.
 
 Then on the Analyser tab: **Check helper** confirms it is up, **Fetch now** pulls immediately, and
 **Auto-fetch at 09:21** arms it to fire at 09:21:05 — just after the 09:20 candle closes — retrying every 15
@@ -170,6 +176,14 @@ What the helper does: reads the option chain for the nearest expiry, takes the A
 the guide does), pulls each leg's tick series and folds the ticks between 09:15 and 09:20 IST into one OHLC
 candle. The window is anchored to IST regardless of your machine's timezone, and the closed candle is cached
 for the day.
+
+### Two things that decide whether it works on your machine
+
+**Your IP.** NSE refuses datacenter, cloud and many VPN addresses while serving the same request fine from a
+home connection. A block shows up as no session cookies, and `--check` says so in those words.
+
+**Node 18.14+.** `getSetCookie()` arrived in that release; older 18.x hands back every cookie joined into one
+string, which the helper parses itself — but check it rather than assume.
 
 ### Verify this against your own feed before trusting it
 

@@ -3,6 +3,7 @@
  *
  *   node tools/nse-fetch.js              → http://127.0.0.1:8123
  *   node tools/nse-fetch.js --mock       → deterministic fixture data, no network
+ *   node tools/nse-fetch.js --check      → does this work on my machine? stage by stage
  *   node tools/nse-fetch.js --dump CE    → print the raw NSE payload it is reading
  *
  * Why this exists: nseindia.com sends no CORS headers and gates its APIs behind
@@ -122,17 +123,36 @@ function baseHeaders() {
   };
 }
 
+/**
+ * Pull Set-Cookie values off a response.
+ *
+ * getSetCookie() only exists from Node 18.14; older 18.x joins every cookie
+ * into one comma-separated string, and `Expires=Wed, 21 Oct …` means a naive
+ * split on commas corrupts them. Split only where a comma is followed by a
+ * new `name=` pair instead. (headers.raw() is node-fetch, not native fetch —
+ * it is never available here.)
+ */
+function readSetCookies(res) {
+  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
+  const joined = res.headers.get('set-cookie');
+  if (!joined) return [];
+  return joined.split(/,\s*(?=[A-Za-z0-9!#$%&'*+._|~-]+=)/);
+}
+
 async function primeSession(force) {
   if (!force && cookieJar && Date.now() - cookieSetAt < 5 * 60000) return;
   const res = await fetch('https://www.nseindia.com/option-chain', {
     headers: Object.assign(baseHeaders(), { Accept: 'text/html,application/xhtml+xml' })
   });
-  const raw = typeof res.headers.getSetCookie === 'function'
-    ? res.headers.getSetCookie()
-    : (res.headers.raw ? res.headers.raw()['set-cookie'] || [] : []);
-  cookieJar = raw.map((c) => c.split(';')[0]).join('; ');
+  const raw = readSetCookies(res);
+  cookieJar = raw.map((c) => c.split(';')[0]).filter(Boolean).join('; ');
   cookieSetAt = Date.now();
-  if (!cookieJar) throw new Error('NSE did not return session cookies (blocked or changed)');
+  if (!cookieJar) {
+    throw new Error(
+      `NSE returned no session cookies (HTTP ${res.status}). Usually the IP is blocked — ` +
+      'datacenter, VPN and cloud addresses are refused where a home connection works.'
+    );
+  }
 }
 
 async function nseJson(url, attempt = 0) {
@@ -310,8 +330,117 @@ async function dump(which) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* --check : answer "will this work on my machine?" stage by stage     */
+/* ------------------------------------------------------------------ */
+
+async function selfCheck() {
+  const results = [];
+  const step = async (name, fn, hint) => {
+    try {
+      const detail = await fn();
+      results.push({ ok: true, name, detail });
+      console.log(`  ✓ ${name}${detail ? ' — ' + detail : ''}`);
+      return true;
+    } catch (err) {
+      results.push({ ok: false, name, detail: err.message });
+      console.log(`  ✗ ${name} — ${err.message}`);
+      if (hint) console.log(`      → ${hint}`);
+      return false;
+    }
+  };
+
+  console.log('NSE helper self-check\n');
+
+  const major = Number(process.versions.node.split('.')[0]);
+  const minor = Number(process.versions.node.split('.')[1]);
+  await step('Node version', async () => {
+    if (major < 18) throw new Error(`Node ${process.versions.node}; built-in fetch needs 18+`);
+    if (major === 18 && minor < 14) {
+      return `Node ${process.versions.node} (no getSetCookie — using the fallback cookie parser)`;
+    }
+    return `Node ${process.versions.node}`;
+  }, 'Install Node 18.14 or newer.');
+
+  let chain = null;
+  const reachable = await step('Reach nseindia.com + session cookies', async () => {
+    await primeSession(true);
+    return `${cookieJar.split('; ').length} cookies`;
+  }, 'Blocked IPs are the usual cause — try a home connection, VPN off.');
+
+  if (!reachable) { summarise(results); return results; }
+
+  await step('Option chain API', async () => {
+    chain = await optionChain();
+    const n = ((chain.records && chain.records.data) || []).length;
+    if (!n) throw new Error('empty records.data');
+    return `${n} strike rows`;
+  }, 'The endpoint or its shape may have changed.');
+
+  if (!chain) { summarise(results); return results; }
+
+  const records = chain.records || {};
+  const spot = Number(records.underlyingValue);
+  const expiry = (records.expiryDates || [])[0];
+  const strike = atmStrike(spot, STRIKE_STEP);
+  let legs = { ce: null, pe: null };
+
+  await step('ATM strike + nearest expiry', async () => {
+    if (!Number.isFinite(spot)) throw new Error('no underlyingValue');
+    if (!expiry) throw new Error('no expiryDates');
+    legs = pickContracts(chain, strike, expiry);
+    if (!legs.ce || !legs.pe) throw new Error(`no CE/PE rows at ${strike} ${expiry}`);
+    return `spot ${spot} → ATM ${strike}, expiry ${expiry}`;
+  });
+
+  if (!legs.ce) { summarise(results); return results; }
+
+  let ticks = [];
+  await step('Tick series for the ATM call', async () => {
+    ticks = await tickSeries(legs.ce.identifier);
+    if (!Array.isArray(ticks) || !ticks.length) {
+      throw new Error('chart endpoint returned no ticks (may be closed, or the shape changed)');
+    }
+    return `${ticks.length} ticks`;
+  }, 'This endpoint is undocumented — it is the most likely thing to have moved.');
+
+  if (ticks.length) {
+    const now = Date.now();
+    const from = istTimeToEpoch(CANDLE_FROM, now);
+    const to = istTimeToEpoch(CANDLE_TO, now);
+    await step('Timestamps land in the 09:15–09:20 IST window', async () => {
+      const candle = aggregate(ticks, from, to);
+      if (!candle) {
+        throw new Error(
+          `0 of ${ticks.length} ticks fall in the window. ` +
+          `First tick reads as ${istClock(ticks[0][0])} IST, last ${istClock(ticks[ticks.length - 1][0])} IST`
+        );
+      }
+      return `${candle.ticks} ticks → O ${candle.o} H ${candle.h} L ${candle.l} C ${candle.c}`;
+    }, 'Run --dump CE to see raw timestamps, then correct with --from/--to if they are offset.');
+  }
+
+  summarise(results);
+  return results;
+}
+
+function summarise(results) {
+  const failed = results.filter((r) => !r.ok);
+  console.log('');
+  if (!failed.length) {
+    console.log('All checks passed — start it with: node tools/nse-fetch.js');
+  } else {
+    console.log(`${failed.length} check(s) failed: ${failed.map((f) => f.name).join(', ')}`);
+    console.log('The suite still works with values typed in by hand.');
+  }
+}
+
 if (require.main === module) {
-  if (has('dump')) {
+  if (has('check')) {
+    selfCheck()
+      .then((r) => process.exit(r.every((x) => x.ok) ? 0 : 1))
+      .catch((e) => { console.error('self-check crashed:', e.message); process.exit(1); });
+  } else if (has('dump')) {
     dump(flag('dump', 'CE')).catch((e) => { console.error('dump failed:', e.message); process.exit(1); });
   } else {
     server.listen(PORT, HOST, () => {
@@ -325,4 +454,6 @@ if (require.main === module) {
   }
 }
 
-module.exports = { aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, server };
+module.exports = {
+  aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies, selfCheck, server
+};
