@@ -29,12 +29,25 @@
   };
   APP.tabs = tabs;
 
+  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'guide'];
+
+  function panelFromHash() {
+    var hash = (window.location.hash || '').replace('#', '');
+    return PANELS.indexOf(hash) !== -1 ? hash : null;
+  }
+
   function initTabs() {
     U.$$('.tab').forEach(function (tab) {
       tab.addEventListener('click', function () { tabs.show(tab.getAttribute('data-panel')); });
     });
-    var hash = (window.location.hash || '').replace('#', '');
-    if (['analyser', 't1', 'pullback', 'signal', 'guide'].indexOf(hash) !== -1) tabs.show(hash);
+    /* A hash-only navigation does not reload the document, so deep links and
+       the back button need this as well as the initial read. */
+    window.addEventListener('hashchange', function () {
+      var name = panelFromHash();
+      if (name) tabs.show(name);
+    });
+    var initial = panelFromHash();
+    if (initial) tabs.show(initial);
   }
 
   /* ---------- settings drawer ---------- */

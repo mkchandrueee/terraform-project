@@ -152,17 +152,29 @@ Two limits, stated in the UI as well: **the page must stay open** for reminders 
 notifications need browser permission. When permission is denied or unsupported, nothing breaks — every alert
 still lands in the in-page alert log.
 
-## Running it
-
-Any static server works, since the page is plain HTML/CSS/JS:
+## Running it locally
 
 ```sh
 cd option-strategy-suite
-python3 -m http.server 8787
-# http://127.0.0.1:8787
+./serve.sh              # http://127.0.0.1:8787
+./serve.sh 3000         # pick another port
+HOST=0.0.0.0 ./serve.sh # also reachable from your phone on the same wifi
 ```
 
-Opening `index.html` straight from disk also works — scripts are classic, not modules.
+The script uses whichever of `python3`, `npx serve` or `php` it finds — there is nothing to install and nothing
+to build. Any other static server works just as well:
+
+```sh
+python3 -m http.server 8787     # or
+npx --yes serve .               # or
+php -S 127.0.0.1:8787
+```
+
+Opening `index.html` straight from disk mostly works — the scripts are classic, not modules — but serve it if
+you can: browsers restrict `localStorage` on `file://`, so your settings and language will not persist, and
+notifications are disabled outside a secure context.
+
+Each tab is deep-linkable: `#analyser`, `#t1`, `#pullback`, `#signal`, `#guide`.
 
 ### Deploying
 
@@ -175,6 +187,7 @@ needed.
 ```
 option-strategy-suite/
 ├── index.html                 markup for all five tabs
+├── serve.sh                   one-command local server
 └── assets/
     ├── css/styles.css
     └── js/
