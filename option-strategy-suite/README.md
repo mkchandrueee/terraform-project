@@ -181,11 +181,32 @@ So `tools/nse-fetch.js` does the handshake on your machine and re-serves the res
 enabled. Node 18+, no dependencies:
 
 ```sh
-node tools/nse-fetch.js --check    # will this work on my machine? answers stage by stage
-node tools/nse-fetch.js            # http://127.0.0.1:8123
-node tools/nse-fetch.js --mock     # fixture data, no network — good for a dry run
-node tools/nse-fetch.js --dump CE  # print the raw NSE payload it reads
+node tools/nse-fetch.js --check       # will this work on my machine? answers stage by stage
+node tools/nse-fetch.js               # http://127.0.0.1:8123
+node tools/nse-fetch.js --mock        # fixture data, no network — good for a dry run
+node tools/nse-fetch.js --dump chain  # which chain endpoint answered, and its shape
+node tools/nse-fetch.js --dump CE     # the raw tick payload it reads
 ```
+
+### NSE keeps moving the option-chain endpoint
+
+`/api/option-chain-indices` now returns **404** for many users; the replacement is `/api/option-chain-v3`,
+which needs an explicit expiry, and the expiry list comes from its own endpoint. Rather than pick one and
+hope, the helper tries them in order and tells you which answered:
+
+1. `/api/option-chain-contract-info` for the expiry list, then `/api/option-chain-v3` for the nearest two
+2. `/api/option-chain-indices` (legacy, whole chain in one call)
+
+`--check` prints the winner. If both are dead it lists every URL tried with its status, and you can force one:
+
+```sh
+node tools/nse-fetch.js --chain-url "https://www.nseindia.com/api/whatever-works"
+node tools/nse-fetch.js --expiry 30-Oct-2025      # skip expiry discovery
+```
+
+The payload readers accept `records.data`, a flat `data`, or `filtered.data`, and find the spot from
+`underlyingValue` at any of those levels or from a contract row — so a reshuffled response shape does not
+break it either.
 
 Run `--check` first, during market hours. It walks the whole live pipeline — Node version, reaching NSE and
 getting session cookies, the option chain, ATM strike and nearest expiry, the tick series, and whether the

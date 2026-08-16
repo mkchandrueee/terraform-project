@@ -4,7 +4,8 @@
  *   node tools/nse-fetch.js              → http://127.0.0.1:8123
  *   node tools/nse-fetch.js --mock       → deterministic fixture data, no network
  *   node tools/nse-fetch.js --check      → does this work on my machine? stage by stage
- *   node tools/nse-fetch.js --dump CE    → print the raw NSE payload it is reading
+ *   node tools/nse-fetch.js --dump CE    → print the raw tick payload it is reading
+ *   node tools/nse-fetch.js --dump chain → print which chain endpoint answered, and its shape
  *
  * Why this exists: nseindia.com sends no CORS headers and gates its APIs behind
  * session cookies set by a browser-like homepage visit. A static page therefore
@@ -26,6 +27,9 @@ const flag = (name, fallback) => {
 };
 const has = (name) => ARGS.includes('--' + name);
 
+const BASE = (flag('base', 'https://www.nseindia.com')).replace(/\/+$/, '');
+const CHAIN_URL = flag('chain-url', '');     /* force one endpoint */
+const EXPIRY = flag('expiry', '');           /* force one expiry */
 const PORT = Number(flag('port', 8123));
 const HOST = flag('host', '127.0.0.1');
 const SYMBOL = flag('symbol', 'NIFTY').toUpperCase();
@@ -63,6 +67,11 @@ function istClock(ms) {
   const p = istParts(ms);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
+}
+
+/** Full IST stamp — a date mismatch otherwise reads as a timezone bug. */
+function istStamp(ms) {
+  return istDateKey(ms) + ' ' + istClock(ms);
 }
 
 function istDateKey(ms) {
@@ -118,7 +127,7 @@ function baseHeaders() {
     'User-Agent': UA,
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nseindia.com/option-chain',
+    'Referer': BASE + '/option-chain',
     'Connection': 'keep-alive'
   };
 }
@@ -141,7 +150,7 @@ function readSetCookies(res) {
 
 async function primeSession(force) {
   if (!force && cookieJar && Date.now() - cookieSetAt < 5 * 60000) return;
-  const res = await fetch('https://www.nseindia.com/option-chain', {
+  const res = await fetch(BASE + '/option-chain', {
     headers: Object.assign(baseHeaders(), { Accept: 'text/html,application/xhtml+xml' })
   });
   const raw = readSetCookies(res);
@@ -174,8 +183,97 @@ async function nseJson(url, attempt = 0) {
 /* data assembly                                                       */
 /* ------------------------------------------------------------------ */
 
+/* NSE keeps moving this. option-chain-indices now 404s for many users; the
+   replacement is option-chain-v3, which needs an explicit expiry, and the
+   expiry list comes from its own endpoint. Rather than pick one and hope, try
+   them in order and report which answered — see --check and --dump chain. */
+function chainRows(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload.data)) return payload.data;
+  if (payload.records && Array.isArray(payload.records.data)) return payload.records.data;
+  if (payload.filtered && Array.isArray(payload.filtered.data)) return payload.filtered.data;
+  return [];
+}
+
+function chainUnderlying(payload) {
+  var candidates = [
+    payload && payload.underlyingValue,
+    payload && payload.records && payload.records.underlyingValue,
+    payload && payload.filtered && payload.filtered.underlyingValue
+  ];
+  for (var i = 0; i < candidates.length; i++) {
+    var n = Number(candidates[i]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  /* last resort: the option chain carries the spot on every row */
+  var rows = chainRows(payload);
+  for (var j = 0; j < rows.length; j++) {
+    var leg = rows[j].CE || rows[j].PE;
+    var v = leg && Number(leg.underlyingValue);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  return NaN;
+}
+
+function chainExpiries(payload) {
+  if (!payload) return [];
+  return payload.expiryDates
+      || (payload.records && payload.records.expiryDates)
+      || [];
+}
+
+async function expiryList() {
+  if (EXPIRY) return [EXPIRY];
+  var urls = [
+    BASE + '/api/option-chain-contract-info?symbol=' + encodeURIComponent(SYMBOL),
+    BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL)
+  ];
+  for (var i = 0; i < urls.length; i++) {
+    try {
+      var list = chainExpiries(await nseJson(urls[i]));
+      if (list.length) return list;
+    } catch (e) { /* try the next one */ }
+  }
+  return [];
+}
+
+/** Returns { payload, url, expiry } from whichever endpoint answers. */
 async function optionChain() {
-  return nseJson(`https://www.nseindia.com/api/option-chain-indices?symbol=${encodeURIComponent(SYMBOL)}`);
+  var tried = [];
+
+  async function attempt(url) {
+    try {
+      var payload = await nseJson(url);
+      if (chainRows(payload).length) return { payload: payload, url: url };
+      tried.push(url + ' → 200 but no strike rows');
+    } catch (e) {
+      tried.push(url + ' → ' + e.message);
+    }
+    return null;
+  }
+
+  if (CHAIN_URL) {
+    var forced = await attempt(CHAIN_URL);
+    if (forced) return forced;
+    throw new Error('forced --chain-url failed:\n  ' + tried.join('\n  '));
+  }
+
+  /* 1. current: v3, one expiry at a time */
+  var expiries = await expiryList();
+  for (var i = 0; i < Math.min(expiries.length, 2); i++) {
+    var v3 = await attempt(BASE + '/api/option-chain-v3?type=Indices&symbol=' +
+                           encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(expiries[i]));
+    if (v3) { v3.expiry = expiries[i]; return v3; }
+  }
+
+  /* 2. legacy: whole chain in one call */
+  var legacy = await attempt(BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL));
+  if (legacy) return legacy;
+
+  throw new Error(
+    'no option-chain endpoint answered. Tried:\n  ' + tried.join('\n  ') +
+    '\nNSE moves these paths; pass a working one with --chain-url "<url>".'
+  );
 }
 
 /**
@@ -184,15 +282,17 @@ async function optionChain() {
  * nudge — run with --dump CE to see what your feed actually sends.
  */
 async function tickSeries(identifier) {
-  const url = 'https://www.nseindia.com/api/chart-databyindex' +
+  const url = BASE + '/api/chart-databyindex' +
               `?index=${encodeURIComponent(identifier)}&indices=false`;
   const data = await nseJson(url);
   return (data && (data.grapthData || data.graphData)) || [];
 }
 
-function pickContracts(chain, strike, expiry) {
-  const rows = ((chain.records && chain.records.data) || [])
-    .filter((r) => r.strikePrice === strike && r.expiryDate === expiry);
+function pickContracts(payload, strike, expiry) {
+  const all = chainRows(payload);
+  let rows = all.filter((r) => Number(r.strikePrice) === strike && r.expiryDate === expiry);
+  /* a v3 response is already one expiry, so the date may not be echoed per row */
+  if (!rows.length) rows = all.filter((r) => Number(r.strikePrice) === strike);
   const row = rows[0] || {};
   return { ce: row.CE || null, pe: row.PE || null };
 }
@@ -201,15 +301,15 @@ async function firstCandle(nowMs) {
   if (MOCK) return mockPayload(nowMs);
 
   const chain = await optionChain();
-  const records = chain.records || {};
-  const spot = Number(records.underlyingValue);
-  if (!Number.isFinite(spot)) throw new Error('option chain had no underlyingValue');
+  const spot = chainUnderlying(chain.payload);
+  if (!Number.isFinite(spot)) throw new Error('option chain carried no underlying value');
 
-  const expiry = (records.expiryDates || [])[0];
-  if (!expiry) throw new Error('option chain had no expiry dates');
+  const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
+                 (chainRows(chain.payload)[0] || {}).expiryDate;
+  if (!expiry) throw new Error('could not determine the expiry from the option chain');
 
   const strike = atmStrike(spot, STRIKE_STEP);
-  const { ce, pe } = pickContracts(chain, strike, expiry);
+  const { ce, pe } = pickContracts(chain.payload, strike, expiry);
   if (!ce || !pe) throw new Error(`no CE/PE rows for ${strike} ${expiry}`);
 
   const from = istTimeToEpoch(CANDLE_FROM, nowMs);
@@ -222,10 +322,15 @@ async function firstCandle(nowMs) {
   const ceCandle = aggregate(ceTicks, from, to);
   const peCandle = aggregate(peTicks, from, to);
   if (!ceCandle || !peCandle) {
+    const sample = ceTicks.length ? ceTicks : peTicks;
     throw new Error(
-      `no ticks inside ${CANDLE_FROM}–${CANDLE_TO} IST ` +
-      `(CE ${ceTicks.length} raw, PE ${peTicks.length} raw). ` +
-      'If the market has traded, the feed timestamps differ from the assumption — run with --dump CE.'
+      `no ticks inside ${istStamp(from)} – ${CANDLE_TO} IST ` +
+      `(CE ${ceTicks.length} raw, PE ${peTicks.length} raw)` +
+      (sample.length
+        ? `. The feed's own ticks run ${istStamp(sample[0][0])} → ${istStamp(sample[sample.length - 1][0])} IST` +
+          ' — compare the dates, not just the clock times.'
+        : '.') +
+      ' Run --dump CE to see the raw values.'
     );
   }
 
@@ -237,6 +342,7 @@ async function firstCandle(nowMs) {
     window: { from: CANDLE_FROM, to: CANDLE_TO, tz: 'IST' },
     asOf: istClock(nowMs),
     source: 'nseindia.com',
+    endpoint: chain.url,
     ce: ceCandle,
     pe: peCandle
   };
@@ -313,12 +419,24 @@ const server = http.createServer(async (req, res) => {
 
 async function dump(which) {
   const chain = await optionChain();
-  const records = chain.records || {};
-  const strike = atmStrike(Number(records.underlyingValue), STRIKE_STEP);
-  const expiry = (records.expiryDates || [])[0];
-  const { ce, pe } = pickContracts(chain, strike, expiry);
+  const spot = chainUnderlying(chain.payload);
+  const strike = atmStrike(spot, STRIKE_STEP);
+  const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
+                 (chainRows(chain.payload)[0] || {}).expiryDate;
+
+  if (which.toLowerCase() === 'chain') {
+    console.log('endpoint that answered:', chain.url);
+    console.log('top-level keys:', Object.keys(chain.payload).join(', '));
+    console.log('rows:', chainRows(chain.payload).length, ' spot:', spot, ' expiry:', expiry);
+    console.log('first row:', JSON.stringify(chainRows(chain.payload)[0] || null).slice(0, 600));
+    return;
+  }
+
+  const { ce, pe } = pickContracts(chain.payload, strike, expiry);
   const leg = which.toUpperCase() === 'PE' ? pe : ce;
-  console.log(`spot ${records.underlyingValue}  atm ${strike}  expiry ${expiry}`);
+  if (!leg) throw new Error(`no ${which} leg at strike ${strike}`);
+  console.log(`endpoint ${chain.url}`);
+  console.log(`spot ${spot}  atm ${strike}  expiry ${expiry}`);
   console.log(`identifier ${leg && leg.identifier}`);
   const ticks = await tickSeries(leg.identifier);
   console.log(`${ticks.length} ticks; first 3 raw:`, JSON.stringify(ticks.slice(0, 3)));
@@ -370,25 +488,23 @@ async function selfCheck() {
 
   if (!reachable) { summarise(results); return results; }
 
-  await step('Option chain API', async () => {
+  await step('Option chain endpoint', async () => {
     chain = await optionChain();
-    const n = ((chain.records && chain.records.data) || []).length;
-    if (!n) throw new Error('empty records.data');
-    return `${n} strike rows`;
-  }, 'The endpoint or its shape may have changed.');
+    return `${chainRows(chain.payload).length} strike rows from ${chain.url.replace(BASE, '')}`;
+  }, 'NSE moves these paths. Pass a working one with --chain-url "<url>".');
 
   if (!chain) { summarise(results); return results; }
 
-  const records = chain.records || {};
-  const spot = Number(records.underlyingValue);
-  const expiry = (records.expiryDates || [])[0];
+  const spot = chainUnderlying(chain.payload);
+  const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
+                 (chainRows(chain.payload)[0] || {}).expiryDate;
   const strike = atmStrike(spot, STRIKE_STEP);
   let legs = { ce: null, pe: null };
 
   await step('ATM strike + nearest expiry', async () => {
-    if (!Number.isFinite(spot)) throw new Error('no underlyingValue');
-    if (!expiry) throw new Error('no expiryDates');
-    legs = pickContracts(chain, strike, expiry);
+    if (!Number.isFinite(spot)) throw new Error('no underlying value in the payload');
+    if (!expiry) throw new Error('no expiry could be determined');
+    legs = pickContracts(chain.payload, strike, expiry);
     if (!legs.ce || !legs.pe) throw new Error(`no CE/PE rows at ${strike} ${expiry}`);
     return `spot ${spot} → ATM ${strike}, expiry ${expiry}`;
   });
@@ -412,8 +528,9 @@ async function selfCheck() {
       const candle = aggregate(ticks, from, to);
       if (!candle) {
         throw new Error(
-          `0 of ${ticks.length} ticks fall in the window. ` +
-          `First tick reads as ${istClock(ticks[0][0])} IST, last ${istClock(ticks[ticks.length - 1][0])} IST`
+          `0 of ${ticks.length} ticks fall in it. Window ${istStamp(from)} → ${CANDLE_TO}; ` +
+          `feed ticks run ${istStamp(ticks[0][0])} → ${istStamp(ticks[ticks.length - 1][0])} IST ` +
+          '(check the date as well as the clock)'
         );
       }
       return `${candle.ticks} ticks → O ${candle.o} H ${candle.h} L ${candle.l} C ${candle.c}`;
@@ -455,5 +572,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies, selfCheck, server
+  aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
+  chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain, selfCheck, server
 };
