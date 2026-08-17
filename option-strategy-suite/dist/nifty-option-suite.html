@@ -1510,6 +1510,8 @@ window.APP = window.APP || {};
       'af.failed': 'Fetch failed — {reason}',
       'af.badPayload': 'the helper returned an incomplete candle',
       'af.windowMissed': 'Gave up at 09:22:30 without a usable candle — enter the values by hand.',
+      'af.session': 'Session {session}.',
+      'af.staleSession': '⚠ This is the {session} session — the last completed one, NOT today. Do not trade it as if it were live.',
       'af.mockSource': 'mock data',
       'af.liveSource': 'live NSE',
       'af.note': 'NSE sends no CORS headers and requires session cookies, so a browser cannot call it directly — <code>tools/nse-fetch.js</code> does the handshake on your machine and re-serves the candle on localhost. Everything still works typed in by hand if you would rather not run it.',
@@ -2045,6 +2047,8 @@ window.APP = window.APP || {};
       'af.failed': 'Fetch fail ஆச்சு — {reason}',
       'af.badPayload': 'helper முழுசான candle கொடுக்கல',
       'af.windowMissed': '09:22:30 வரை நல்ல candle கிடைக்கல — கையால values போடு.',
+      'af.session': '{session} session.',
+      'af.staleSession': '⚠ இது {session} session — கடைசியா முடிஞ்ச session, இன்னைக்கு இல்ல. இதை live-ஆ நினைச்சு trade பண்ணாத.',
       'af.mockSource': 'mock data',
       'af.liveSource': 'live NSE',
       'af.note': 'NSE CORS headers அனுப்பாது, session cookies-ம் கேட்குது — அதனால browser நேரடியா அதை கூப்பிட முடியாது. <code>tools/nse-fetch.js</code> உன் machine-ல handshake பண்ணி candle-ஐ localhost-ல மறுபடி serve பண்ணும். இதை ஓட்ட விருப்பம் இல்லைனா, கையால type பண்ணுனாலும் எல்லாம் வேலை செய்யும்.',
@@ -2982,12 +2986,19 @@ window.APP = window.APP || {};
     return request(fresh).then(function (p) {
       if (!validPayload(p)) throw new Error(t('af.badPayload'));
       applyPayload(p);
-      status('ok', t('af.filled', {
+      var msg = t('af.filled', {
         atm: U.fmt(p.atm, 0),
         time: p.asOf || clock(new Date()),
         source: p.source === 'mock' ? t('af.mockSource') : p.source,
         ticks: (p.ce.ticks || 0) + (p.pe.ticks || 0)
-      }));
+      });
+      /* Before the open, or on a holiday, NSE serves the previous session.
+         That must never look like today's candle. */
+      if (p.stale && p.session) {
+        status('armed', msg + ' ' + t('af.staleSession', { session: p.session }));
+      } else {
+        status('ok', msg + (p.session ? ' ' + t('af.session', { session: p.session }) : ''));
+      }
       return p;
     }).catch(function (err) {
       var msg = String(err && err.message || err);

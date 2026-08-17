@@ -268,6 +268,22 @@ home connection. A block shows up as no session cookies, and `--check` says so i
 **Node 18.14+.** `getSetCookie()` arrived in that release; older 18.x hands back every cookie joined into one
 string, which the helper parses itself — but check it rather than assume.
 
+### Tick timestamps and which session you actually got
+
+Two things the chart endpoint does that will bite you if unhandled, both now handled automatically:
+
+**Its timestamps are IST wall-clock already, not true epoch.** Adding the IST offset a second time lands every
+tick 5h30m late, so a 09:15 open reads as 14:45 and nothing falls inside the window. The helper tests both
+readings and keeps whichever puts the first tick nearest the 09:15 open, reporting which it chose — so if NSE
+ever switches convention it corrects itself rather than silently returning nothing.
+
+**Before the open, and on holidays, it serves the last completed session.** Running at 09:05 on a Monday
+returns Friday's ticks. That is legitimate data but it is *not today's candle*, and trading it as if it were
+would be the worst failure this tool could have. The payload carries `session` and `stale`, `--check` prints
+the session date against today's, and the app shows a warning banner rather than a success line:
+
+> ⚠ This is the 2026-08-14 session — the last completed one, NOT today. Do not trade it as if it were live.
+
 ### Verify this against your own feed before trusting it
 
 NSE's chart endpoint is undocumented and its tick timestamps are the one part of this that could differ from

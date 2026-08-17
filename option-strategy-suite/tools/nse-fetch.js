@@ -112,6 +112,34 @@ function aggregate(ticks, fromMs, toMs) {
   };
 }
 
+/**
+ * NSE's chart timestamps are IST wall-clock already, not true epoch, so adding
+ * the IST offset again lands them 5h30m late. Rather than hardcode that (it is
+ * undocumented and could change), test both readings and keep whichever puts
+ * the first tick nearest the 09:15 open.
+ */
+function detectTickOffset(ticks) {
+  if (!ticks || !ticks.length) return { offset: 0, convention: 'unknown', dist: Infinity };
+  var first = ticks[0][0];
+  var open = 9 * 60 + 15;
+  var candidates = [
+    { offset: 0, convention: 'epoch-utc' },
+    { offset: -IST_OFFSET_MIN * 60000, convention: 'ist-wall-clock' }
+  ];
+  var best = null;
+  candidates.forEach(function (c) {
+    var p = istParts(first + c.offset);
+    var dist = Math.abs((p.hh * 60 + p.mm) - open);
+    if (!best || dist < best.dist) best = { offset: c.offset, convention: c.convention, dist: dist };
+  });
+  return best;
+}
+
+function shiftTicks(ticks, offset) {
+  if (!offset) return ticks || [];
+  return (ticks || []).map(function (t) { return [t[0] + offset, t[1]]; });
+}
+
 function atmStrike(spot, step) {
   /* Rounded down, matching the strategy guide's own 23670 → 23600 example. */
   return Math.floor(spot / (step || STRIKE_STEP)) * (step || STRIKE_STEP);
@@ -346,19 +374,30 @@ async function firstCandle(nowMs) {
   const { ce, pe } = pickContracts(chain.payload, strike, expiry);
   if (!ce || !pe) throw new Error(`no CE/PE rows for ${strike} ${expiry}`);
 
-  const from = istTimeToEpoch(CANDLE_FROM, nowMs);
-  const to = istTimeToEpoch(CANDLE_TO, nowMs);
-
-  const [ceTicks, peTicks] = await Promise.all([
+  const [ceRaw, peRaw] = await Promise.all([
     tickSeries(ce.identifier), tickSeries(pe.identifier)
   ]);
+
+  const conv = detectTickOffset(ceRaw.length ? ceRaw : peRaw);
+  const ceTicks = shiftTicks(ceRaw, conv.offset);
+  const peTicks = shiftTicks(peRaw, conv.offset);
+
+  /* Anchor the window to the session the feed actually returned. Before the
+     open, or on a holiday, NSE serves the previous session — silently treating
+     that as today's candle would be the worst kind of wrong. */
+  const anchor = (ceTicks[0] || peTicks[0] || [nowMs])[0];
+  const from = istTimeToEpoch(CANDLE_FROM, anchor);
+  const to = istTimeToEpoch(CANDLE_TO, anchor);
+  const session = istDateKey(anchor);
+  const stale = session !== istDateKey(nowMs);
 
   const ceCandle = aggregate(ceTicks, from, to);
   const peCandle = aggregate(peTicks, from, to);
   if (!ceCandle || !peCandle) {
     const sample = ceTicks.length ? ceTicks : peTicks;
     throw new Error(
-      `no ticks inside ${istStamp(from)} – ${CANDLE_TO} IST ` +
+      `no ticks inside ${istStamp(from)} – ${CANDLE_TO} IST (session ${session}, ` +
+      `timestamps read as ${conv.convention}) ` +
       `(CE ${ceTicks.length} raw, PE ${peTicks.length} raw)` +
       (sample.length
         ? `. The feed's own ticks run ${istStamp(sample[0][0])} → ${istStamp(sample[sample.length - 1][0])} IST` +
@@ -375,6 +414,9 @@ async function firstCandle(nowMs) {
     underlying: spot,
     window: { from: CANDLE_FROM, to: CANDLE_TO, tz: 'IST' },
     asOf: istClock(nowMs),
+    session: session,
+    stale: stale,
+    tickConvention: conv.convention,
     source: 'nseindia.com',
     endpoint: chain.url,
     ce: ceCandle,
@@ -483,8 +525,12 @@ async function dump(which) {
   const ticks = await tickSeries(leg.identifier);
   console.log(`${ticks.length} ticks; first 3 raw:`, JSON.stringify(ticks.slice(0, 3)));
   if (ticks.length) {
-    console.log('first tick as IST :', istClock(ticks[0][0]));
-    console.log('last  tick as IST :', istClock(ticks[ticks.length - 1][0]));
+    const conv = detectTickOffset(ticks);
+    const shifted = shiftTicks(ticks, conv.offset);
+    console.log('detected convention:', conv.convention, '(offset', conv.offset / 60000, 'min)');
+    console.log('raw first tick as IST      :', istStamp(ticks[0][0]));
+    console.log('corrected first tick as IST:', istStamp(shifted[0][0]));
+    console.log('corrected last  tick as IST:', istStamp(shifted[shifted.length - 1][0]));
     console.log('window expected   :', CANDLE_FROM, '→', CANDLE_TO,
                 '(', istClock(istTimeToEpoch(CANDLE_FROM, Date.now())), ')');
   }
@@ -564,15 +610,31 @@ async function selfCheck() {
   }, 'This endpoint is undocumented — it is the most likely thing to have moved.');
 
   if (ticks.length) {
-    const now = Date.now();
-    const from = istTimeToEpoch(CANDLE_FROM, now);
-    const to = istTimeToEpoch(CANDLE_TO, now);
+    const conv = detectTickOffset(ticks);
+    const shifted = shiftTicks(ticks, conv.offset);
+    const anchor = shifted[0][0];
+    const from = istTimeToEpoch(CANDLE_FROM, anchor);
+    const to = istTimeToEpoch(CANDLE_TO, anchor);
+
+    await step('Tick timestamp convention', async () => {
+      return `${conv.convention} — first tick reads ${istStamp(anchor)} IST`;
+    });
+
+    await step('Session the feed returned', async () => {
+      const session = istDateKey(anchor);
+      const today = istDateKey(Date.now());
+      if (session !== today) {
+        return `${session} — the LAST COMPLETED session, not today (${today})`;
+      }
+      return `${session} (today)`;
+    }, 'Before the open, or on a holiday, NSE serves the previous session. The app labels it.');
+
     await step('Timestamps land in the 09:15–09:20 IST window', async () => {
-      const candle = aggregate(ticks, from, to);
+      const candle = aggregate(shifted, from, to);
       if (!candle) {
         throw new Error(
-          `0 of ${ticks.length} ticks fall in it. Window ${istStamp(from)} → ${CANDLE_TO}; ` +
-          `feed ticks run ${istStamp(ticks[0][0])} → ${istStamp(ticks[ticks.length - 1][0])} IST ` +
+          `0 of ${shifted.length} ticks fall in it. Window ${istStamp(from)} → ${CANDLE_TO}; ` +
+          `feed ticks run ${istStamp(shifted[0][0])} → ${istStamp(shifted[shifted.length - 1][0])} IST ` +
           '(check the date as well as the clock)'
         );
       }
@@ -617,5 +679,6 @@ if (require.main === module) {
 module.exports = {
   aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
+  detectTickOffset, shiftTicks, istStamp,
   formatExpiry, upcomingExpiries, expiryList, selfCheck, server
 };

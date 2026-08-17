@@ -98,12 +98,19 @@
     return request(fresh).then(function (p) {
       if (!validPayload(p)) throw new Error(t('af.badPayload'));
       applyPayload(p);
-      status('ok', t('af.filled', {
+      var msg = t('af.filled', {
         atm: U.fmt(p.atm, 0),
         time: p.asOf || clock(new Date()),
         source: p.source === 'mock' ? t('af.mockSource') : p.source,
         ticks: (p.ce.ticks || 0) + (p.pe.ticks || 0)
-      }));
+      });
+      /* Before the open, or on a holiday, NSE serves the previous session.
+         That must never look like today's candle. */
+      if (p.stale && p.session) {
+        status('armed', msg + ' ' + t('af.staleSession', { session: p.session }));
+      } else {
+        status('ok', msg + (p.session ? ' ' + t('af.session', { session: p.session }) : ''));
+      }
       return p;
     }).catch(function (err) {
       var msg = String(err && err.message || err);
