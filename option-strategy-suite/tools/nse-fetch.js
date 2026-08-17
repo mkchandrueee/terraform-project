@@ -425,6 +425,117 @@ async function firstCandle(nowMs) {
 }
 
 /* ------------------------------------------------------------------ */
+/* scan — the same first-candle maths across timeframes, strikes, expiries.
+   Every timeframe starts at the session open and runs for its own length, so
+   the 5-minute candle is 09:15–09:20 and the hour is 09:15–10:15. Tick series
+   are fetched once per contract and re-aggregated per timeframe.            */
+/* ------------------------------------------------------------------ */
+
+const tickCache = new Map();
+
+async function cachedTicks(identifier, session) {
+  const key = session + ':' + identifier;
+  if (tickCache.has(key)) return tickCache.get(key);
+  const raw = await tickSeries(identifier);
+  tickCache.set(key, raw);
+  return raw;
+}
+
+function windowFor(tf, anchor) {
+  const from = istTimeToEpoch(CANDLE_FROM, anchor);
+  return { from: from, to: from + tf * 60000 };
+}
+
+async function scan(opts, nowMs) {
+  if (MOCK) return mockScan(opts, nowMs);
+
+  const tfs = opts.tfs;
+  const rows = [];
+  const skipped = [];
+
+  const found = await expiryList();
+  const expiries = found.list.slice(0, Math.max(1, opts.expiries));
+
+  let atm = NaN, underlying = NaN, session = null, stale = false, conv = null;
+
+  for (const expiry of expiries) {
+    let chain;
+    try {
+      chain = await optionChain();
+    } catch (err) {
+      skipped.push({ expiry: expiry, reason: err.message });
+      continue;
+    }
+    /* v3 is scoped to one expiry, so re-request per expiry when forced */
+    if (!CHAIN_URL && chain.expiry && chain.expiry !== expiry) {
+      try {
+        const payload = await nseJson(BASE + '/api/option-chain-v3?type=Indices&symbol=' +
+          encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(expiry));
+        if (chainRows(payload).length) chain = { payload: payload, url: 'v3', expiry: expiry };
+      } catch (err) {
+        skipped.push({ expiry: expiry, reason: err.message });
+        continue;
+      }
+    }
+
+    if (!Number.isFinite(underlying)) {
+      underlying = chainUnderlying(chain.payload);
+      atm = atmStrike(underlying, STRIKE_STEP);
+    }
+
+    for (const offset of opts.offsets) {
+      const strike = atm + offset;
+      const legs = pickContracts(chain.payload, strike, expiry);
+      if (!legs.ce || !legs.pe) {
+        skipped.push({ expiry: expiry, strike: strike, reason: 'no CE/PE rows' });
+        continue;
+      }
+      let ceRaw, peRaw;
+      try {
+        [ceRaw, peRaw] = await Promise.all([
+          cachedTicks(legs.ce.identifier, expiry), cachedTicks(legs.pe.identifier, expiry)
+        ]);
+      } catch (err) {
+        skipped.push({ expiry: expiry, strike: strike, reason: err.message });
+        continue;
+      }
+      if (!ceRaw.length && !peRaw.length) {
+        skipped.push({ expiry: expiry, strike: strike, reason: 'no ticks' });
+        continue;
+      }
+
+      conv = conv || detectTickOffset(ceRaw.length ? ceRaw : peRaw);
+      const ceT = shiftTicks(ceRaw, conv.offset);
+      const peT = shiftTicks(peRaw, conv.offset);
+      const anchor = (ceT[0] || peT[0])[0];
+      if (!session) {
+        session = istDateKey(anchor);
+        stale = session !== istDateKey(nowMs);
+      }
+
+      for (const tf of tfs) {
+        const w = windowFor(tf, anchor);
+        const ce = aggregate(ceT, w.from, w.to);
+        const pe = aggregate(peT, w.from, w.to);
+        if (!ce || !pe) {
+          skipped.push({ expiry: expiry, strike: strike, tf: tf, reason: 'no ticks in window' });
+          continue;
+        }
+        rows.push({ expiry: expiry, strike: strike, tf: tf, ce: ce, pe: pe });
+      }
+    }
+  }
+
+  return {
+    symbol: SYMBOL, atm: atm, underlying: underlying,
+    session: session, stale: stale,
+    tickConvention: conv ? conv.convention : 'unknown',
+    asOf: istClock(nowMs), source: 'nseindia.com',
+    rows: rows, skipped: skipped
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* mock mode — deterministic, so the client path can be tested offline */
 /* ------------------------------------------------------------------ */
 
@@ -432,6 +543,38 @@ function mockSeries(base, shape, fromMs) {
   /* one tick every 10s across the five-minute window */
   return shape.map((delta, i) => [fromMs + i * 10000, Number((base + delta).toFixed(2))]);
 }
+
+/* Deterministic scan fixture: a wider timeframe sees a wider range, which is
+   what makes the multi-timeframe comparison worth looking at. */
+function mockScan(opts, nowMs) {
+  const anchor = istTimeToEpoch(CANDLE_FROM, nowMs);
+  const rows = [];
+  opts.expiriesList = ['MOCK-W1', 'MOCK-W2'].slice(0, Math.max(1, opts.expiries));
+  opts.expiriesList.forEach(function (expiry, ei) {
+    opts.offsets.forEach(function (offset) {
+      const strike = 24300 + offset;
+      opts.tfs.forEach(function (tf) {
+        const grow = Math.sqrt(tf / 5);
+        const ceBase = 130 + offset / 20 + ei * 3;
+        const peBase = 120 - offset / 20 + ei * 2;
+        rows.push({
+          expiry: expiry, strike: strike, tf: tf,
+          ce: { o: round2(ceBase), h: round2(ceBase + 8 * grow), l: round2(ceBase - 4 * grow),
+                c: round2(ceBase - 3 * grow), ticks: tf * 6 },
+          pe: { o: round2(peBase), h: round2(peBase + 12 * grow), l: round2(peBase - 1),
+                c: round2(peBase + 10 * grow), ticks: tf * 6 }
+        });
+      });
+    });
+  });
+  return {
+    symbol: SYMBOL, atm: 24300, underlying: 24350.7,
+    session: istDateKey(anchor), stale: false, tickConvention: 'mock',
+    asOf: istClock(nowMs), source: 'mock', rows: rows, skipped: []
+  };
+}
+
+function round2(n) { return Number(n.toFixed(2)); }
 
 function mockPayload(nowMs) {
   const from = istTimeToEpoch(CANDLE_FROM, nowMs);
@@ -477,6 +620,25 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/health') {
     return send(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', symbol: SYMBOL, ist: istClock(Date.now()) });
+  }
+
+  if (url.pathname === '/scan') {
+    try {
+      const parseList = function (name, fallback) {
+        const raw = url.searchParams.get(name);
+        if (!raw) return fallback;
+        const out = raw.split(',').map(Number).filter(function (n) { return Number.isFinite(n); });
+        return out.length ? out : fallback;
+      };
+      const opts = {
+        tfs: parseList('tfs', [5, 15, 30, 60]).filter(function (n) { return n > 0 && n <= 375; }),
+        offsets: parseList('offsets', [0]).slice(0, 9),
+        expiries: Math.min(3, Math.max(1, Number(url.searchParams.get('expiries')) || 1))
+      };
+      return send(res, 200, await scan(opts, Date.now()));
+    } catch (err) {
+      return send(res, 502, { error: String(err.message || err), mode: MOCK ? 'mock' : 'live' });
+    }
   }
 
   if (url.pathname === '/first-candle') {
@@ -670,7 +832,7 @@ if (require.main === module) {
       console.log(`  mode      ${MOCK ? 'mock (no network)' : 'live nseindia.com'}`);
       console.log(`  symbol    ${SYMBOL}, candle ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
-      console.log(`  endpoints /health  /first-candle`);
+      console.log(`  endpoints /health  /first-candle  /scan`);
       console.log('  point the app at this URL under "Auto-fetch" on the Analyser tab.');
     });
   }
@@ -679,6 +841,6 @@ if (require.main === module) {
 module.exports = {
   aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
-  detectTickOffset, shiftTicks, istStamp,
+  detectTickOffset, shiftTicks, istStamp, scan, windowFor,
   formatExpiry, upcomingExpiries, expiryList, selfCheck, server
 };

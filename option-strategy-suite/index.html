@@ -136,6 +136,7 @@
     <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
     <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
     <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
+    <button class="tab" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" data-panel="scan"><span class="tab-step" data-i18n="sc.pill"></span><span data-i18n="tab.scan"></span></button>
     <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
   </div>
 </nav>
@@ -505,6 +506,58 @@
     </div>
   </section>
 
+
+  <!-- =================== TOOL 5: SCAN =================== -->
+  <section class="panel" id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sc.badge"></span>
+      <h2 data-i18n="sc.hero"></h2>
+      <p class="muted" data-i18n="sc.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sc.setupTitle"></h2>
+        <p class="muted" data-i18n="sc.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <fieldset class="tf-box">
+          <legend data-i18n="sc.timeframes"></legend>
+          <label class="checkline"><input type="checkbox" id="sc-tf-5" checked /> <span>5 min <em data-i18n="sc.tf5"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-15" checked /> <span>15 min <em data-i18n="sc.tf15"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-30" checked /> <span>30 min <em data-i18n="sc.tf30"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-60" checked /> <span>60 min <em data-i18n="sc.tf60"></em></span></label>
+        </fieldset>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
+          <label class="field"><span><span data-i18n="sc.step"></span> <em data-i18n="sc.stepHint"></em></span><input type="number" id="sc-step" step="50" min="50" max="500" value="100" /></label>
+          <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
+        </div>
+
+        <div class="ohlc ohlc-3" style="margin-top:10px">
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+
+        <p class="af-status af-idle" id="sc-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-sc-run" data-i18n="sc.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-use" data-i18n="sc.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="sc.note"></p>
+      </div>
+    </div>
+
+    <div id="scan-output" hidden>
+      <div class="card verdict-card an-verdict" id="sc-headline"></div>
+      <div class="card" id="sc-agreement"></div>
+      <div class="card" id="sc-table"></div>
+    </div>
+  </section>
+
   <!-- =================== SOP GUIDE =================== -->
   <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
     <div class="card">
@@ -533,6 +586,7 @@
 <script src="assets/js/t1helper.js"></script>
 <script src="assets/js/pullback.js"></script>
 <script src="assets/js/signal.js"></script>
+<script src="assets/js/scan.js"></script>
 <script src="assets/js/alerts.js"></script>
 <script src="assets/js/app.js"></script>
 </body>

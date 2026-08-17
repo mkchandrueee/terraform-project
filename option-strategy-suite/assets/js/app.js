@@ -3,7 +3,7 @@
 (function (APP) {
   'use strict';
 
-  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null };
+  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null, scan: null };
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
@@ -29,7 +29,7 @@
   };
   APP.tabs = tabs;
 
-  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'guide'];
+  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'scan', 'guide'];
 
   function panelFromHash() {
     var hash = (window.location.hash || '').replace('#', '');
@@ -136,7 +136,8 @@
     { title: 'g.p2', steps: ['g.p2s3', 'g.p2s4', 'g.p2s5'], start: 3 },
     { title: 'g.p3', steps: ['g.p3s6', 'g.p3s7', 'g.p3s8', 'g.p3s9', 'g.p3s10'], start: 6 },
     { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 },
-    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 }
+    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 },
+    { title: 'g.p6', steps: ['g.p6s17', 'g.p6s18'], start: 17 }
   ];
 
   function formulaItems(cfg) {
@@ -166,8 +167,8 @@
           'check 1 (40)   direction — candle closed up' +
             (cfg.sideAwareDirection >= 1 ? ' (down on a put trade)' : '') + '\n' +
           'check 2 (15)   body strength — body ÷ range ≥ ' + cfg.bodyStrong + '\n' +
-          '        (7.5)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
-          'check 3 (40)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
+          '         (2)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
+          'check 3 (45)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
           'momentum = floor(sum of the weights earned)\n' +
           '\n' +
           'check 4 (gate) T1 breakout — close > T1 level   ← decisive\n' +
@@ -180,12 +181,30 @@
       {
         title: 'g.f4', note: 'g.f4n',
         code:
-          'liquidity score = 45% × close position + 30% × body ÷ range\n' +
-          '                + 15% × (close > open) + 10% × share of combined range\n' +
-          'side     = whichever of CE / PE scores higher\n' +
-          'zone 1   = low + ' + cfg.zone1Retrace + ' × range\n' +
-          'zone 2   = low + ' + cfg.zone2Retrace + ' × range\n' +
-          'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range'
+          'each leg must pass all three to be tradable:\n' +
+          '  direction up · body ÷ range ≥ ' + cfg.pbStrongBody + ' · close > ' + cfg.pbMinClosePos + ' of range\n' +
+          '  body < ' + cfg.pbDojiBody + ' is a doji — refused outright\n' +
+          'neither leg passing  → WAIT, no signal\n' +
+          '\n' +
+          'zone 1 = low + ' + cfg.pbZone1 + ' × range   aggressive\n' +
+          'zone 2 = low + ' + cfg.pbZone2 + ' × range   best (stop and targets measure from here)\n' +
+          'zone 3 = low + ' + cfg.pbZone3 + ' × range   last chance\n' +
+          'stop   = low less ' + cfg.pbSlPct + '%, to the nearest rupee\n' +
+          'T1/T2/T3 = zone 2 + round-to-' + cfg.pbTargetRound + '(' +
+            cfg.pbT1Mult + ' / ' + cfg.pbT2Mult + ' / ' + cfg.pbT3Mult + ' × range)'
+      },
+      {
+        title: 'g.f6', note: 'g.f6n',
+        code:
+          'every scan row runs the same Option Analyser maths — no new formula\n' +
+          '\n' +
+          'a timeframe is the first candle of the day at that length:\n' +
+          '  5m  = 09:15–09:20      30m = 09:15–09:45\n' +
+          '  15m = 09:15–09:30      60m = 09:15–10:15\n' +
+          '\n' +
+          'aligned  = every selected timeframe picks the same side\n' +
+          'split    = they disagree — treat the setup as unproven\n' +
+          'best row = highest confidence among rows whose verdict is YES'
       },
       {
         title: 'g.f5', note: 'g.f5n',
@@ -235,6 +254,7 @@
       APP.t1helper.reset();
       APP.pullback.reset();
       APP.signal.reset();
+      APP.scan.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -250,6 +270,7 @@
     APP.t1helper.init();
     APP.pullback.init();
     APP.signal.init();
+    APP.scan.init();
     APP.alerts.init();
     APP.analyser.renderAtm();
     renderGuide();

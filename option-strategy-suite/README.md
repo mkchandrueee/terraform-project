@@ -17,6 +17,7 @@ remembered.
 | 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that confirmed the entry | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy / put buy / **wait**, three entry zones, a stop and three targets |
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
+| 6 (steps 17–18) | **Scan** | Timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
 
 The tools hand off to each other:
 
@@ -186,6 +187,29 @@ The **breakeven win rate** shown beside it is not a judgement call at all: `risk
 arithmetic, and it is the number that decides whether a setup can pay. The verdict leans on that comparison —
 a trade is only *take* when the estimate clears breakeven **and** expected value is positive — so an
 optimistic base rate cannot on its own turn a losing structure into a green badge.
+
+## Scan — the same maths across timeframes, strikes and expiries
+
+The Scan tab answers one question the single 5-minute candle cannot: **does the setup still hold when you look
+at a longer opening candle?** Each timeframe is the first candle of the day at that length:
+
+| Timeframe | Window |
+|---|---|
+| 5 min | 09:15–09:20 |
+| 15 min | 09:15–09:30 |
+| 30 min | 09:15–09:45 |
+| 60 min | 09:15–10:15 |
+
+Pick the timeframes, how many strikes either side of ATM, and how many expiries; the helper fetches one tick
+series per contract and re-aggregates it per timeframe, so 24 combinations cost 6 fetches rather than 24.
+
+**There is no new arithmetic.** Every row goes through the same `APP.analyser.analyse()` the Option Analyser
+tab uses, so a scan row and the analyser agree by construction — the tests assert that on the best row's entry,
+targets and stop. *Send best row to Analyser* loads its candles into the normal workflow.
+
+The part worth reading is **timeframe agreement**, shown per strike: whether every selected timeframe picks the
+same side. All four agreeing is the confirmation worth having; a side that appears only on the 5-minute candle
+is noise, and the card says *split* rather than pretending otherwise.
 
 ## Auto-fetching the first candle from NSE
 
@@ -361,6 +385,7 @@ option-strategy-suite/
         ├── pullback.js        tool 3
         ├── autofetch.js       talks to the local NSE helper
         ├── signal.js          tool 4 — confluence, win estimate, metrics
+        ├── scan.js            tool 5 — multi-timeframe / strike / expiry scan
         ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference
 ```

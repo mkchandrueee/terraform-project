@@ -621,6 +621,43 @@ input[type=number] { -moz-appearance: textfield; }
 .leg-checks li { display: flex; gap: 8px; color: var(--text-dim); }
 .leg-checks li.pass > span { color: var(--accent); }
 .leg-checks li.fail > span { color: var(--danger); }
+
+/* ---------- scan ---------- */
+.tf-box { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px 12px; margin: 0; background: #0c141d; }
+.tf-box legend { padding: 0 6px; font-size: 12.5px; font-weight: 650; color: var(--accent); }
+.tf-box .checkline { margin-top: 6px; }
+.tf-box .checkline:first-of-type { margin-top: 2px; }
+
+.agree-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .agree-grid { grid-template-columns: 1fr 1fr; } }
+.agree-card { background: #0c141d; border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-sm); padding: 12px 14px; }
+.agree-card.is-aligned { border-left-color: var(--accent); }
+.agree-card.is-split   { border-left-color: var(--warn); }
+.agree-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.agree-head b { font-family: var(--mono); font-size: 16px; }
+.agree-tag { margin-left: auto; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; border: 1px solid; }
+.agree-tag.is-aligned { color: var(--accent); border-color: rgba(55, 214, 160, .45); background: rgba(55, 214, 160, .1); }
+.agree-tag.is-split   { color: var(--warn);   border-color: rgba(255, 180, 84, .45); background: rgba(255, 180, 84, .1); }
+.agree-tfs { display: flex; gap: 8px; flex-wrap: wrap; }
+.agree-tf { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; color: var(--text-dim); }
+.agree-tf.is-with b { color: var(--accent); }
+.agree-tf.is-against { border-color: rgba(255, 180, 84, .4); }
+.agree-tf.is-against b { color: var(--warn); }
+
+.scan-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.scan-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); font-weight: 700; padding: 8px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.scan-table td { padding: 9px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.scan-table td.num { font-family: var(--mono); text-align: right; }
+.scan-table td.exp { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+.scan-table td.conf { font-weight: 700; }
+.scan-table td.t { color: var(--accent); }
+.scan-table td.sl { color: var(--danger); }
+.scan-table tr.is-no td { opacity: .5; }
+.scan-table tr.is-best td { background: rgba(55, 214, 160, .07); opacity: 1; }
+.scan-side { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; border-radius: 5px; padding: 3px 8px; }
+.scan-side.is-call { color: var(--call); background: rgba(55, 214, 160, .12); }
+.scan-side.is-put  { color: var(--put);  background: rgba(255, 107, 129, .12); }
+.best-tag { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--accent); border: 1px solid rgba(55, 214, 160, .45); border-radius: 999px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -750,6 +787,7 @@ input[type=number] { -moz-appearance: textfield; }
     <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
     <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
     <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
+    <button class="tab" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" data-panel="scan"><span class="tab-step" data-i18n="sc.pill"></span><span data-i18n="tab.scan"></span></button>
     <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
   </div>
 </nav>
@@ -1116,6 +1154,58 @@ input[type=number] { -moz-appearance: textfield; }
         <h3 class="log-title" data-i18n="al.logTitle"></h3>
         <ul class="alert-log" id="al-log"></ul>
       </div>
+    </div>
+  </section>
+
+
+  <!-- =================== TOOL 5: SCAN =================== -->
+  <section class="panel" id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sc.badge"></span>
+      <h2 data-i18n="sc.hero"></h2>
+      <p class="muted" data-i18n="sc.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sc.setupTitle"></h2>
+        <p class="muted" data-i18n="sc.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <fieldset class="tf-box">
+          <legend data-i18n="sc.timeframes"></legend>
+          <label class="checkline"><input type="checkbox" id="sc-tf-5" checked /> <span>5 min <em data-i18n="sc.tf5"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-15" checked /> <span>15 min <em data-i18n="sc.tf15"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-30" checked /> <span>30 min <em data-i18n="sc.tf30"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-60" checked /> <span>60 min <em data-i18n="sc.tf60"></em></span></label>
+        </fieldset>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
+          <label class="field"><span><span data-i18n="sc.step"></span> <em data-i18n="sc.stepHint"></em></span><input type="number" id="sc-step" step="50" min="50" max="500" value="100" /></label>
+          <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
+        </div>
+
+        <div class="ohlc ohlc-3" style="margin-top:10px">
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+
+        <p class="af-status af-idle" id="sc-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-sc-run" data-i18n="sc.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-use" data-i18n="sc.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="sc.note"></p>
+      </div>
+    </div>
+
+    <div id="scan-output" hidden>
+      <div class="card verdict-card an-verdict" id="sc-headline"></div>
+      <div class="card" id="sc-agreement"></div>
+      <div class="card" id="sc-table"></div>
     </div>
   </section>
 
@@ -1730,6 +1820,65 @@ window.APP = window.APP || {};
       'g.f4': 'Stoploss Pullback Entry — side and zones',
       'g.f4n': 'Entries sit inside the first-candle range rather than above it — the setup buys the pullback into liquidity, which is why no stop loss is placed.',
 
+      'tab.scan': 'Scan',
+      'sc.pill': 'Trail',
+      'sc.badge': 'Multi-timeframe scan',
+      'sc.hero': 'Does the setup hold at 15, 30 and 60 minutes?',
+      'sc.heroSub': 'The same first-candle maths, measured over longer opening candles and across neighbouring strikes and expiries. A side that only shows up on 5 minutes is noise; one that holds across all of them is worth trading.',
+      'sc.setupTitle': 'What to scan',
+      'sc.setupDesc': 'Each timeframe is the first candle of the day at that length — 15m is 09:15–09:30, 60m is 09:15–10:15.',
+      'sc.timeframes': 'Timeframes',
+      'sc.tf5': '(09:15–09:20)',
+      'sc.tf15': '(09:15–09:30)',
+      'sc.tf30': '(09:15–09:45)',
+      'sc.tf60': '(09:15–10:15)',
+      'sc.strikes': 'Strikes each side of ATM',
+      'sc.strikesHint': '(0 = ATM only)',
+      'sc.step': 'Strike step',
+      'sc.stepHint': '(points)',
+      'sc.expiries': 'Expiries',
+      'sc.expiriesHint': '(from the nearest)',
+      'sc.run': 'Run scan',
+      'sc.useBest': 'Send best row to Analyser',
+      'sc.idle': 'Idle — pick your timeframes and run the scan.',
+      'sc.running': 'Scanning…',
+      'sc.done': 'Scanned {rows} combinations from {source}.',
+      'sc.failed': 'Scan failed — {reason}',
+      'sc.empty': 'the helper returned no rows',
+      'sc.note': 'The scan needs the local helper, because it pulls one tick series per contract and re-aggregates it per timeframe. Every row is run through the same maths as the Option Analyser tab, so the two always agree.',
+      'sc.bestIs': 'BEST — {side} {strike} on {tf}m',
+      'sc.noneQualify': 'NO ROW QUALIFIES — STAND ASIDE',
+      'sc.context': 'ATM {atm}, session {session}, {rows} combinations evaluated.',
+      'sc.agreeTitle': 'Timeframe agreement',
+      'sc.agreeDesc': 'Per strike, whether the timeframes pick the same side. Disagreement is the useful signal here.',
+      'sc.aligned': 'all {n} agree — {side}',
+      'sc.split': 'split — {calls} call / {puts} put',
+      'sc.tableTitle': 'Every combination',
+      'sc.tableDesc': '{n} rows, sorted by expiry then strike then timeframe. Dimmed rows fall below the confidence threshold.',
+      'sc.skipped': '{n} combinations were skipped — no contract rows, or no ticks in that window.',
+      'sc.best': 'BEST',
+      'sc.call': 'CALL',
+      'sc.put': 'PUT',
+      'sc.callShort': 'CE',
+      'sc.putShort': 'PE',
+      'sc.h.tf': 'TF',
+      'sc.h.strike': 'Strike',
+      'sc.h.expiry': 'Expiry',
+      'sc.h.side': 'Side',
+      'sc.h.conf': 'Conf',
+      'sc.h.entry': 'Entry',
+      'sc.h.t1': 'T1',
+      'sc.h.t2': 'T2',
+      'sc.h.t3': 'T3',
+      'sc.h.sl': 'Stop',
+      'sc.h.range': 'Range',
+      'sc.h.flag': '',
+      'g.p6': 'Phase 6 · Scan (does it hold on other timeframes?)',
+      'g.p6s17': '<b>Widen the same maths.</b> The scan measures the first candle of the day over 5, 15, 30 and 60 minutes, across neighbouring strikes and the next expiry, running every row through the Option Analyser model unchanged.',
+      'g.p6s18': '<b>Read the agreement, not just the best row.</b> All timeframes picking the same side is the confirmation worth having; a side that appears only on the 5-minute candle is noise. Send the best row to the Analyser to carry on through the normal workflow.',
+      'g.f6': 'Scan — timeframes, strikes and expiries',
+      'g.f6n': 'No new arithmetic: the scan is breadth over the same model. Its value is the agreement view, which tells you whether a side survives being looked at over a longer opening candle.',
+
       /* trade signal */
       'tab.signal': 'Trade Signal',
       'tab.phase5': 'Signal',
@@ -2262,6 +2411,65 @@ window.APP = window.APP || {};
       'g.f3n': 'Check 4 momentum score-க்கு வெளியே இருக்கு: T1-க்கு மேல breakout நிஜமாவே ஆச்சானு கேட்குது, step 10-ல guide கேட்குற pre-trade gate அதுதான்.',
       'g.f4': 'Stoploss Pullback Entry — side & zones',
       'g.f4n': 'Entry range-க்கு மேல இல்லாம range-க்குள்ளயே இருக்கு — liquidity-க்குள்ள வர்ற pullback-ஐ buy பண்ற setup, அதனாலதான் stop loss கிடையாது.',
+
+      'tab.scan': 'Scan',
+      'sc.pill': 'Trail',
+      'sc.badge': 'Multi-timeframe scan',
+      'sc.hero': '15, 30, 60 நிமிஷத்துலயும் setup நிக்குதா?',
+      'sc.heroSub': 'அதே first-candle கணக்கு, நீளமான opening candle-ல, பக்கத்து strikes-ம் expiries-ம் சேர்த்து. 5 நிமிஷத்துல மட்டும் வர்ற side noise; எல்லாத்துலயும் நிக்கிற side தான் trade பண்ண தகுதியானது.',
+      'sc.setupTitle': 'எதை scan பண்ணணும்',
+      'sc.setupDesc': 'ஒவ்வொரு timeframe-ம் அந்த நீளத்துல அன்றைய first candle — 15m = 09:15–09:30, 60m = 09:15–10:15.',
+      'sc.timeframes': 'Timeframes',
+      'sc.tf5': '(09:15–09:20)',
+      'sc.tf15': '(09:15–09:30)',
+      'sc.tf30': '(09:15–09:45)',
+      'sc.tf60': '(09:15–10:15)',
+      'sc.strikes': 'ATM-க்கு இருபக்கமும் strikes',
+      'sc.strikesHint': '(0 = ATM மட்டும்)',
+      'sc.step': 'Strike step',
+      'sc.stepHint': '(points)',
+      'sc.expiries': 'Expiries',
+      'sc.expiriesHint': '(அடுத்ததுல இருந்து)',
+      'sc.run': 'Scan பண்ணு',
+      'sc.useBest': 'Best row-ஐ Analyser-க்கு அனுப்பு',
+      'sc.idle': 'Idle — timeframes தேர்ந்தெடுத்து scan பண்ணு.',
+      'sc.running': 'Scan பண்றேன்…',
+      'sc.done': '{source}-ல இருந்து {rows} combinations scan ஆச்சு.',
+      'sc.failed': 'Scan fail ஆச்சு — {reason}',
+      'sc.empty': 'helper எந்த row-ம் கொடுக்கல',
+      'sc.note': 'Scan-க்கு local helper வேணும் — ஒரு contract-க்கு ஒரு தடவை tick series எடுத்து, timeframe வாரியா மறு-கணக்கு பண்ணுது. ஒவ்வொரு row-ம் Option Analyser tab-ஓட அதே கணக்கு வழியாதான் போகுது.',
+      'sc.bestIs': 'BEST — {side} {strike}, {tf}m',
+      'sc.noneQualify': 'எந்த row-ம் தகுதி இல்ல — விட்டுடு',
+      'sc.context': 'ATM {atm}, session {session}, {rows} combinations பாத்தாச்சு.',
+      'sc.agreeTitle': 'Timeframe agreement',
+      'sc.agreeDesc': 'ஒவ்வொரு strike-க்கும், timeframes ஒரே side-ஐ தேர்ந்தெடுக்குதானு. வேறுபாடு தான் இங்க முக்கியமான signal.',
+      'sc.aligned': '{n}-ம் ஒத்துக்குது — {side}',
+      'sc.split': 'split — {calls} call / {puts} put',
+      'sc.tableTitle': 'எல்லா combination-ம்',
+      'sc.tableDesc': '{n} rows — expiry, strike, timeframe வரிசையில. மங்கலான rows confidence threshold-க்கு கீழ.',
+      'sc.skipped': '{n} combinations skip ஆச்சு — contract rows இல்ல, அல்லது அந்த window-ல ticks இல்ல.',
+      'sc.best': 'BEST',
+      'sc.call': 'CALL',
+      'sc.put': 'PUT',
+      'sc.callShort': 'CE',
+      'sc.putShort': 'PE',
+      'sc.h.tf': 'TF',
+      'sc.h.strike': 'Strike',
+      'sc.h.expiry': 'Expiry',
+      'sc.h.side': 'Side',
+      'sc.h.conf': 'Conf',
+      'sc.h.entry': 'Entry',
+      'sc.h.t1': 'T1',
+      'sc.h.t2': 'T2',
+      'sc.h.t3': 'T3',
+      'sc.h.sl': 'Stop',
+      'sc.h.range': 'Range',
+      'sc.h.flag': '',
+      'g.p6': 'Phase 6 · Scan (வேற timeframe-லயும் நிக்குதா?)',
+      'g.p6s17': '<b>அதே கணக்கை விரிவாக்கு.</b> Scan அன்றைய first candle-ஐ 5, 15, 30, 60 நிமிஷத்துல அளக்குது — பக்கத்து strikes, அடுத்த expiry சேர்த்து — ஒவ்வொரு row-ம் Option Analyser model வழியாவே போகுது.',
+      'g.p6s18': '<b>Best row-ஐ மட்டும் பாக்காத, agreement-ஐ பாரு.</b> எல்லா timeframe-ம் ஒரே side சொன்னா அதுதான் நல்ல confirmation; 5 நிமிஷத்துல மட்டும் வர்ற side noise. Best row-ஐ Analyser-க்கு அனுப்பி வழக்கமான workflow-ல தொடரு.',
+      'g.f6': 'Scan — timeframes, strikes, expiries',
+      'g.f6n': 'புது கணக்கு இல்ல: அதே model-ஐ அகலமா பாக்குறது. இதோட மதிப்பு agreement view — நீளமான opening candle-ல பாத்தாலும் அந்த side தாக்குப்பிடிக்குதானு சொல்லுது.',
 
       /* trade signal */
       'tab.signal': 'Trade Signal',
@@ -4206,6 +4414,279 @@ window.APP = window.APP || {};
 })(window.APP);
 </script>
 <script>
+/* Tool 5 — Multi-timeframe / multi-strike / multi-expiry scan.
+
+   No new maths: every row is run through the same APP.analyser.analyse() the
+   Option Analyser tab uses, so a scan row and the analyser agree by
+   construction. What the scan adds is breadth — the same first candle measured
+   over 5, 15, 30 and 60 minutes, across neighbouring strikes and the next
+   expiry — plus a read on whether those timeframes agree with each other.
+
+   Every timeframe starts at the session open, so "15m" is 09:15–09:30 and
+   "60m" is 09:15–10:15. That is the first candle of the day at that
+   timeframe, which is what the strategy is built on. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
+
+  var TFS = [5, 15, 30, 60];
+  var last = null;
+
+  /* ---------- run the analyser maths over each row ---------- */
+  function evaluate(payload, cfg) {
+    var rows = (payload.rows || []).map(function (r) {
+      var res = APP.analyser.analyse(r.ce, r.pe, cfg);
+      var leg = res.chosen;
+      return {
+        expiry: r.expiry, strike: r.strike, tf: r.tf,
+        ce: r.ce, pe: r.pe,
+        side: res.side, confidence: res.confidence, verdict: res.verdict,
+        pcr: res.pcr,
+        entry: leg.entry, target1: leg.target1, target2: leg.target2,
+        target3: leg.target3, stopLoss: leg.stopLoss, range: leg.range
+      };
+    });
+
+    rows.sort(function (a, b) {
+      return a.expiry.localeCompare(b.expiry) || a.strike - b.strike || a.tf - b.tf;
+    });
+
+    var best = rows.reduce(function (acc, r) {
+      if (r.verdict !== 'yes') return acc;
+      return !acc || r.confidence > acc.confidence ? r : acc;
+    }, null);
+
+    return { payload: payload, rows: rows, best: best, agreement: agreement(rows) };
+  }
+
+  /* Do the timeframes agree, strike by strike? That is the whole point of
+     looking at more than one — a side that only appears on 5m is noise. */
+  function agreement(rows) {
+    var groups = {};
+    rows.forEach(function (r) {
+      var key = r.expiry + '|' + r.strike;
+      (groups[key] = groups[key] || []).push(r);
+    });
+    return Object.keys(groups).map(function (key) {
+      var group = groups[key].slice().sort(function (a, b) { return a.tf - b.tf; });
+      var calls = group.filter(function (r) { return r.side === 'call'; }).length;
+      var puts = group.length - calls;
+      var majority = calls === puts ? null : (calls > puts ? 'call' : 'put');
+      var aligned = majority !== null && (majority === 'call' ? calls : puts) === group.length;
+      var yes = group.filter(function (r) { return r.verdict === 'yes'; }).length;
+      return {
+        expiry: group[0].expiry, strike: group[0].strike, group: group,
+        calls: calls, puts: puts, majority: majority, aligned: aligned,
+        yes: yes, count: group.length
+      };
+    }).sort(function (a, b) {
+      /* fully aligned and confident first — that is what you want to see */
+      return (b.aligned - a.aligned) || (b.yes - a.yes) || a.strike - b.strike;
+    });
+  }
+
+  /* ---------- rendering ---------- */
+  function sideChip(side) {
+    return '<span class="scan-side is-' + side + '">' +
+      U.escapeHtml(t(side === 'call' ? 'sc.call' : 'sc.put')) + '</span>';
+  }
+
+  function renderAgreement(result) {
+    var el = U.$('sc-agreement');
+    el.innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('sc.agreeTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('sc.agreeDesc')) + '</p></div>' +
+      '<div class="agree-grid">' +
+        result.agreement.map(function (a) {
+          var tfLine = a.group.map(function (r) {
+            return '<span class="agree-tf ' + (r.side === a.majority ? 'is-with' : 'is-against') + '">' +
+              r.tf + 'm ' + U.escapeHtml(t(r.side === 'call' ? 'sc.callShort' : 'sc.putShort')) +
+              ' <b>' + U.fmt(r.confidence, 0) + '%</b></span>';
+          }).join('');
+          return '<div class="agree-card ' + (a.aligned ? 'is-aligned' : 'is-split') + '">' +
+            '<div class="agree-head"><b>' + U.fmt(a.strike, 0) + '</b>' +
+              '<span class="muted small">' + U.escapeHtml(a.expiry) + '</span>' +
+              (a.aligned
+                ? '<span class="agree-tag is-aligned">' + U.escapeHtml(t('sc.aligned', {
+                    n: a.count, side: t(a.majority === 'call' ? 'sc.call' : 'sc.put') })) + '</span>'
+                : '<span class="agree-tag is-split">' + U.escapeHtml(t('sc.split', {
+                    calls: a.calls, puts: a.puts })) + '</span>') +
+            '</div>' +
+            '<div class="agree-tfs">' + tfLine + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
+  function renderTable(result) {
+    var rows = result.rows.map(function (r) {
+      var isBest = result.best && r === result.best;
+      return '<tr class="' + (isBest ? 'is-best' : '') + (r.verdict === 'yes' ? '' : ' is-no') + '">' +
+        '<td>' + r.tf + 'm</td>' +
+        '<td class="num">' + U.fmt(r.strike, 0) + '</td>' +
+        '<td class="exp">' + U.escapeHtml(r.expiry) + '</td>' +
+        '<td>' + sideChip(r.side) + '</td>' +
+        '<td class="num conf">' + U.fmt(r.confidence, 0) + '%</td>' +
+        '<td class="num">' + money(r.entry) + '</td>' +
+        '<td class="num t">' + money(r.target1) + '</td>' +
+        '<td class="num t">' + money(r.target2) + '</td>' +
+        '<td class="num t">' + money(r.target3) + '</td>' +
+        '<td class="num sl">' + money(r.stopLoss) + '</td>' +
+        '<td class="num">' + U.fmt(r.range) + '</td>' +
+        '<td>' + (isBest ? '<span class="best-tag">' + U.escapeHtml(t('sc.best')) + '</span>' : '') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    U.$('sc-table').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('sc.tableTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('sc.tableDesc', { n: result.rows.length })) + '</p></div>' +
+      '<div class="table-scroll"><table class="scan-table"><thead><tr>' +
+        ['sc.h.tf', 'sc.h.strike', 'sc.h.expiry', 'sc.h.side', 'sc.h.conf', 'sc.h.entry',
+         'sc.h.t1', 'sc.h.t2', 'sc.h.t3', 'sc.h.sl', 'sc.h.range', 'sc.h.flag']
+          .map(function (k) { return '<th>' + U.escapeHtml(t(k)) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      (result.payload.skipped && result.payload.skipped.length
+        ? '<p class="muted small" style="margin-top:10px">' +
+          U.escapeHtml(t('sc.skipped', { n: result.payload.skipped.length })) + '</p>'
+        : '');
+  }
+
+  function renderHeadline(result) {
+    var p = result.payload;
+    var best = result.best;
+    var el = U.$('sc-headline');
+    el.className = 'card verdict-card ' + (best ? 'an-verdict is-yes' : 'an-verdict is-no');
+    el.innerHTML =
+      '<div class="an-verdict-top">' +
+        '<div class="verdict-badge ' + (best ? (best.side === 'call' ? 'v-hold' : 'v-put') : 'v-partial') + '">' +
+          (best
+            ? U.escapeHtml(t('sc.bestIs', {
+                side: t(best.side === 'call' ? 'an.buyCall' : 'an.buyPut'),
+                strike: U.fmt(best.strike, 0), tf: best.tf }))
+            : U.escapeHtml(t('sc.noneQualify'))) +
+        '</div>' +
+        (best ? '<div class="an-confidence"><b>' + U.fmt(best.confidence, 0) + '%</b>' +
+          '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' : '') +
+      '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('sc.context', {
+        atm: U.fmt(p.atm, 0), session: p.session || '—', rows: result.rows.length
+      })) + (p.stale ? ' ' + U.escapeHtml(t('af.staleSession', { session: p.session })) : '') + '</p>' +
+      (best
+        ? '<div class="entry-strip">' +
+            '<span class="entry-label">' + U.escapeHtml(t('an.entryPrice')) + '</span>' +
+            '<span class="entry-value">' + money(best.entry) + '</span>' +
+            '<span class="entry-side ' + (best.side === 'call' ? 'is-call' : 'is-put') + '">' +
+              U.escapeHtml(t(best.side === 'call' ? 'an.buyCall' : 'an.buyPut')) + '</span>' +
+          '</div>'
+        : '');
+  }
+
+  function render(result) {
+    renderHeadline(result);
+    renderAgreement(result);
+    renderTable(result);
+    U.$('scan-output').hidden = false;
+  }
+
+  /* ---------- controller ---------- */
+  function selectedTfs() {
+    var out = TFS.filter(function (tf) {
+      var el = U.$('sc-tf-' + tf);
+      return el && el.checked;
+    });
+    return out.length ? out : [5];
+  }
+
+  function selectedOffsets() {
+    var span = Math.max(0, Math.min(4, Math.round(U.num(U.$('sc-strikes').value)) || 0));
+    var step = Math.max(1, Math.round(U.num(U.$('sc-step').value)) || 100);
+    var out = [];
+    for (var i = -span; i <= span; i++) out.push(i * step);
+    return out;
+  }
+
+  function status(kind, message) {
+    var el = U.$('sc-status');
+    el.className = 'af-status af-' + kind;
+    el.textContent = message;
+  }
+
+  function run() {
+    var cfg = APP.config.get();
+    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || 'http://127.0.0.1:8123';
+    var url = endpoint + '/scan?tfs=' + selectedTfs().join(',') +
+              '&offsets=' + selectedOffsets().join(',') +
+              '&expiries=' + Math.max(1, Math.min(3, Math.round(U.num(U.$('sc-expiries').value)) || 1));
+
+    status('busy', t('sc.running'));
+    return window.fetch(url)
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body && body.error ? body.error : 'HTTP ' + res.status);
+          return body;
+        });
+      })
+      .then(function (payload) {
+        if (!payload.rows || !payload.rows.length) throw new Error(t('sc.empty'));
+        var result = evaluate(payload, cfg);
+        last = result;
+        APP.state.scan = result;
+        render(result);
+        status('ok', t('sc.done', {
+          rows: result.rows.length,
+          source: payload.source === 'mock' ? t('af.mockSource') : payload.source
+        }));
+        return result;
+      })
+      .catch(function (err) {
+        var msg = String(err && err.message || err);
+        status('err', /Failed to fetch|NetworkError/i.test(msg)
+          ? t('af.helperOffline', { endpoint: endpoint })
+          : t('sc.failed', { reason: msg }));
+        U.$('scan-output').hidden = true;
+        APP.state.scan = null;
+        return null;
+      });
+  }
+
+  function reset() {
+    U.$('scan-output').hidden = true;
+    APP.state.scan = null;
+    last = null;
+    status('idle', t('sc.idle'));
+  }
+
+  /* Send the best row's candles to the Option Analyser, so the scan is a way
+     in to the normal workflow rather than a dead end. */
+  function useBest() {
+    if (!last || !last.best) return;
+    var r = last.best;
+    U.writeCandle('an-ce', r.ce);
+    U.writeCandle('an-pe', r.pe);
+    U.$('atm-open').value = String(last.payload.underlying || r.strike);
+    APP.analyser.renderAtm();
+    APP.analyser.run();
+    APP.tabs.show('analyser');
+  }
+
+  function init() {
+    U.$('sc-endpoint').value = (function () {
+      try { return window.localStorage.getItem('nifty-option-suite:endpoint') || 'http://127.0.0.1:8123'; }
+      catch (e) { return 'http://127.0.0.1:8123'; }
+    })();
+    U.$('btn-sc-run').addEventListener('click', run);
+    U.$('btn-sc-reset').addEventListener('click', reset);
+    U.$('btn-sc-use').addEventListener('click', useBest);
+    status('idle', t('sc.idle'));
+  }
+
+  APP.scan = { init: init, run: run, reset: reset, evaluate: evaluate, agreement: agreement };
+})(window.APP);
+</script>
+<script>
 /* Notifications and the 5-minute candle-close scheduler.
 
    Two honest limits, stated in the UI as well: the page must stay open for a
@@ -4368,7 +4849,7 @@ window.APP = window.APP || {};
 (function (APP) {
   'use strict';
 
-  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null };
+  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null, scan: null };
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
@@ -4394,7 +4875,7 @@ window.APP = window.APP || {};
   };
   APP.tabs = tabs;
 
-  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'guide'];
+  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'scan', 'guide'];
 
   function panelFromHash() {
     var hash = (window.location.hash || '').replace('#', '');
@@ -4501,7 +4982,8 @@ window.APP = window.APP || {};
     { title: 'g.p2', steps: ['g.p2s3', 'g.p2s4', 'g.p2s5'], start: 3 },
     { title: 'g.p3', steps: ['g.p3s6', 'g.p3s7', 'g.p3s8', 'g.p3s9', 'g.p3s10'], start: 6 },
     { title: 'g.p4', steps: ['g.p4s11', 'g.p4s12', 'g.p4s13'], start: 11 },
-    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 }
+    { title: 'g.p5', steps: ['g.p5s14', 'g.p5s15', 'g.p5s16'], start: 14 },
+    { title: 'g.p6', steps: ['g.p6s17', 'g.p6s18'], start: 17 }
   ];
 
   function formulaItems(cfg) {
@@ -4531,8 +5013,8 @@ window.APP = window.APP || {};
           'check 1 (40)   direction — candle closed up' +
             (cfg.sideAwareDirection >= 1 ? ' (down on a put trade)' : '') + '\n' +
           'check 2 (15)   body strength — body ÷ range ≥ ' + cfg.bodyStrong + '\n' +
-          '        (7.5)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
-          'check 3 (40)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
+          '         (2)   partial credit from ' + cfg.bodyModerate + ' to ' + cfg.bodyStrong + '\n' +
+          'check 3 (45)   close position — close ≥ ' + cfg.minClosePos + ' of range\n' +
           'momentum = floor(sum of the weights earned)\n' +
           '\n' +
           'check 4 (gate) T1 breakout — close > T1 level   ← decisive\n' +
@@ -4545,12 +5027,30 @@ window.APP = window.APP || {};
       {
         title: 'g.f4', note: 'g.f4n',
         code:
-          'liquidity score = 45% × close position + 30% × body ÷ range\n' +
-          '                + 15% × (close > open) + 10% × share of combined range\n' +
-          'side     = whichever of CE / PE scores higher\n' +
-          'zone 1   = low + ' + cfg.zone1Retrace + ' × range\n' +
-          'zone 2   = low + ' + cfg.zone2Retrace + ' × range\n' +
-          'Target 1 = high + ' + cfg.pullbackTargetMult + ' × range'
+          'each leg must pass all three to be tradable:\n' +
+          '  direction up · body ÷ range ≥ ' + cfg.pbStrongBody + ' · close > ' + cfg.pbMinClosePos + ' of range\n' +
+          '  body < ' + cfg.pbDojiBody + ' is a doji — refused outright\n' +
+          'neither leg passing  → WAIT, no signal\n' +
+          '\n' +
+          'zone 1 = low + ' + cfg.pbZone1 + ' × range   aggressive\n' +
+          'zone 2 = low + ' + cfg.pbZone2 + ' × range   best (stop and targets measure from here)\n' +
+          'zone 3 = low + ' + cfg.pbZone3 + ' × range   last chance\n' +
+          'stop   = low less ' + cfg.pbSlPct + '%, to the nearest rupee\n' +
+          'T1/T2/T3 = zone 2 + round-to-' + cfg.pbTargetRound + '(' +
+            cfg.pbT1Mult + ' / ' + cfg.pbT2Mult + ' / ' + cfg.pbT3Mult + ' × range)'
+      },
+      {
+        title: 'g.f6', note: 'g.f6n',
+        code:
+          'every scan row runs the same Option Analyser maths — no new formula\n' +
+          '\n' +
+          'a timeframe is the first candle of the day at that length:\n' +
+          '  5m  = 09:15–09:20      30m = 09:15–09:45\n' +
+          '  15m = 09:15–09:30      60m = 09:15–10:15\n' +
+          '\n' +
+          'aligned  = every selected timeframe picks the same side\n' +
+          'split    = they disagree — treat the setup as unproven\n' +
+          'best row = highest confidence among rows whose verdict is YES'
       },
       {
         title: 'g.f5', note: 'g.f5n',
@@ -4600,6 +5100,7 @@ window.APP = window.APP || {};
       APP.t1helper.reset();
       APP.pullback.reset();
       APP.signal.reset();
+      APP.scan.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -4615,6 +5116,7 @@ window.APP = window.APP || {};
     APP.t1helper.init();
     APP.pullback.init();
     APP.signal.init();
+    APP.scan.init();
     APP.alerts.init();
     APP.analyser.renderAtm();
     renderGuide();
