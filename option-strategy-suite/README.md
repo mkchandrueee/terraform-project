@@ -14,8 +14,8 @@ remembered.
 | Phase | Tool | In | Out |
 |---|---|---|---|
 | 1–2 (steps 1–5) | **Option Analyser** | NIFTY open price, then the 09:15–09:20 OHLC of the ATM call and put | ATM strike, and entry price / Target 1 / stop loss for each side, plus the confirmation close |
-| 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that touched T1 | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
-| 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy or put buy, zone 1 (entry), zone 2, Target 1 — deliberately no stop loss |
+| 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that confirmed the entry | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
+| 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy / put buy / **wait**, three entry zones, a stop and three targets |
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
 
 The tools hand off to each other:
@@ -42,11 +42,6 @@ screenshots of the original tools pinned a number down, this implementation matc
 most natural reading of the guide's structure. Every coefficient is exposed under **Formula settings** so it
 can be re-tuned to match your own numbers — settings persist in the browser and re-run any open result
 immediately.
-
-Two things the reference examples confirm rather than assume: the analyser's ladders come out equally spaced
-(their published examples are 102/152/202, 27/61/96 and 175/219/263 — gaps of 50/50, 34/35 and 44/44), which is
-exactly what `stop loss = low`, `entry = high`, `Target 1 = high + range` produces; and the T1 helper's
-momentum weights below reproduce its published scores exactly.
 
 **Options Analyser** — this is the original tool's model, recovered exactly from screenshots of four legs
 (24300 CE/PE and 24400 CE/PE). All twenty values — entry, three targets and the stop on each leg — reproduce
@@ -93,23 +88,18 @@ they are split 40 / 45.
 Verdict: **WAIT** if check 4 failed (nothing is confirmed, so there is nothing to hold or book); otherwise
 **HOLD → T2** at momentum ≥ 70, **PARTIAL BOOK** at ≥ 40, **BOOK NOW** below that. Check 4 is also rendered as
 the standalone pre-trade gate the guide requires at step 10: passed → proceed, not passed → skip, whatever the
-verdict says. Alongside the score the tool shows `T1→T2 reward ratio = (T2 − T1) ÷ (T1 − entry)`, which is
-1.00× for any ladder produced by the analyser above, and a five-step action plan that changes with the verdict.
+verdict says. Alongside the score the tool shows `T1→T2 reward ratio = (T2 − T1) ÷ (T1 − entry)` and an action plan that
+changes with the verdict.
 
-### One deliberate difference on the put side
+### The put side is graded side-inverted, matching the original
 
-The original helper treats a *bullish* candle as wrong for a put trade, and wants the close in the lower half
-of the range. That holds if the candle is the index, but this workflow feeds it the **option's own premium
-candle** — and you are long the option on either leg, so a rising premium is a gain whether you hold a call or
-a put. The guide's own confirmation rule makes this concrete: the candle must *close above* the entry price, so
-a valid confirmation candle is nearly always green. Under the inverted reading, that same valid candle fails
-both the direction and close-position checks and every put trade lands on *book now*.
+The original treats a *bullish* candle as wrong for a put trade and wants the close in the lower half of the
+range, which is how it reaches 15% on entry 14.40 / T1 26.13 / T2 51.73 with candle 14/27/14/27. That is the
+default here, so the app agrees with it out of the box.
 
-So the default here is the premium reading — up is good on both sides. **Formula settings → Direction
-convention → Side-inverted** restores the original behaviour exactly if you want parity; with it enabled the
-app reproduces the reference tool's output number for number (entry 175 / T1 219 / T2 263, candle
-217/221/210/220 → put: 0% momentum, book now; entry 127 / T1 158 / T2 189, candle 144/169/144/167 → put: 15%,
-book now; entry 152 / T1 175 / T2 198, candle 172/181/165/180 → call: 87%, hold to T2).
+It is worth knowing why the reading is arguable: this workflow feeds the helper the **option's own premium
+candle**, and you are long the option on either leg, so a rising premium is a gain whether you hold a call or a
+put. **Formula settings → Direction convention → Option premium** switches to that reading if you prefer it.
 
 **Stoploss Pullback Entry** — the side with the stronger first-candle liquidity structure is the tradable one,
 and the entries sit *inside* the range, because the setup buys the pullback rather than the breakout:
