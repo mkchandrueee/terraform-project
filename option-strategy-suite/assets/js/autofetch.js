@@ -14,7 +14,7 @@
   function t(key, vars) { return APP.i18n.t(key, vars); }
 
   var STORAGE_KEY = 'nifty-option-suite:endpoint';
-  var DEFAULT_ENDPOINT = 'http://127.0.0.1:8123';
+  function DEFAULT_ENDPOINT() { return APP.util.defaultEndpoint(8123); }
 
   /* The window the user asked for: fire just after the 09:20 candle closes and
      keep retrying for a minute in case the feed lags. */
@@ -29,7 +29,7 @@
   function endpoint() {
     var el = U.$('af-endpoint');
     var value = (el && el.value || '').trim().replace(/\/+$/, '');
-    return value || DEFAULT_ENDPOINT;
+    return value || DEFAULT_ENDPOINT();
   }
 
   function saveEndpoint() {
@@ -39,7 +39,7 @@
   function loadEndpoint() {
     var stored = null;
     try { stored = window.localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-    U.$('af-endpoint').value = stored || DEFAULT_ENDPOINT;
+    U.$('af-endpoint').value = stored || DEFAULT_ENDPOINT();
   }
 
   function status(kind, message) {

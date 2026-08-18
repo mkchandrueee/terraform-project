@@ -3,11 +3,21 @@
 <head>
 <!-- Built by build.py: single-file bundle, no external requests. -->
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- viewport-fit=cover lets the page paint behind the Dynamic Island and the
+     home indicator on an iPhone; the CSS pads content back out of them. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>NIFTY Option Strategy Suite — Analyser · T1 Helper · Pullback Entry</title>
 <meta name="description" content="A three-in-one execution tool for the NIFTY first-candle option strategy: Option Analyser (entry / T1 / stop loss), T1 Decision Helper (hold vs book) and Stoploss Pullback Entry (liquidity zones)." />
 <meta name="color-scheme" content="dark" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1720'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%2337d6a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<!-- Add to Home Screen on iOS. Safari ignores a data: URI here, so the touch
+     icon is a real file; these three metas are what make it open full-screen
+     without Safari's chrome. The manifest is for everything else. -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Option Suite" />
+<meta name="theme-color" content="#0f1720" />
 <style>
 /* ==========================================================================
    NIFTY Option Strategy Suite — stylesheet
@@ -664,6 +674,37 @@ input[type=number] { -moz-appearance: textfield; }
 .scan-side.is-call { color: var(--call); background: rgba(55, 214, 160, .12); }
 .scan-side.is-put  { color: var(--put);  background: rgba(255, 107, 129, .12); }
 .best-tag { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--accent); border: 1px solid rgba(55, 214, 160, .45); border-radius: 999px; padding: 2px 8px; }
+
+/* ---------- iPhone / iPad ----------
+   Three things Safari on iOS does that nothing else does, and that would
+   otherwise make the app unpleasant on a phone. */
+
+/* 1. Safe areas. viewport-fit=cover in the HTML lets the page paint behind the
+      Dynamic Island and the home indicator, which is what makes an installed
+      web app look native — but the content has to be padded back out of them,
+      and only on the sides that actually have an inset. */
+.wrap {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.app-header { padding-top: env(safe-area-inset-top); }
+.app-footer { padding-bottom: max(34px, calc(env(safe-area-inset-bottom) + 20px)); }
+
+/* 2. Safari zooms the whole page in whenever a focused input's text is under
+      16px, and never zooms back out. Every OHLC field would do it. Coarse
+      pointer only, so the desktop keeps its tighter 15px fields. */
+/* .field input is more specific than a bare input, so both are listed —
+   otherwise the earlier 15px rule keeps winning and Safari keeps zooming. */
+@media (pointer: coarse) {
+  input, select, textarea,
+  .field input, .field select { font-size: 16px; }
+}
+
+/* (Landscape text inflation is already pinned by -webkit-text-size-adjust
+    near the top of this file.) */
+
+/* 3. Momentum scrolling inside the wide scan table rather than the whole page. */
+.table-scroll { -webkit-overflow-scrolling: touch; }
 </style>
 </head>
 <body>
@@ -1384,11 +1425,32 @@ window.APP = window.APP || {};
     });
   }
 
+  /* Where the NSE helper most likely is.
+
+     On the machine running it, that is 127.0.0.1. But when the page is opened
+     from a phone over wifi the browser is on a different device, and 127.0.0.1
+     would point the phone at itself — the single most confusing failure this
+     app has. If the page itself arrived from a host on the network, the helper
+     is almost certainly on that same host, so default to it. The field stays
+     editable, and a saved value always wins. */
+  function defaultEndpoint(port) {
+    var p = port || 8123;
+    try {
+      var host = window.location.hostname;
+      if (host && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/i.test(host) &&
+          /^https?:$/.test(window.location.protocol)) {
+        return window.location.protocol + '//' + host + ':' + p;
+      }
+    } catch (e) { /* file:// in some browsers */ }
+    return 'http://127.0.0.1:' + p;
+  }
+
   APP.util = {
     $: $, $$: $$, num: num, fmt: fmt, pct: pct, clamp: clamp, toTick: toTick,
     readCandle: readCandle, writeCandle: writeCandle, clearCandle: clearCandle,
     validateCandle: validateCandle, showErrors: showErrors,
-    candleStats: candleStats, escapeHtml: escapeHtml
+    candleStats: candleStats, escapeHtml: escapeHtml,
+    defaultEndpoint: defaultEndpoint
   };
 })(window.APP);
 </script>
@@ -3214,7 +3276,7 @@ window.APP = window.APP || {};
   function t(key, vars) { return APP.i18n.t(key, vars); }
 
   var STORAGE_KEY = 'nifty-option-suite:endpoint';
-  var DEFAULT_ENDPOINT = 'http://127.0.0.1:8123';
+  function DEFAULT_ENDPOINT() { return APP.util.defaultEndpoint(8123); }
 
   /* The window the user asked for: fire just after the 09:20 candle closes and
      keep retrying for a minute in case the feed lags. */
@@ -3229,7 +3291,7 @@ window.APP = window.APP || {};
   function endpoint() {
     var el = U.$('af-endpoint');
     var value = (el && el.value || '').trim().replace(/\/+$/, '');
-    return value || DEFAULT_ENDPOINT;
+    return value || DEFAULT_ENDPOINT();
   }
 
   function saveEndpoint() {
@@ -3239,7 +3301,7 @@ window.APP = window.APP || {};
   function loadEndpoint() {
     var stored = null;
     try { stored = window.localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-    U.$('af-endpoint').value = stored || DEFAULT_ENDPOINT;
+    U.$('af-endpoint').value = stored || DEFAULT_ENDPOINT();
   }
 
   function status(kind, message) {
@@ -4763,7 +4825,7 @@ window.APP = window.APP || {};
   }
 
   function run() {
-    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || 'http://127.0.0.1:8123';
+    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || U.defaultEndpoint(8123);
     var sym = symbol();
     var url = endpoint + '/scan?symbol=' + encodeURIComponent(sym) +
               '&tfs=' + selectedTfs().join(',') +
@@ -4835,8 +4897,8 @@ window.APP = window.APP || {};
 
   function init() {
     U.$('sc-endpoint').value = (function () {
-      try { return window.localStorage.getItem('nifty-option-suite:endpoint') || 'http://127.0.0.1:8123'; }
-      catch (e) { return 'http://127.0.0.1:8123'; }
+      try { return window.localStorage.getItem('nifty-option-suite:endpoint') || U.defaultEndpoint(8123); }
+      catch (e) { return U.defaultEndpoint(8123); }
     })();
 
     APP.symbols.fillDatalist('symbol-list');

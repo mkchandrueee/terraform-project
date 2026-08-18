@@ -132,10 +132,31 @@ window.APP = window.APP || {};
     });
   }
 
+  /* Where the NSE helper most likely is.
+
+     On the machine running it, that is 127.0.0.1. But when the page is opened
+     from a phone over wifi the browser is on a different device, and 127.0.0.1
+     would point the phone at itself — the single most confusing failure this
+     app has. If the page itself arrived from a host on the network, the helper
+     is almost certainly on that same host, so default to it. The field stays
+     editable, and a saved value always wins. */
+  function defaultEndpoint(port) {
+    var p = port || 8123;
+    try {
+      var host = window.location.hostname;
+      if (host && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/i.test(host) &&
+          /^https?:$/.test(window.location.protocol)) {
+        return window.location.protocol + '//' + host + ':' + p;
+      }
+    } catch (e) { /* file:// in some browsers */ }
+    return 'http://127.0.0.1:' + p;
+  }
+
   APP.util = {
     $: $, $$: $$, num: num, fmt: fmt, pct: pct, clamp: clamp, toTick: toTick,
     readCandle: readCandle, writeCandle: writeCandle, clearCandle: clearCandle,
     validateCandle: validateCandle, showErrors: showErrors,
-    candleStats: candleStats, escapeHtml: escapeHtml
+    candleStats: candleStats, escapeHtml: escapeHtml,
+    defaultEndpoint: defaultEndpoint
   };
 })(window.APP);

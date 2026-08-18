@@ -361,6 +361,24 @@ Two limits, stated in the UI as well: **the page must stay open** for reminders 
 notifications need browser permission. When permission is denied or unsupported, nothing breaks — every alert
 still lands in the in-page alert log.
 
+On **iOS** the bar is higher still — 16.4+, installed to the Home Screen, and served over HTTPS — so over a
+plain wifi address there are no system notifications at all. The in-page log is the fallback and it works
+unchanged. See [IOS.md](IOS.md).
+
+## On an iPhone or iPad
+
+The app runs fine on a phone; the NSE helper cannot, because iOS has no Node runtime. So auto-fetch needs your
+PC on the same wifi, and everything else does not:
+
+- **Phone + PC on one wifi** — run `start-lan.cmd` on the PC, open the printed `http://192.168.x.x:8787` in
+  Safari, *Add to Home Screen*. Full functionality including auto-fetch and the Scan tab. The app points
+  itself at the PC's helper automatically — loaded from a network address, it defaults the helper to that same
+  host rather than to `127.0.0.1`, which on a phone would mean the phone itself.
+- **Phone alone** — copy `dist/nifty-option-suite.html` across and open it from Files. Every tool works with
+  values typed from your broker app; no auto-fetch, and iOS may not persist settings from a local file.
+
+[IOS.md](IOS.md) has the full walkthrough, the one firewall command, and the iOS-specific limits.
+
 ## Running it locally
 
 **Windows:** see [WINDOWS.md](WINDOWS.md) for a step-by-step setup — install Node, extract, double-click
@@ -396,7 +414,7 @@ Each tab is deep-linkable: `#analyser`, `#t1`, `#pullback`, `#signal`, `#guide`.
 python3 build.py     # -> dist/nifty-option-suite.html
 ```
 
-Inlines the stylesheet and all nine scripts into one ~185 KB file with no external references at all. Open it
+Inlines the stylesheet and all twelve scripts into one ~275 KB file with no external references at all. Open it
 by double-clicking — no server, no install, works offline, and it is easy to carry on a laptop or drop onto a
 phone. The served version is still the better daily driver: some browsers block `localStorage` on `file://`,
 and notifications need a secure context, so settings and language may not persist from a bare file.
@@ -412,16 +430,21 @@ needed.
 ```
 option-strategy-suite/
 ├── index.html                 markup for all five tabs
+├── manifest.webmanifest       Home Screen install metadata
 ├── serve.sh                   one-command local server
+├── start-lan.cmd              Windows: both servers on the wifi, for a phone
 ├── build.py                   single-file bundler
+├── IOS.md                     running it on an iPhone or iPad
 ├── tools/
 │   └── nse-fetch.js           local NSE helper (session, ticks → 09:15–09:20 candle)
 └── assets/
     ├── css/styles.css
+    ├── icons/                 Home Screen icons (iOS ignores data: URIs here)
     └── js/
         ├── utils.js           parsing, formatting, candle validation and stats
         ├── i18n.js            English + Tanglish strings and the language switch
         ├── config.js          tunable coefficients + localStorage persistence
+        ├── symbols.js         index + NIFTY 50 symbol list for the pickers
         ├── analyser.js        tool 1
         ├── t1helper.js        tool 2
         ├── pullback.js        tool 3

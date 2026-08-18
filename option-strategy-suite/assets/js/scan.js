@@ -216,7 +216,7 @@
   }
 
   function run() {
-    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || 'http://127.0.0.1:8123';
+    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || U.defaultEndpoint(8123);
     var sym = symbol();
     var url = endpoint + '/scan?symbol=' + encodeURIComponent(sym) +
               '&tfs=' + selectedTfs().join(',') +
@@ -288,8 +288,8 @@
 
   function init() {
     U.$('sc-endpoint').value = (function () {
-      try { return window.localStorage.getItem('nifty-option-suite:endpoint') || 'http://127.0.0.1:8123'; }
-      catch (e) { return 'http://127.0.0.1:8123'; }
+      try { return window.localStorage.getItem('nifty-option-suite:endpoint') || U.defaultEndpoint(8123); }
+      catch (e) { return U.defaultEndpoint(8123); }
     })();
 
     APP.symbols.fillDatalist('symbol-list');

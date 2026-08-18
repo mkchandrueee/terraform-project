@@ -2,11 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- viewport-fit=cover lets the page paint behind the Dynamic Island and the
+     home indicator on an iPhone; the CSS pads content back out of them. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>NIFTY Option Strategy Suite — Analyser · T1 Helper · Pullback Entry</title>
 <meta name="description" content="A three-in-one execution tool for the NIFTY first-candle option strategy: Option Analyser (entry / T1 / stop loss), T1 Decision Helper (hold vs book) and Stoploss Pullback Entry (liquidity zones)." />
 <meta name="color-scheme" content="dark" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1720'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%2337d6a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<!-- Add to Home Screen on iOS. Safari ignores a data: URI here, so the touch
+     icon is a real file; these three metas are what make it open full-screen
+     without Safari's chrome. The manifest is for everything else. -->
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Option Suite" />
+<meta name="theme-color" content="#0f1720" />
+<link rel="manifest" href="manifest.webmanifest" />
 <link rel="stylesheet" href="assets/css/styles.css" />
 </head>
 <body>

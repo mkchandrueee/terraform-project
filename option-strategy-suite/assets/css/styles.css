@@ -653,3 +653,34 @@ input[type=number] { -moz-appearance: textfield; }
 .scan-side.is-call { color: var(--call); background: rgba(55, 214, 160, .12); }
 .scan-side.is-put  { color: var(--put);  background: rgba(255, 107, 129, .12); }
 .best-tag { font-size: 10px; font-weight: 700; letter-spacing: .07em; color: var(--accent); border: 1px solid rgba(55, 214, 160, .45); border-radius: 999px; padding: 2px 8px; }
+
+/* ---------- iPhone / iPad ----------
+   Three things Safari on iOS does that nothing else does, and that would
+   otherwise make the app unpleasant on a phone. */
+
+/* 1. Safe areas. viewport-fit=cover in the HTML lets the page paint behind the
+      Dynamic Island and the home indicator, which is what makes an installed
+      web app look native — but the content has to be padded back out of them,
+      and only on the sides that actually have an inset. */
+.wrap {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.app-header { padding-top: env(safe-area-inset-top); }
+.app-footer { padding-bottom: max(34px, calc(env(safe-area-inset-bottom) + 20px)); }
+
+/* 2. Safari zooms the whole page in whenever a focused input's text is under
+      16px, and never zooms back out. Every OHLC field would do it. Coarse
+      pointer only, so the desktop keeps its tighter 15px fields. */
+/* .field input is more specific than a bare input, so both are listed —
+   otherwise the earlier 15px rule keeps winning and Safari keeps zooming. */
+@media (pointer: coarse) {
+  input, select, textarea,
+  .field input, .field select { font-size: 16px; }
+}
+
+/* (Landscape text inflation is already pinned by -webkit-text-size-adjust
+    near the top of this file.) */
+
+/* 3. Momentum scrolling inside the wide scan table rather than the whole page. */
+.table-scroll { -webkit-overflow-scrolling: touch; }

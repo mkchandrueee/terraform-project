@@ -29,6 +29,7 @@ Extract the zip so the folder looks like this:
 D:\Claude\niftyoptionsuite\
 ├── index.html
 ├── start.cmd            ← double-click this to run everything
+├── start-lan.cmd        ← the same, but reachable from your phone
 ├── serve.cmd            ← app only, no NSE helper
 ├── check-nse.cmd        ← "will the NSE fetch work on my machine?"
 ├── build.py
@@ -106,18 +107,30 @@ the app depends on the helper.
 
 ---
 
-## Optional — use it from your phone on the same wifi
+## Optional — use it from your iPhone on the same wifi
 
-```bat
-cd /d D:\Claude\niftyoptionsuite
-node tools\serve.js 8787 lan
+**Double-click `start-lan.cmd`** instead of `start.cmd`. It runs the same two servers, but bound to the whole
+network rather than only to this PC, and prints the address to type on the phone:
+
+```
+  On this PC      http://127.0.0.1:8787
+  On your iPhone  http://192.168.1.24:8787
 ```
 
-It prints a second address like `http://192.168.1.7:8787` — open that on your phone. Both devices must be on
-the same wifi, and you may need to allow Node through the firewall on **Private networks**.
+Open that second address in Safari. Both devices must be on the same wifi, and Windows will ask once whether
+to allow Node on **Private networks** — say yes. If you missed the prompt, run this once from an
+**Administrator** Command Prompt:
 
-The NSE helper stays on `127.0.0.1`, so auto-fetch will not work from the phone. Read the values on the phone,
-fetch on the PC.
+```bat
+netsh advfirewall firewall add rule name="Option Suite" dir=in action=allow protocol=TCP localport=8787,8123
+```
+
+**Auto-fetch works from the phone.** The helper is bound to the network too, and the app points itself at it —
+loaded from `192.168.1.24:8787`, it defaults the *Local helper address* to `192.168.1.24:8123` rather than to
+`127.0.0.1`, which on a phone would mean the phone itself. Tap **Check helper** to confirm.
+
+In Safari, **Share → Add to Home Screen** gives it an icon that opens full-screen. See [IOS.md](IOS.md) for the
+iOS-specific details, including why system notifications do not fire over a plain wifi address.
 
 ---
 
@@ -199,6 +212,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | Command | What it does |
 |---|---|
 | `start.cmd` | Helper + app + browser, all at once |
+| `start-lan.cmd` | The same, but reachable from your iPhone on the same wifi |
 | `serve.cmd` | App only |
 | `check-nse.cmd` | Self-check of the NSE pipeline |
 | `node tools\serve.js 8787` | App on a chosen port |

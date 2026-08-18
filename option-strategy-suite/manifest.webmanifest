@@ -1,0 +1,15 @@
+{
+  "name": "NIFTY Option Strategy Suite",
+  "short_name": "Option Suite",
+  "description": "First-candle SOP: Option Analyser, T1 Decision Helper, Stoploss Pullback Entry, Trade Signal and a multi-timeframe scan.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1720",
+  "theme_color": "#0f1720",
+  "icons": [
+    { "src": "assets/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
