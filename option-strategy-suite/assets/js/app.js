@@ -202,6 +202,12 @@
           '  5m  = 09:15–09:20      30m = 09:15–09:45\n' +
           '  15m = 09:15–09:30      60m = 09:15–10:15\n' +
           '\n' +
+          'underlying = any NSE F&O symbol — the 5 indices or a NIFTY 50 stock\n' +
+          '  strike spacing and lot size are read off that symbol\'s own chain\n' +
+          '  (NIFTY steps 100, RELIANCE 20 — nothing to set by hand)\n' +
+          '  strikes are counted, not priced: ±1 is the next contract either way\n' +
+          '  index options expire weekly, stock options monthly\n' +
+          '\n' +
           'aligned  = every selected timeframe picks the same side\n' +
           'split    = they disagree — treat the setup as unproven\n' +
           'best row = highest confidence among rows whose verdict is YES'

@@ -59,9 +59,15 @@
     return d;
   }
 
+  function symbol() {
+    var el = U.$('af-symbol');
+    return APP.symbols.clean(el && el.value) || 'NIFTY';
+  }
+
   /* ---------- fetching ---------- */
   function request(fresh) {
-    var url = endpoint() + '/first-candle' + (fresh ? '?fresh=1' : '');
+    var url = endpoint() + '/first-candle?symbol=' + encodeURIComponent(symbol()) +
+              (fresh ? '&fresh=1' : '');
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timeout = window.setTimeout(function () { if (controller) controller.abort(); }, 12000);
 
@@ -89,8 +95,18 @@
       U.$('atm-open').value = String(p.underlying);
       APP.analyser.renderAtm();
     }
+    /* Contract size belongs to the symbol, not to the user's preferences — a
+       RELIANCE candle priced against NIFTY's 75 would be wrong everywhere the
+       Trade Signal tab talks about money. */
     lastPayload = p;
     APP.analyser.run();
+  }
+
+  function applyLotSize(p) {
+    var lot = Number(p && p.lotSize);
+    if (!isFinite(lot) || lot <= 0 || lot === APP.config.get().lotSize) return null;
+    APP.config.save({ lotSize: lot });
+    return lot;
   }
 
   function fetchNow(fresh, quiet) {
@@ -98,12 +114,14 @@
     return request(fresh).then(function (p) {
       if (!validPayload(p)) throw new Error(t('af.badPayload'));
       applyPayload(p);
+      var lot = applyLotSize(p);
       var msg = t('af.filled', {
+        symbol: p.symbol || symbol(),
         atm: U.fmt(p.atm, 0),
         time: p.asOf || clock(new Date()),
         source: p.source === 'mock' ? t('af.mockSource') : p.source,
         ticks: (p.ce.ticks || 0) + (p.pe.ticks || 0)
-      });
+      }) + (lot ? ' ' + t('sym.lotApplied', { lot: lot }) : '');
       /* Before the open, or on a holiday, NSE serves the previous session.
          That must never look like today's candle. */
       if (p.stale && p.session) {
@@ -187,6 +205,15 @@
   function init() {
     loadEndpoint();
     U.$('af-endpoint').addEventListener('change', saveEndpoint);
+
+    APP.symbols.fillDatalist('symbol-list');
+    var symEl = U.$('af-symbol');
+    symEl.value = APP.symbols.remembered();
+    symEl.addEventListener('change', function () {
+      symEl.value = APP.symbols.clean(symEl.value) || 'NIFTY';
+      APP.symbols.remember(symEl.value);
+    });
+
     U.$('btn-af-now').addEventListener('click', function () { fetchNow(true).catch(function () {}); });
     U.$('btn-af-health').addEventListener('click', checkHealth);
     U.$('btn-af-arm').addEventListener('click', function () { arm(); });
@@ -197,7 +224,7 @@
   }
 
   APP.autofetch = {
-    init: init, fetchNow: fetchNow, arm: arm, disarm: disarm,
+    init: init, fetchNow: fetchNow, arm: arm, disarm: disarm, symbol: symbol,
     checkHealth: checkHealth, applyPayload: applyPayload, validPayload: validPayload,
     last: function () { return lastPayload; }
   };

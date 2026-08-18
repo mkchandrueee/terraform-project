@@ -171,6 +171,11 @@
             <span data-i18n="af.endpoint"></span>
             <input type="text" id="af-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" />
           </label>
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="af-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
           <div class="row-actions">
             <button type="button" class="btn btn-primary" id="btn-af-now" data-i18n="af.fetchNow"></button>
             <button type="button" class="btn btn-ghost" id="btn-af-arm" data-i18n="af.arm"></button>
@@ -531,10 +536,15 @@
         </fieldset>
 
         <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="sc-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
           <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
-          <label class="field"><span><span data-i18n="sc.step"></span> <em data-i18n="sc.stepHint"></em></span><input type="number" id="sc-step" step="50" min="50" max="500" value="100" /></label>
           <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
         </div>
+        <p class="muted small" id="sc-symbol-note" data-i18n="sym.note"></p>
 
         <div class="ohlc ohlc-3" style="margin-top:10px">
           <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
@@ -571,6 +581,10 @@
 
 </main>
 
+<!-- Suggestions for both symbol fields; the fields stay free text so any NSE
+     F&O underlying works, listed here or not. Filled by assets/js/symbols.js. -->
+<datalist id="symbol-list"></datalist>
+
 <footer class="app-footer">
   <div class="wrap">
     <p><strong data-i18n="foot.warn"></strong> <span data-i18n="foot.body"></span></p>
@@ -581,6 +595,7 @@
 <script src="assets/js/utils.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/config.js"></script>
+<script src="assets/js/symbols.js"></script>
 <script src="assets/js/analyser.js"></script>
 <script src="assets/js/autofetch.js"></script>
 <script src="assets/js/t1helper.js"></script>

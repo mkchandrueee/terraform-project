@@ -35,7 +35,7 @@ const EXPIRY_DAY = Number(flag('expiry-day', 2)); /* 0=Sun … 2=Tue, NIFTY week
 const PORT = Number(flag('port', 8123));
 const HOST = flag('host', '127.0.0.1');
 const SYMBOL = flag('symbol', 'NIFTY').toUpperCase();
-const STRIKE_STEP = Number(flag('strike-step', 100));
+const STRIKE_STEP = Number(flag('strike-step', 0));   /* 0 = derive from the chain */
 const MOCK = has('mock');
 
 /* The window the strategy is built on, in IST. */
@@ -142,7 +142,69 @@ function shiftTicks(ticks, offset) {
 
 function atmStrike(spot, step) {
   /* Rounded down, matching the strategy guide's own 23670 → 23600 example. */
-  return Math.floor(spot / (step || STRIKE_STEP)) * (step || STRIKE_STEP);
+  var s = step || STRIKE_STEP || 100;
+  return Math.floor(spot / s) * s;
+}
+
+/* ------------------------------------------------------------------ */
+/* symbols — indices and NIFTY 50 stocks use different endpoints, strike
+   steps and expiry calendars                                          */
+/* ------------------------------------------------------------------ */
+
+const INDEX_SYMBOLS = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50'];
+
+function isIndex(symbol) {
+  return INDEX_SYMBOLS.indexOf(String(symbol).toUpperCase()) !== -1;
+}
+
+/** NSE trading symbols are upper-case letters, digits, & - and &. Anything
+    else is somebody's typo or an injection attempt, not a stock. */
+function cleanSymbol(raw, fallback) {
+  const s = String(raw == null ? '' : raw).trim().toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
+  return s || fallback || SYMBOL;
+}
+
+/**
+ * Strike spacing differs per stock — RELIANCE steps in 20s, BAJFINANCE in
+ * 50s or 100s, and NSE revises them. Read it off the chain instead of
+ * keeping a table that goes stale: take the most common gap between
+ * adjacent strikes.
+ */
+function strikeStepFromChain(payload) {
+  const strikes = Array.from(new Set(chainRows(payload)
+    .map(function (r) { return Number(r.strikePrice); })
+    .filter(function (n) { return Number.isFinite(n) && n > 0; }))).sort(function (a, b) { return a - b; });
+  if (strikes.length < 3) return 0;
+
+  const counts = new Map();
+  for (let i = 1; i < strikes.length; i++) {
+    const gap = Math.round((strikes[i] - strikes[i - 1]) * 100) / 100;
+    if (gap > 0) counts.set(gap, (counts.get(gap) || 0) + 1);
+  }
+  let best = 0, bestCount = -1;
+  counts.forEach(function (count, gap) {
+    if (count > bestCount || (count === bestCount && gap < best)) { best = gap; bestCount = count; }
+  });
+  return best;
+}
+
+/** Contract size, needed for the money maths — it is per stock, not per lot. */
+async function marketLot(symbol) {
+  try {
+    const data = await nseJson(BASE + '/api/quote-derivative?symbol=' + encodeURIComponent(symbol));
+    const stocks = (data && data.stocks) || [];
+    for (let i = 0; i < stocks.length; i++) {
+      const lot = Number(stocks[i].marketDeptOrderBook &&
+                         stocks[i].marketDeptOrderBook.tradeInfo &&
+                         stocks[i].marketDeptOrderBook.tradeInfo.marketLot);
+      if (Number.isFinite(lot) && lot > 0) return lot;
+    }
+    const info = data && data.info;
+    const alt = Number(info && info.marketLot);
+    return Number.isFinite(alt) && alt > 0 ? alt : NaN;
+  } catch (e) {
+    return NaN;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -277,12 +339,39 @@ function upcomingExpiries(count) {
 }
 
 /** Returns { list, source } so --check can say where the expiries came from. */
-async function expiryList() {
+function legacyChainUrl(symbol) {
+  return BASE + (isIndex(symbol) ? '/api/option-chain-indices' : '/api/option-chain-equities') +
+         '?symbol=' + encodeURIComponent(symbol);
+}
+
+function v3ChainUrl(symbol, expiry) {
+  return BASE + '/api/option-chain-v3?type=' + (isIndex(symbol) ? 'Indices' : 'Equity') +
+         '&symbol=' + encodeURIComponent(symbol) + '&expiry=' + encodeURIComponent(expiry);
+}
+
+/** Stock options are monthly, index weeklies are not — so the calendar
+    fallback differs: last <EXPIRY_DAY> of each month rather than every one. */
+function upcomingMonthlies(count) {
+  const out = [];
+  const now = new Date(Date.now() + IST_OFFSET_MIN * 60000);
+  for (let m = 0; m < 12 && out.length < count; m++) {
+    const y = now.getUTCFullYear();
+    const monthIdx = now.getUTCMonth() + m;
+    const lastDay = new Date(Date.UTC(y, monthIdx + 1, 0));
+    while (lastDay.getUTCDay() !== EXPIRY_DAY) lastDay.setUTCDate(lastDay.getUTCDate() - 1);
+    const ms = lastDay.getTime() - IST_OFFSET_MIN * 60000;
+    if (ms + 86400000 > Date.now()) out.push(formatExpiry(ms));
+  }
+  return out;
+}
+
+async function expiryList(symbol) {
+  symbol = symbol || SYMBOL;
   if (EXPIRY) return { list: [EXPIRY], source: '--expiry flag' };
 
   var sources = [
-    ['contract-info', BASE + '/api/option-chain-contract-info?symbol=' + encodeURIComponent(SYMBOL)],
-    ['legacy chain', BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL)]
+    ['contract-info', BASE + '/api/option-chain-contract-info?symbol=' + encodeURIComponent(symbol)],
+    ['legacy chain', legacyChainUrl(symbol)]
   ];
   for (var i = 0; i < sources.length; i++) {
     try {
@@ -291,11 +380,15 @@ async function expiryList() {
     } catch (e) { /* try the next one */ }
   }
   /* Nothing published one — fall back to the calendar. */
-  return { list: upcomingExpiries(6), source: 'calendar (next ' + 6 + ' weeklies)' };
+  if (isIndex(symbol)) {
+    return { list: upcomingExpiries(6), source: 'calendar (next 6 weeklies)' };
+  }
+  return { list: upcomingMonthlies(3), source: 'calendar (next 3 monthlies)' };
 }
 
 /** Returns { payload, url, expiry } from whichever endpoint answers. */
-async function optionChain() {
+async function optionChain(symbol) {
+  symbol = symbol || SYMBOL;
   var tried = [];
 
   async function attempt(url) {
@@ -317,23 +410,24 @@ async function optionChain() {
 
   /* 1. current: v3, which needs an explicit expiry — without one it answers
         200 with an empty object, so every candidate has to be tried. */
-  var found = await expiryList();
+  var found = await expiryList(symbol);
   lastExpirySource = found.source;
   for (var i = 0; i < found.list.length; i++) {
-    var v3 = await attempt(BASE + '/api/option-chain-v3?type=Indices&symbol=' +
-                           encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(found.list[i]));
+    var v3 = await attempt(v3ChainUrl(symbol, found.list[i]));
     if (v3) { v3.expiry = found.list[i]; v3.expirySource = found.source; return v3; }
   }
 
   /* 2. legacy: whole chain in one call */
-  var legacy = await attempt(BASE + '/api/option-chain-indices?symbol=' + encodeURIComponent(SYMBOL));
+  var legacy = await attempt(legacyChainUrl(symbol));
   if (legacy) return legacy;
 
   throw new Error(
     'no option-chain endpoint returned strike rows. Tried:\n  ' + tried.join('\n  ') +
-    '\nExpiries came from: ' + lastExpirySource +
-    '\nAn empty {} from v3 means the expiry value is wrong. Open' +
-    '\n  ' + BASE + '/api/option-chain-contract-info?symbol=' + SYMBOL +
+    '\nSymbol ' + symbol + ' (' + (isIndex(symbol) ? 'index' : 'equity') + '), expiries came from: ' + lastExpirySource +
+    '\nAn empty {} from v3 usually means the expiry is wrong — but for a stock it' +
+    '\nmore often means NSE lists no options on it. Only F&O-approved symbols have' +
+    '\na chain; the NIFTY 50 all do. Open' +
+    '\n  ' + BASE + '/api/option-chain-contract-info?symbol=' + symbol +
     '\nin your browser, then pass a date from it: --expiry 30-Oct-2025'
   );
 }
@@ -359,10 +453,11 @@ function pickContracts(payload, strike, expiry) {
   return { ce: row.CE || null, pe: row.PE || null };
 }
 
-async function firstCandle(nowMs) {
-  if (MOCK) return mockPayload(nowMs);
+async function firstCandle(nowMs, symbol) {
+  symbol = cleanSymbol(symbol, SYMBOL);
+  if (MOCK) return mockPayload(nowMs, symbol);
 
-  const chain = await optionChain();
+  const chain = await optionChain(symbol);
   const spot = chainUnderlying(chain.payload);
   if (!Number.isFinite(spot)) throw new Error('option chain carried no underlying value');
 
@@ -370,9 +465,16 @@ async function firstCandle(nowMs) {
                  (chainRows(chain.payload)[0] || {}).expiryDate;
   if (!expiry) throw new Error('could not determine the expiry from the option chain');
 
-  const strike = atmStrike(spot, STRIKE_STEP);
+  /* --strike-step wins when set; otherwise read the spacing off this chain, so
+     a stock stepping in 20s is not rounded as if it stepped in 100s. */
+  const step = STRIKE_STEP || strikeStepFromChain(chain.payload) || (isIndex(symbol) ? 100 : 0);
+  if (!step) throw new Error(`could not work out the strike spacing for ${symbol} — pass --strike-step`);
+
+  const strike = atmStrike(spot, step);
   const { ce, pe } = pickContracts(chain.payload, strike, expiry);
-  if (!ce || !pe) throw new Error(`no CE/PE rows for ${strike} ${expiry}`);
+  if (!ce || !pe) throw new Error(`no CE/PE rows for ${symbol} ${strike} ${expiry}`);
+
+  const lotSize = await marketLot(symbol);
 
   const [ceRaw, peRaw] = await Promise.all([
     tickSeries(ce.identifier), tickSeries(pe.identifier)
@@ -408,9 +510,12 @@ async function firstCandle(nowMs) {
   }
 
   return {
-    symbol: SYMBOL,
+    symbol: symbol,
+    kind: isIndex(symbol) ? 'index' : 'equity',
     expiry,
     atm: strike,
+    strikeStep: step,
+    lotSize: Number.isFinite(lotSize) ? lotSize : null,
     underlying: spot,
     window: { from: CANDLE_FROM, to: CANDLE_TO, tz: 'IST' },
     asOf: istClock(nowMs),
@@ -433,8 +538,8 @@ async function firstCandle(nowMs) {
 
 const tickCache = new Map();
 
-async function cachedTicks(identifier, session) {
-  const key = session + ':' + identifier;
+async function cachedTicks(identifier, session, symbol) {
+  const key = symbol + ':' + session + ':' + identifier;
   if (tickCache.has(key)) return tickCache.get(key);
   const raw = await tickSeries(identifier);
   tickCache.set(key, raw);
@@ -447,21 +552,24 @@ function windowFor(tf, anchor) {
 }
 
 async function scan(opts, nowMs) {
-  if (MOCK) return mockScan(opts, nowMs);
+  const symbol = cleanSymbol(opts.symbol, SYMBOL);
+  if (MOCK) return mockScan(opts, nowMs, symbol);
 
   const tfs = opts.tfs;
   const rows = [];
   const skipped = [];
 
-  const found = await expiryList();
+  const found = await expiryList(symbol);
   const expiries = found.list.slice(0, Math.max(1, opts.expiries));
 
   let atm = NaN, underlying = NaN, session = null, stale = false, conv = null;
+  let step = STRIKE_STEP;
+  const lotSize = await marketLot(symbol);
 
   for (const expiry of expiries) {
     let chain;
     try {
-      chain = await optionChain();
+      chain = await optionChain(symbol);
     } catch (err) {
       skipped.push({ expiry: expiry, reason: err.message });
       continue;
@@ -469,8 +577,7 @@ async function scan(opts, nowMs) {
     /* v3 is scoped to one expiry, so re-request per expiry when forced */
     if (!CHAIN_URL && chain.expiry && chain.expiry !== expiry) {
       try {
-        const payload = await nseJson(BASE + '/api/option-chain-v3?type=Indices&symbol=' +
-          encodeURIComponent(SYMBOL) + '&expiry=' + encodeURIComponent(expiry));
+        const payload = await nseJson(v3ChainUrl(symbol, expiry));
         if (chainRows(payload).length) chain = { payload: payload, url: 'v3', expiry: expiry };
       } catch (err) {
         skipped.push({ expiry: expiry, reason: err.message });
@@ -480,11 +587,18 @@ async function scan(opts, nowMs) {
 
     if (!Number.isFinite(underlying)) {
       underlying = chainUnderlying(chain.payload);
-      atm = atmStrike(underlying, STRIKE_STEP);
+      step = step || strikeStepFromChain(chain.payload) || (isIndex(symbol) ? 100 : 0);
+      if (!step) {
+        skipped.push({ expiry: expiry, reason: 'could not work out the strike spacing — pass --strike-step' });
+        continue;
+      }
+      atm = atmStrike(underlying, step);
     }
 
+    /* Offsets are counted in strikes, not rupees, so ±1 means the neighbouring
+       contract whether the symbol steps in 20s, 50s or 100s. */
     for (const offset of opts.offsets) {
-      const strike = atm + offset;
+      const strike = atm + offset * step;
       const legs = pickContracts(chain.payload, strike, expiry);
       if (!legs.ce || !legs.pe) {
         skipped.push({ expiry: expiry, strike: strike, reason: 'no CE/PE rows' });
@@ -493,7 +607,8 @@ async function scan(opts, nowMs) {
       let ceRaw, peRaw;
       try {
         [ceRaw, peRaw] = await Promise.all([
-          cachedTicks(legs.ce.identifier, expiry), cachedTicks(legs.pe.identifier, expiry)
+          cachedTicks(legs.ce.identifier, expiry, symbol),
+          cachedTicks(legs.pe.identifier, expiry, symbol)
         ]);
       } catch (err) {
         skipped.push({ expiry: expiry, strike: strike, reason: err.message });
@@ -527,7 +642,10 @@ async function scan(opts, nowMs) {
   }
 
   return {
-    symbol: SYMBOL, atm: atm, underlying: underlying,
+    symbol: symbol, kind: isIndex(symbol) ? 'index' : 'equity',
+    atm: atm, underlying: underlying,
+    strikeStep: step || null,
+    lotSize: Number.isFinite(lotSize) ? lotSize : null,
     session: session, stale: stale,
     tickConvention: conv ? conv.convention : 'unknown',
     asOf: istClock(nowMs), source: 'nseindia.com',
@@ -546,17 +664,25 @@ function mockSeries(base, shape, fromMs) {
 
 /* Deterministic scan fixture: a wider timeframe sees a wider range, which is
    what makes the multi-timeframe comparison worth looking at. */
-function mockScan(opts, nowMs) {
+function mockScan(opts, nowMs, symbol) {
+  symbol = cleanSymbol(symbol, SYMBOL);
   const anchor = istTimeToEpoch(CANDLE_FROM, nowMs);
   const rows = [];
-  opts.expiriesList = ['MOCK-W1', 'MOCK-W2'].slice(0, Math.max(1, opts.expiries));
+  /* Stand-ins that behave like the real thing: an index steps in 100s off a
+     24300 spot, a stock in 20s off 1500 — enough to prove the strike maths. */
+  const index = isIndex(symbol);
+  const step = STRIKE_STEP || (index ? 100 : 20);
+  const base = index ? 24300 : 1500;
+  const lot = index ? 75 : 500;
+  opts.expiriesList = (index ? ['MOCK-W1', 'MOCK-W2'] : ['MOCK-M1', 'MOCK-M2'])
+    .slice(0, Math.max(1, opts.expiries));
   opts.expiriesList.forEach(function (expiry, ei) {
     opts.offsets.forEach(function (offset) {
-      const strike = 24300 + offset;
+      const strike = base + offset * step;
       opts.tfs.forEach(function (tf) {
         const grow = Math.sqrt(tf / 5);
-        const ceBase = 130 + offset / 20 + ei * 3;
-        const peBase = 120 - offset / 20 + ei * 2;
+        const ceBase = 130 + offset * 5 + ei * 3;
+        const peBase = 120 - offset * 5 + ei * 2;
         rows.push({
           expiry: expiry, strike: strike, tf: tf,
           ce: { o: round2(ceBase), h: round2(ceBase + 8 * grow), l: round2(ceBase - 4 * grow),
@@ -568,7 +694,9 @@ function mockScan(opts, nowMs) {
     });
   });
   return {
-    symbol: SYMBOL, atm: 24300, underlying: 24350.7,
+    symbol: symbol, kind: index ? 'index' : 'equity',
+    atm: base, underlying: base + step / 2,
+    strikeStep: step, lotSize: lot,
     session: istDateKey(anchor), stale: false, tickConvention: 'mock',
     asOf: istClock(nowMs), source: 'mock', rows: rows, skipped: []
   };
@@ -576,13 +704,18 @@ function mockScan(opts, nowMs) {
 
 function round2(n) { return Number(n.toFixed(2)); }
 
-function mockPayload(nowMs) {
+function mockPayload(nowMs, symbol) {
+  symbol = cleanSymbol(symbol, SYMBOL);
+  const index = isIndex(symbol);
   const from = istTimeToEpoch(CANDLE_FROM, nowMs);
   const to = istTimeToEpoch(CANDLE_TO, nowMs);
   const ce = aggregate(mockSeries(148.5, [0, 3.1, -7.3, 8.4, 14.25, 11.4], from), from, to);
   const pe = aggregate(mockSeries(155.0, [0, -4.2, 3.4, -12.1, -22.4, -17.85], from), from, to);
   return {
-    symbol: SYMBOL, expiry: 'MOCK', atm: 23600, underlying: 23670,
+    symbol: symbol, kind: index ? 'index' : 'equity', expiry: 'MOCK',
+    atm: index ? 23600 : 1500, underlying: index ? 23670 : 1512.4,
+    strikeStep: STRIKE_STEP || (index ? 100 : 20),
+    lotSize: index ? 75 : 500,
     window: { from: CANDLE_FROM, to: CANDLE_TO, tz: 'IST' },
     asOf: istClock(nowMs), source: 'mock', ce, pe
   };
@@ -594,10 +727,11 @@ function mockPayload(nowMs) {
 
 const cache = new Map();
 
-async function cachedFirstCandle(nowMs, fresh) {
-  const key = `${istDateKey(nowMs)}:${SYMBOL}`;
+async function cachedFirstCandle(nowMs, fresh, symbol) {
+  symbol = cleanSymbol(symbol, SYMBOL);
+  const key = `${istDateKey(nowMs)}:${symbol}`;
   if (!fresh && cache.has(key)) return cache.get(key);
-  const payload = await firstCandle(nowMs);
+  const payload = await firstCandle(nowMs, symbol);
   cache.set(key, payload);   /* the 09:15–09:20 candle never changes once closed */
   return payload;
 }
@@ -619,7 +753,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {});
 
   if (url.pathname === '/health') {
-    return send(res, 200, { ok: true, mode: MOCK ? 'mock' : 'live', symbol: SYMBOL, ist: istClock(Date.now()) });
+    return send(res, 200, {
+      ok: true, mode: MOCK ? 'mock' : 'live',
+      symbol: SYMBOL, indices: INDEX_SYMBOLS,
+      note: 'any NSE F&O symbol works — pass ?symbol=RELIANCE to /first-candle or /scan',
+      ist: istClock(Date.now())
+    });
   }
 
   if (url.pathname === '/scan') {
@@ -631,8 +770,13 @@ const server = http.createServer(async (req, res) => {
         return out.length ? out : fallback;
       };
       const opts = {
+        symbol: url.searchParams.get('symbol') || SYMBOL,
         tfs: parseList('tfs', [5, 15, 30, 60]).filter(function (n) { return n > 0 && n <= 375; }),
-        offsets: parseList('offsets', [0]).slice(0, 9),
+        /* offsets are strike counts, e.g. -1,0,1 — the server turns them into
+           prices with the spacing it read off that symbol's own chain */
+        offsets: parseList('offsets', [0])
+          .map(function (n) { return Math.round(n); })
+          .filter(function (n) { return Math.abs(n) <= 10; }).slice(0, 9),
         expiries: Math.min(3, Math.max(1, Number(url.searchParams.get('expiries')) || 1))
       };
       return send(res, 200, await scan(opts, Date.now()));
@@ -643,30 +787,34 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/first-candle') {
     try {
-      const payload = await cachedFirstCandle(Date.now(), url.searchParams.get('fresh') === '1');
+      const payload = await cachedFirstCandle(
+        Date.now(), url.searchParams.get('fresh') === '1', url.searchParams.get('symbol'));
       return send(res, 200, payload);
     } catch (err) {
       return send(res, 502, { error: String(err.message || err), mode: MOCK ? 'mock' : 'live' });
     }
   }
 
-  return send(res, 404, { error: 'try /health or /first-candle' });
+  return send(res, 404, { error: 'try /health, /first-candle or /scan' });
 });
 
 /* ------------------------------------------------------------------ */
 
 async function dump(which) {
-  const chain = await optionChain();
+  const chain = await optionChain(SYMBOL);
   const spot = chainUnderlying(chain.payload);
-  const strike = atmStrike(spot, STRIKE_STEP);
+  const step = STRIKE_STEP || strikeStepFromChain(chain.payload) || (isIndex(SYMBOL) ? 100 : 0);
+  const strike = atmStrike(spot, step);
   const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
                  (chainRows(chain.payload)[0] || {}).expiryDate;
 
   if (which.toLowerCase() === 'expiries') {
-    var found = await expiryList();
+    var found = await expiryList(SYMBOL);
+    console.log('symbol:', SYMBOL, isIndex(SYMBOL) ? '(index)' : '(equity)');
     console.log('source:', found.source);
     console.log('expiries:', found.list.join(', ') || '(none)');
-    console.log('calendar guesses would be:', upcomingExpiries(6).join(', '));
+    console.log('calendar guesses would be:',
+      (isIndex(SYMBOL) ? upcomingExpiries(6) : upcomingMonthlies(3)).join(', '));
     return;
   }
 
@@ -674,6 +822,8 @@ async function dump(which) {
     console.log('endpoint that answered:', chain.url);
     console.log('top-level keys:', Object.keys(chain.payload).join(', '));
     console.log('rows:', chainRows(chain.payload).length, ' spot:', spot, ' expiry:', expiry);
+    console.log('strike step read off the chain:', strikeStepFromChain(chain.payload) || '(unknown)');
+    console.log('lot size:', await marketLot(SYMBOL));
     console.log('first row:', JSON.stringify(chainRows(chain.payload)[0] || null).slice(0, 600));
     return;
   }
@@ -738,8 +888,8 @@ async function selfCheck() {
 
   if (!reachable) { summarise(results); return results; }
 
-  await step('Option chain endpoint', async () => {
-    chain = await optionChain();
+  await step(`Option chain endpoint (${SYMBOL}, ${isIndex(SYMBOL) ? 'index' : 'equity'})`, async () => {
+    chain = await optionChain(SYMBOL);
     return `${chainRows(chain.payload).length} strike rows from ${chain.url.replace(BASE, '')}` +
            (chain.expirySource ? ` (expiry via ${chain.expirySource})` : '');
   }, 'v3 needs a valid expiry — without one it answers {}. See the error above for how to supply one.');
@@ -749,8 +899,17 @@ async function selfCheck() {
   const spot = chainUnderlying(chain.payload);
   const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
                  (chainRows(chain.payload)[0] || {}).expiryDate;
-  const strike = atmStrike(spot, STRIKE_STEP);
+  const step0 = STRIKE_STEP || strikeStepFromChain(chain.payload) || (isIndex(SYMBOL) ? 100 : 0);
+  const strike = atmStrike(spot, step0);
   let legs = { ce: null, pe: null };
+
+  await step('Strike spacing and lot size', async () => {
+    if (!step0) throw new Error('could not read the strike spacing from the chain — pass --strike-step');
+    const lot = await marketLot(SYMBOL);
+    return `strikes step ${step0}` +
+           (STRIKE_STEP ? ' (from --strike-step)' : ' (read off the chain)') +
+           `, lot ${Number.isFinite(lot) ? lot : 'unknown'}`;
+  }, 'Stock strike spacing varies by symbol and NSE revises it — this reads it live.');
 
   await step('ATM strike + nearest expiry', async () => {
     if (!Number.isFinite(spot)) throw new Error('no underlying value in the payload');
@@ -830,7 +989,8 @@ if (require.main === module) {
     server.listen(PORT, HOST, () => {
       console.log('NSE helper for the Option Strategy Suite');
       console.log(`  mode      ${MOCK ? 'mock (no network)' : 'live nseindia.com'}`);
-      console.log(`  symbol    ${SYMBOL}, candle ${CANDLE_FROM}–${CANDLE_TO} IST`);
+      console.log(`  symbol    ${SYMBOL} (default; ?symbol=RELIANCE etc. per request)`);
+      console.log(`  candle    ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
       console.log(`  endpoints /health  /first-candle  /scan`);
       console.log('  point the app at this URL under "Auto-fetch" on the Analyser tab.');
@@ -841,6 +1001,8 @@ if (require.main === module) {
 module.exports = {
   aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
-  detectTickOffset, shiftTicks, istStamp, scan, windowFor,
-  formatExpiry, upcomingExpiries, expiryList, selfCheck, server
+  detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
+  formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
+  isIndex, cleanSymbol, strikeStepFromChain, marketLot,
+  legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS
 };

@@ -486,8 +486,14 @@ input[type=number] { -moz-appearance: textfield; }
 /* ---------- auto-fetch ---------- */
 .af-card { border-left: 3px solid var(--info); }
 .af-row { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: end; }
-@media (min-width: 820px) { .af-row { grid-template-columns: 280px 1fr; } }
+@media (min-width: 820px) { .af-row { grid-template-columns: 230px 205px 1fr; } }
 .af-row .row-actions { margin-top: 0; }
+
+/* Symbol picker: free text with a datalist behind it, so any NSE F&O
+   underlying can be typed even after an index reconstitution. */
+.field-symbol input {
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
 .af-status {
   margin-top: 14px; font-size: 13px; padding: 10px 13px;
   border: 1px solid var(--line); border-left-width: 3px;

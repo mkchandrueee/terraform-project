@@ -156,7 +156,8 @@
           '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' : '') +
       '</div>' +
       '<p class="verdict-sub">' + U.escapeHtml(t('sc.context', {
-        atm: U.fmt(p.atm, 0), session: p.session || '—', rows: result.rows.length
+        symbol: p.symbol || 'NIFTY', atm: U.fmt(p.atm, 0),
+        session: p.session || '—', rows: result.rows.length
       })) + (p.stale ? ' ' + U.escapeHtml(t('af.staleSession', { session: p.session })) : '') + '</p>' +
       (best
         ? '<div class="entry-strip">' +
@@ -184,12 +185,28 @@
     return out.length ? out : [5];
   }
 
+  /* Counted in strikes, not rupees: the helper reads each symbol's own strike
+     spacing off its chain, so ±1 is the neighbouring contract whether NIFTY
+     steps in 100s or RELIANCE in 20s. */
   function selectedOffsets() {
     var span = Math.max(0, Math.min(4, Math.round(U.num(U.$('sc-strikes').value)) || 0));
-    var step = Math.max(1, Math.round(U.num(U.$('sc-step').value)) || 100);
     var out = [];
-    for (var i = -span; i <= span; i++) out.push(i * step);
+    for (var i = -span; i <= span; i++) out.push(i);
     return out;
+  }
+
+  function symbol() {
+    return APP.symbols.clean(U.$('sc-symbol').value) || 'NIFTY';
+  }
+
+  /* Contract size is a property of the symbol, not a preference — a scan of
+     RELIANCE priced with NIFTY's 75 would be wrong in every money figure. */
+  function applyLotSize(payload) {
+    var lot = Number(payload && payload.lotSize);
+    var cfg = APP.config.get();
+    if (!isFinite(lot) || lot <= 0 || lot === cfg.lotSize) return null;
+    APP.config.save({ lotSize: lot });
+    return lot;
   }
 
   function status(kind, message) {
@@ -199,9 +216,10 @@
   }
 
   function run() {
-    var cfg = APP.config.get();
     var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || 'http://127.0.0.1:8123';
-    var url = endpoint + '/scan?tfs=' + selectedTfs().join(',') +
+    var sym = symbol();
+    var url = endpoint + '/scan?symbol=' + encodeURIComponent(sym) +
+              '&tfs=' + selectedTfs().join(',') +
               '&offsets=' + selectedOffsets().join(',') +
               '&expiries=' + Math.max(1, Math.min(3, Math.round(U.num(U.$('sc-expiries').value)) || 1));
 
@@ -214,15 +232,27 @@
         });
       })
       .then(function (payload) {
-        if (!payload.rows || !payload.rows.length) throw new Error(t('sc.empty'));
-        var result = evaluate(payload, cfg);
+        if (!payload.rows || !payload.rows.length) {
+          /* An empty scan is nearly always one specific thing — a symbol NSE
+             lists no options on. Say which, rather than "no rows". */
+          var why = String(((payload.skipped || [])[0] || {}).reason || '');
+          if (/no option-chain endpoint/.test(why)) {
+            throw new Error(t('sym.noChain', { symbol: payload.symbol || sym }));
+          }
+          throw new Error(why ? why.split('\n')[0] : t('sc.empty'));
+        }
+        var lot = applyLotSize(payload);
+        var result = evaluate(payload, APP.config.get());
         last = result;
         APP.state.scan = result;
         render(result);
         status('ok', t('sc.done', {
           rows: result.rows.length,
           source: payload.source === 'mock' ? t('af.mockSource') : payload.source
-        }));
+        }) + ' ' + t('sym.scanned', {
+          symbol: payload.symbol || sym,
+          step: payload.strikeStep ? U.fmt(payload.strikeStep, 0) : '—'
+        }) + (lot ? ' ' + t('sym.lotApplied', { lot: lot }) : ''));
         return result;
       })
       .catch(function (err) {
@@ -261,6 +291,21 @@
       try { return window.localStorage.getItem('nifty-option-suite:endpoint') || 'http://127.0.0.1:8123'; }
       catch (e) { return 'http://127.0.0.1:8123'; }
     })();
+
+    APP.symbols.fillDatalist('symbol-list');
+    var symEl = U.$('sc-symbol');
+    symEl.value = APP.symbols.remembered();
+    /* Normalise as they leave the field, so "reliance " and "Reliance" both
+       become the symbol NSE actually keys on. */
+    symEl.addEventListener('change', function () {
+      symEl.value = APP.symbols.clean(symEl.value) || 'NIFTY';
+      APP.symbols.remember(symEl.value);
+      var el = U.$('sc-symbol-note');
+      el.textContent = APP.symbols.all().indexOf(symEl.value) === -1
+        ? t('sym.unknown', { symbol: symEl.value })
+        : t('sym.note');
+    });
+
     U.$('btn-sc-run').addEventListener('click', run);
     U.$('btn-sc-reset').addEventListener('click', reset);
     U.$('btn-sc-use').addEventListener('click', useBest);

@@ -497,8 +497,14 @@ input[type=number] { -moz-appearance: textfield; }
 /* ---------- auto-fetch ---------- */
 .af-card { border-left: 3px solid var(--info); }
 .af-row { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: end; }
-@media (min-width: 820px) { .af-row { grid-template-columns: 280px 1fr; } }
+@media (min-width: 820px) { .af-row { grid-template-columns: 230px 205px 1fr; } }
 .af-row .row-actions { margin-top: 0; }
+
+/* Symbol picker: free text with a datalist behind it, so any NSE F&O
+   underlying can be typed even after an index reconstitution. */
+.field-symbol input {
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
 .af-status {
   margin-top: 14px; font-size: 13px; padding: 10px 13px;
   border: 1px solid var(--line); border-left-width: 3px;
@@ -821,6 +827,11 @@ input[type=number] { -moz-appearance: textfield; }
           <label class="field">
             <span data-i18n="af.endpoint"></span>
             <input type="text" id="af-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" />
+          </label>
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="af-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
           </label>
           <div class="row-actions">
             <button type="button" class="btn btn-primary" id="btn-af-now" data-i18n="af.fetchNow"></button>
@@ -1182,10 +1193,15 @@ input[type=number] { -moz-appearance: textfield; }
         </fieldset>
 
         <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="sc-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
           <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
-          <label class="field"><span><span data-i18n="sc.step"></span> <em data-i18n="sc.stepHint"></em></span><input type="number" id="sc-step" step="50" min="50" max="500" value="100" /></label>
           <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
         </div>
+        <p class="muted small" id="sc-symbol-note" data-i18n="sym.note"></p>
 
         <div class="ohlc ohlc-3" style="margin-top:10px">
           <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
@@ -1221,6 +1237,10 @@ input[type=number] { -moz-appearance: textfield; }
   </section>
 
 </main>
+
+<!-- Suggestions for both symbol fields; the fields stay free text so any NSE
+     F&O underlying works, listed here or not. Filled by assets/js/symbols.js. -->
+<datalist id="symbol-list"></datalist>
 
 <footer class="app-footer">
   <div class="wrap">
@@ -1594,7 +1614,7 @@ window.APP = window.APP || {};
       'af.checking': 'Checking the helper…',
       'af.fetching': 'Fetching from NSE…',
       'af.armed': 'Armed — will fetch at {time} and retry until 09:22:30 if the feed lags.',
-      'af.filled': 'Filled from {source}: ATM {atm}, 09:15–09:20 candle built from {ticks} ticks, as of {time} IST.',
+      'af.filled': 'Filled from {source}: {symbol} ATM {atm}, 09:15–09:20 candle built from {ticks} ticks, as of {time} IST.',
       'af.healthy': 'Helper is up — {mode}, {symbol}, its clock reads {ist} IST.',
       'af.helperOffline': 'No helper at {endpoint}. Start it with: node tools/nse-fetch.js',
       'af.failed': 'Fetch failed — {reason}',
@@ -1834,8 +1854,6 @@ window.APP = window.APP || {};
       'sc.tf60': '(09:15–10:15)',
       'sc.strikes': 'Strikes each side of ATM',
       'sc.strikesHint': '(0 = ATM only)',
-      'sc.step': 'Strike step',
-      'sc.stepHint': '(points)',
       'sc.expiries': 'Expiries',
       'sc.expiriesHint': '(from the nearest)',
       'sc.run': 'Run scan',
@@ -1848,7 +1866,15 @@ window.APP = window.APP || {};
       'sc.note': 'The scan needs the local helper, because it pulls one tick series per contract and re-aggregates it per timeframe. Every row is run through the same maths as the Option Analyser tab, so the two always agree.',
       'sc.bestIs': 'BEST — {side} {strike} on {tf}m',
       'sc.noneQualify': 'NO ROW QUALIFIES — STAND ASIDE',
-      'sc.context': 'ATM {atm}, session {session}, {rows} combinations evaluated.',
+      'sc.context': '{symbol} — ATM {atm}, session {session}, {rows} combinations evaluated.',
+
+      'sym.label': 'Underlying',
+      'sym.hint': '(index or stock)',
+      'sym.note': 'Type any NSE F&O underlying — the five indices and all fifty NIFTY 50 stocks are suggested. Strike spacing and lot size are read live from that symbol\'s own chain, so RELIANCE scans in 20-point strikes and NIFTY in 100s without you setting anything.',
+      'sym.scanned': 'Underlying {symbol}, strikes step {step}.',
+      'sym.lotApplied': 'Lot size set to {lot} for this symbol.',
+      'sym.noChain': 'NSE returned no option chain for {symbol}. Only F&O-approved underlyings have one — every NIFTY 50 stock does, so check the spelling of the trading symbol.',
+      'sym.unknown': '{symbol} is not in the NIFTY 50 list — it will still be tried, and works if NSE lists options on it.',
       'sc.agreeTitle': 'Timeframe agreement',
       'sc.agreeDesc': 'Per strike, whether the timeframes pick the same side. Disagreement is the useful signal here.',
       'sc.aligned': 'all {n} agree — {side}',
@@ -2190,7 +2216,7 @@ window.APP = window.APP || {};
       'af.checking': 'Helper-ஐ check பண்றேன்…',
       'af.fetching': 'NSE-ல இருந்து எடுக்குறேன்…',
       'af.armed': 'Armed — {time}-க்கு எடுக்கும், feed தாமதம் ஆனா 09:22:30 வரை retry பண்ணும்.',
-      'af.filled': '{source}-ல இருந்து நிரப்பியாச்சு: ATM {atm}, {ticks} ticks வெச்சு 09:15–09:20 candle, {time} IST நிலவரம்.',
+      'af.filled': '{source}-ல இருந்து நிரப்பியாச்சு: {symbol} ATM {atm}, {ticks} ticks வெச்சு 09:15–09:20 candle, {time} IST நிலவரம்.',
       'af.healthy': 'Helper ஓடுது — {mode}, {symbol}, அதோட clock {ist} IST காட்டுது.',
       'af.helperOffline': '{endpoint}-ல helper இல்ல. இப்படி start பண்ணு: node tools/nse-fetch.js',
       'af.failed': 'Fetch fail ஆச்சு — {reason}',
@@ -2426,8 +2452,6 @@ window.APP = window.APP || {};
       'sc.tf60': '(09:15–10:15)',
       'sc.strikes': 'ATM-க்கு இருபக்கமும் strikes',
       'sc.strikesHint': '(0 = ATM மட்டும்)',
-      'sc.step': 'Strike step',
-      'sc.stepHint': '(points)',
       'sc.expiries': 'Expiries',
       'sc.expiriesHint': '(அடுத்ததுல இருந்து)',
       'sc.run': 'Scan பண்ணு',
@@ -2440,7 +2464,15 @@ window.APP = window.APP || {};
       'sc.note': 'Scan-க்கு local helper வேணும் — ஒரு contract-க்கு ஒரு தடவை tick series எடுத்து, timeframe வாரியா மறு-கணக்கு பண்ணுது. ஒவ்வொரு row-ம் Option Analyser tab-ஓட அதே கணக்கு வழியாதான் போகுது.',
       'sc.bestIs': 'BEST — {side} {strike}, {tf}m',
       'sc.noneQualify': 'எந்த row-ம் தகுதி இல்ல — விட்டுடு',
-      'sc.context': 'ATM {atm}, session {session}, {rows} combinations பாத்தாச்சு.',
+      'sc.context': '{symbol} — ATM {atm}, session {session}, {rows} combinations பாத்தாச்சு.',
+
+      'sym.label': 'Underlying',
+      'sym.hint': '(index அல்லது stock)',
+      'sym.note': 'NSE F&O-ல இருக்கிற எந்த underlying-ஐயும் type பண்ணலாம் — அஞ்சு indices-ம், NIFTY 50-ல இருக்கிற ஐம்பது stocks-ம் suggestion-ல வரும். Strike spacing-ம் lot size-ம் அந்த symbol-ஓட chain-ல இருந்தே live-ஆ படிக்கப்படுது; அதனால RELIANCE 20-point strikes-லயும், NIFTY 100-லயும் தானா scan ஆகும்.',
+      'sym.scanned': 'Underlying {symbol}, strike step {step}.',
+      'sym.lotApplied': 'இந்த symbol-க்கு lot size {lot}-ஆ செட் ஆச்சு.',
+      'sym.noChain': '{symbol}-க்கு NSE option chain எதுவும் கொடுக்கல. F&O-ல approve ஆன underlying-க்கு மட்டும் தான் chain இருக்கும் — NIFTY 50 stock எல்லாத்துக்கும் இருக்கு, அதனால trading symbol spelling-ஐ செக் பண்ணு.',
+      'sym.unknown': '{symbol} NIFTY 50 list-ல இல்ல — இருந்தாலும் try பண்ணப்படும்; NSE-ல அதுக்கு options இருந்தா வேலை செய்யும்.',
       'sc.agreeTitle': 'Timeframe agreement',
       'sc.agreeDesc': 'ஒவ்வொரு strike-க்கும், timeframes ஒரே side-ஐ தேர்ந்தெடுக்குதானு. வேறுபாடு தான் இங்க முக்கியமான signal.',
       'sc.aligned': '{n}-ம் ஒத்துக்குது — {side}',
@@ -2769,6 +2801,78 @@ window.APP = window.APP || {};
   }
 
   APP.config = { DEFAULTS: DEFAULTS, get: get, save: save, reset: reset, load: load };
+})(window.APP);
+</script>
+<script>
+/* Tradable underlyings — the five F&O indices and the NIFTY 50 stocks.
+
+   This list only fills the picker's suggestions. The field itself stays free
+   text and the helper accepts any NSE F&O symbol, so an index reconstitution
+   (which happens twice a year) makes the list stale, never wrong: type the new
+   name and it works. Nothing here is used in any calculation. */
+(function (APP) {
+  'use strict';
+
+  var INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50'];
+
+  /* NIFTY 50 constituents. Trading symbols, not company names — that is what
+     NSE's option-chain endpoint keys on. */
+  var STOCKS = [
+    'ADANIENT', 'ADANIPORTS', 'APOLLOHOSP', 'ASIANPAINT', 'AXISBANK',
+    'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJFINANCE', 'BEL', 'BHARTIARTL',
+    'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'ETERNAL',
+    'GRASIM', 'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HEROMOTOCO',
+    'HINDALCO', 'HINDUNILVR', 'ICICIBANK', 'INDUSINDBK', 'INFY',
+    'ITC', 'JIOFIN', 'JSWSTEEL', 'KOTAKBANK', 'LT',
+    'M&M', 'MARUTI', 'NESTLEIND', 'NTPC', 'ONGC',
+    'POWERGRID', 'RELIANCE', 'SBILIFE', 'SBIN', 'SHRIRAMFIN',
+    'SUNPHARMA', 'TATACONSUM', 'TATAMOTORS', 'TATASTEEL', 'TCS',
+    'TECHM', 'TITAN', 'TRENT', 'ULTRACEMCO', 'WIPRO'
+  ];
+
+  function isIndex(symbol) {
+    return INDICES.indexOf(String(symbol || '').toUpperCase()) !== -1;
+  }
+
+  /* Same rule the helper applies, so the field cannot send something the
+     server will only reject after a round trip. */
+  function clean(raw) {
+    return String(raw == null ? '' : raw).trim().toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
+  }
+
+  /** Fills a <datalist> once; the input keeps accepting anything typed. */
+  function fillDatalist(id) {
+    var el = document.getElementById(id);
+    if (!el || el.childElementCount) return;
+    el.innerHTML =
+      INDICES.map(function (s) { return '<option value="' + s + '"></option>'; }).join('') +
+      STOCKS.map(function (s) { return '<option value="' + s + '"></option>'; }).join('');
+  }
+
+  /* Both symbol fields share one remembered value — picking RELIANCE on the
+     Scan tab and then fetching on the Analyser tab should not silently go back
+     to NIFTY. */
+  var KEY = 'nifty-option-suite:symbol';
+
+  function remembered() {
+    try { return clean(window.localStorage.getItem(KEY)) || 'NIFTY'; }
+    catch (e) { return 'NIFTY'; }
+  }
+
+  function remember(symbol) {
+    try { window.localStorage.setItem(KEY, clean(symbol) || 'NIFTY'); } catch (e) { /* private mode */ }
+  }
+
+  APP.symbols = {
+    INDICES: INDICES,
+    STOCKS: STOCKS,
+    all: function () { return INDICES.concat(STOCKS); },
+    isIndex: isIndex,
+    clean: clean,
+    fillDatalist: fillDatalist,
+    remembered: remembered,
+    remember: remember
+  };
 })(window.APP);
 </script>
 <script>
@@ -3155,9 +3259,15 @@ window.APP = window.APP || {};
     return d;
   }
 
+  function symbol() {
+    var el = U.$('af-symbol');
+    return APP.symbols.clean(el && el.value) || 'NIFTY';
+  }
+
   /* ---------- fetching ---------- */
   function request(fresh) {
-    var url = endpoint() + '/first-candle' + (fresh ? '?fresh=1' : '');
+    var url = endpoint() + '/first-candle?symbol=' + encodeURIComponent(symbol()) +
+              (fresh ? '&fresh=1' : '');
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timeout = window.setTimeout(function () { if (controller) controller.abort(); }, 12000);
 
@@ -3185,8 +3295,18 @@ window.APP = window.APP || {};
       U.$('atm-open').value = String(p.underlying);
       APP.analyser.renderAtm();
     }
+    /* Contract size belongs to the symbol, not to the user's preferences — a
+       RELIANCE candle priced against NIFTY's 75 would be wrong everywhere the
+       Trade Signal tab talks about money. */
     lastPayload = p;
     APP.analyser.run();
+  }
+
+  function applyLotSize(p) {
+    var lot = Number(p && p.lotSize);
+    if (!isFinite(lot) || lot <= 0 || lot === APP.config.get().lotSize) return null;
+    APP.config.save({ lotSize: lot });
+    return lot;
   }
 
   function fetchNow(fresh, quiet) {
@@ -3194,12 +3314,14 @@ window.APP = window.APP || {};
     return request(fresh).then(function (p) {
       if (!validPayload(p)) throw new Error(t('af.badPayload'));
       applyPayload(p);
+      var lot = applyLotSize(p);
       var msg = t('af.filled', {
+        symbol: p.symbol || symbol(),
         atm: U.fmt(p.atm, 0),
         time: p.asOf || clock(new Date()),
         source: p.source === 'mock' ? t('af.mockSource') : p.source,
         ticks: (p.ce.ticks || 0) + (p.pe.ticks || 0)
-      });
+      }) + (lot ? ' ' + t('sym.lotApplied', { lot: lot }) : '');
       /* Before the open, or on a holiday, NSE serves the previous session.
          That must never look like today's candle. */
       if (p.stale && p.session) {
@@ -3283,6 +3405,15 @@ window.APP = window.APP || {};
   function init() {
     loadEndpoint();
     U.$('af-endpoint').addEventListener('change', saveEndpoint);
+
+    APP.symbols.fillDatalist('symbol-list');
+    var symEl = U.$('af-symbol');
+    symEl.value = APP.symbols.remembered();
+    symEl.addEventListener('change', function () {
+      symEl.value = APP.symbols.clean(symEl.value) || 'NIFTY';
+      APP.symbols.remember(symEl.value);
+    });
+
     U.$('btn-af-now').addEventListener('click', function () { fetchNow(true).catch(function () {}); });
     U.$('btn-af-health').addEventListener('click', checkHealth);
     U.$('btn-af-arm').addEventListener('click', function () { arm(); });
@@ -3293,7 +3424,7 @@ window.APP = window.APP || {};
   }
 
   APP.autofetch = {
-    init: init, fetchNow: fetchNow, arm: arm, disarm: disarm,
+    init: init, fetchNow: fetchNow, arm: arm, disarm: disarm, symbol: symbol,
     checkHealth: checkHealth, applyPayload: applyPayload, validPayload: validPayload,
     last: function () { return lastPayload; }
   };
@@ -4572,7 +4703,8 @@ window.APP = window.APP || {};
           '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' : '') +
       '</div>' +
       '<p class="verdict-sub">' + U.escapeHtml(t('sc.context', {
-        atm: U.fmt(p.atm, 0), session: p.session || '—', rows: result.rows.length
+        symbol: p.symbol || 'NIFTY', atm: U.fmt(p.atm, 0),
+        session: p.session || '—', rows: result.rows.length
       })) + (p.stale ? ' ' + U.escapeHtml(t('af.staleSession', { session: p.session })) : '') + '</p>' +
       (best
         ? '<div class="entry-strip">' +
@@ -4600,12 +4732,28 @@ window.APP = window.APP || {};
     return out.length ? out : [5];
   }
 
+  /* Counted in strikes, not rupees: the helper reads each symbol's own strike
+     spacing off its chain, so ±1 is the neighbouring contract whether NIFTY
+     steps in 100s or RELIANCE in 20s. */
   function selectedOffsets() {
     var span = Math.max(0, Math.min(4, Math.round(U.num(U.$('sc-strikes').value)) || 0));
-    var step = Math.max(1, Math.round(U.num(U.$('sc-step').value)) || 100);
     var out = [];
-    for (var i = -span; i <= span; i++) out.push(i * step);
+    for (var i = -span; i <= span; i++) out.push(i);
     return out;
+  }
+
+  function symbol() {
+    return APP.symbols.clean(U.$('sc-symbol').value) || 'NIFTY';
+  }
+
+  /* Contract size is a property of the symbol, not a preference — a scan of
+     RELIANCE priced with NIFTY's 75 would be wrong in every money figure. */
+  function applyLotSize(payload) {
+    var lot = Number(payload && payload.lotSize);
+    var cfg = APP.config.get();
+    if (!isFinite(lot) || lot <= 0 || lot === cfg.lotSize) return null;
+    APP.config.save({ lotSize: lot });
+    return lot;
   }
 
   function status(kind, message) {
@@ -4615,9 +4763,10 @@ window.APP = window.APP || {};
   }
 
   function run() {
-    var cfg = APP.config.get();
     var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || 'http://127.0.0.1:8123';
-    var url = endpoint + '/scan?tfs=' + selectedTfs().join(',') +
+    var sym = symbol();
+    var url = endpoint + '/scan?symbol=' + encodeURIComponent(sym) +
+              '&tfs=' + selectedTfs().join(',') +
               '&offsets=' + selectedOffsets().join(',') +
               '&expiries=' + Math.max(1, Math.min(3, Math.round(U.num(U.$('sc-expiries').value)) || 1));
 
@@ -4630,15 +4779,27 @@ window.APP = window.APP || {};
         });
       })
       .then(function (payload) {
-        if (!payload.rows || !payload.rows.length) throw new Error(t('sc.empty'));
-        var result = evaluate(payload, cfg);
+        if (!payload.rows || !payload.rows.length) {
+          /* An empty scan is nearly always one specific thing — a symbol NSE
+             lists no options on. Say which, rather than "no rows". */
+          var why = String(((payload.skipped || [])[0] || {}).reason || '');
+          if (/no option-chain endpoint/.test(why)) {
+            throw new Error(t('sym.noChain', { symbol: payload.symbol || sym }));
+          }
+          throw new Error(why ? why.split('\n')[0] : t('sc.empty'));
+        }
+        var lot = applyLotSize(payload);
+        var result = evaluate(payload, APP.config.get());
         last = result;
         APP.state.scan = result;
         render(result);
         status('ok', t('sc.done', {
           rows: result.rows.length,
           source: payload.source === 'mock' ? t('af.mockSource') : payload.source
-        }));
+        }) + ' ' + t('sym.scanned', {
+          symbol: payload.symbol || sym,
+          step: payload.strikeStep ? U.fmt(payload.strikeStep, 0) : '—'
+        }) + (lot ? ' ' + t('sym.lotApplied', { lot: lot }) : ''));
         return result;
       })
       .catch(function (err) {
@@ -4677,6 +4838,21 @@ window.APP = window.APP || {};
       try { return window.localStorage.getItem('nifty-option-suite:endpoint') || 'http://127.0.0.1:8123'; }
       catch (e) { return 'http://127.0.0.1:8123'; }
     })();
+
+    APP.symbols.fillDatalist('symbol-list');
+    var symEl = U.$('sc-symbol');
+    symEl.value = APP.symbols.remembered();
+    /* Normalise as they leave the field, so "reliance " and "Reliance" both
+       become the symbol NSE actually keys on. */
+    symEl.addEventListener('change', function () {
+      symEl.value = APP.symbols.clean(symEl.value) || 'NIFTY';
+      APP.symbols.remember(symEl.value);
+      var el = U.$('sc-symbol-note');
+      el.textContent = APP.symbols.all().indexOf(symEl.value) === -1
+        ? t('sym.unknown', { symbol: symEl.value })
+        : t('sym.note');
+    });
+
     U.$('btn-sc-run').addEventListener('click', run);
     U.$('btn-sc-reset').addEventListener('click', reset);
     U.$('btn-sc-use').addEventListener('click', useBest);
@@ -5047,6 +5223,12 @@ window.APP = window.APP || {};
           'a timeframe is the first candle of the day at that length:\n' +
           '  5m  = 09:15–09:20      30m = 09:15–09:45\n' +
           '  15m = 09:15–09:30      60m = 09:15–10:15\n' +
+          '\n' +
+          'underlying = any NSE F&O symbol — the 5 indices or a NIFTY 50 stock\n' +
+          '  strike spacing and lot size are read off that symbol\'s own chain\n' +
+          '  (NIFTY steps 100, RELIANCE 20 — nothing to set by hand)\n' +
+          '  strikes are counted, not priced: ±1 is the next contract either way\n' +
+          '  index options expire weekly, stock options monthly\n' +
           '\n' +
           'aligned  = every selected timeframe picks the same side\n' +
           'split    = they disagree — treat the setup as unproven\n' +

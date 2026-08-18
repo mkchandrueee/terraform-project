@@ -175,6 +175,21 @@ node tools\nse-fetch.js --from 09:15 --to 09:20
 Check them against your broker terminal before trading — the auto-fetch fills ordinary editable fields, and
 overtyping them is always fine.
 
+**"NSE returned no option chain for …"**
+The symbol has no options listed. Use the NSE *trading* symbol, not the company name — `BAJFINANCE` not
+"Bajaj Finance", `M&M` not "Mahindra". The picker suggests all fifty NIFTY 50 symbols; typing one is only
+needed for something outside that list.
+
+**A stock's strikes or lot size look wrong**
+Both are read live from that symbol's own chain, so they follow NSE rather than a table in the app. Confirm
+what it found:
+
+```bat
+node tools\nse-fetch.js --symbol RELIANCE --dump chain
+```
+
+It prints the strike step it derived and the lot size. `--strike-step 20` overrides the step if you need to.
+
 ---
 
 ## Command reference
@@ -190,6 +205,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | `node tools\serve.js 8787 lan` | Also reachable over wifi |
 | `node tools\nse-fetch.js` | NSE helper on port 8123 |
 | `node tools\nse-fetch.js --check` | Stage-by-stage diagnosis |
+| `node tools\nse-fetch.js --symbol RELIANCE --check` | The same checks against a stock |
 | `node tools\nse-fetch.js --mock` | Fixture data, no network — dry run |
 | `node tools\nse-fetch.js --dump CE` | Raw NSE payload |
 | `python build.py` | Single-file bundle in `dist\` |

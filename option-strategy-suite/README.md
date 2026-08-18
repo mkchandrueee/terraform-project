@@ -17,7 +17,7 @@ remembered.
 | 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that confirmed the entry | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy / put buy / **wait**, three entry zones, a stop and three targets |
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
-| 6 (steps 17–18) | **Scan** | Timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
+| 6 (steps 17–18) | **Scan** | An underlying (index or NIFTY 50 stock), timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
 
 The tools hand off to each other:
 
@@ -200,8 +200,37 @@ at a longer opening candle?** Each timeframe is the first candle of the day at t
 | 30 min | 09:15–09:45 |
 | 60 min | 09:15–10:15 |
 
-Pick the timeframes, how many strikes either side of ATM, and how many expiries; the helper fetches one tick
-series per contract and re-aggregates it per timeframe, so 24 combinations cost 6 fetches rather than 24.
+Pick the underlying, the timeframes, how many strikes either side of ATM, and how many expiries; the helper
+fetches one tick series per contract and re-aggregates it per timeframe, so 24 combinations cost 6 fetches
+rather than 24.
+
+### Indices and NIFTY 50 stocks
+
+The **Underlying** field takes any NSE F&O symbol. The five indices (NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY,
+NIFTYNXT50) and all fifty NIFTY 50 stocks are offered as suggestions, but the field stays free text — an index
+reconstitution makes that list stale, never wrong, and the same field appears on the Analyser tab's auto-fetch
+card. Both fields share one remembered value.
+
+Stocks are not indices, and three things differ. The helper handles all three from the live chain rather than
+from a table that goes stale:
+
+| | Index | NIFTY 50 stock |
+|---|---|---|
+| Chain endpoint | `option-chain-indices`, v3 `type=Indices` | `option-chain-equities`, v3 `type=Equity` |
+| Strike spacing | 50 or 100 | varies per stock — RELIANCE 20, BAJFINANCE 100 |
+| Expiries | weekly | monthly |
+| Lot size | 75 for NIFTY | per stock, from `quote-derivative` |
+
+**Strike spacing is read off the chain itself** — the most common gap between adjacent strikes — so nothing
+needs setting when you switch symbols, and NSE revising a stock's spacing cannot silently misplace the ATM.
+`--strike-step` still overrides it. For the same reason, *strikes either side of ATM* counts **strikes, not
+rupees**: ±1 is the neighbouring contract whether that is 20 points away or 100.
+
+**Lot size follows the symbol.** It is a property of the contract, not a preference, so a fetch or scan writes
+the live value into the settings and says so — a RELIANCE trade costed against NIFTY's 75 would be wrong in
+every figure on the Trade Signal tab.
+
+If NSE lists no options on what you typed, the scan says exactly that rather than "no rows".
 
 **There is no new arithmetic.** Every row goes through the same `APP.analyser.analyse()` the Option Analyser
 tab uses, so a scan row and the analyser agree by construction — the tests assert that on the best row's entry,
@@ -229,7 +258,20 @@ node tools/nse-fetch.js               # http://127.0.0.1:8123
 node tools/nse-fetch.js --mock        # fixture data, no network — good for a dry run
 node tools/nse-fetch.js --dump chain  # which chain endpoint answered, and its shape
 node tools/nse-fetch.js --dump CE     # the raw tick payload it reads
+
+node tools/nse-fetch.js --symbol RELIANCE --check   # same checks against a stock
 ```
+
+One helper serves every symbol — the app passes `?symbol=` per request, so there is no need to restart it when
+you switch:
+
+```
+GET /first-candle?symbol=RELIANCE
+GET /scan?symbol=BAJFINANCE&tfs=5,15,30,60&offsets=-1,0,1&expiries=2
+```
+
+`--symbol` only sets the default for requests that omit it, and for `--check` and `--dump`. Both payloads
+carry back `kind` (index or equity), `strikeStep` and `lotSize` alongside the candles.
 
 ### NSE keeps moving the option-chain endpoint
 
@@ -238,12 +280,12 @@ which needs an explicit expiry, and the expiry list comes from its own endpoint.
 hope, the helper tries them in order and tells you which answered:
 
 1. `/api/option-chain-contract-info` for the expiry list, then `/api/option-chain-v3` for each expiry
-2. `/api/option-chain-indices` (legacy, whole chain in one call)
+2. `/api/option-chain-indices` — or `/api/option-chain-equities` for a stock (legacy, whole chain in one call)
 
 **v3 without a valid expiry answers `200 {}`, not an error**, so an empty object is treated as "wrong
 expiry, keep trying" rather than success. If no endpoint publishes the expiry list, the helper falls back to
-the calendar and tries the next six weekly expiries — NIFTY weeklies are Tuesdays, and `--expiry-day` covers
-the next time NSE moves them.
+the calendar: the next six weekly expiries for an index, the next three monthlies for a stock. Expiry day is
+Tuesday, and `--expiry-day` covers the next time NSE moves them.
 
 `--check` prints the winner. If both are dead it lists every URL tried with its status, and you can force one:
 
