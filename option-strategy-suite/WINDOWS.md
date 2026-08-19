@@ -222,6 +222,18 @@ The symbol has no options listed. Use the NSE *trading* symbol, not the company 
 "Bajaj Finance", `M&M` not "Mahindra". The picker suggests all fifty NIFTY 50 symbols; typing one is only
 needed for something outside that list.
 
+**"Swing scan failed — NSE 503 for .../api/historical/..."**
+NSE refuses historical requests spanning more than about a quarter, and throttles bursts. The helper now asks
+in 80-day windows and retries transient failures, so this should not recur — if it does, the endpoint is down
+rather than saying no. Check with:
+
+```bat
+curl "http://127.0.0.1:8123/history?symbol=WIPRO&tfs=1d&bars=1"
+```
+
+Asking for fewer candles per timeframe, or dropping the monthly box, shortens the history needed and so the
+number of requests.
+
 **A stock's strikes or lot size look wrong**
 Both are read live from that symbol's own chain, so they follow NSE rather than a table in the app. Confirm
 what it found:

@@ -271,10 +271,19 @@ async function primeSession(force) {
   }
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function nseJson(url, attempt = 0) {
   await primeSession(attempt > 0);
   const res = await fetch(url, { headers: Object.assign(baseHeaders(), { Cookie: cookieJar }) });
   if ((res.status === 401 || res.status === 403) && attempt < 2) {
+    return nseJson(url, attempt + 1);
+  }
+  /* 429 and 5xx are NSE throttling or briefly falling over, not a wrong URL —
+     the historical endpoint does this readily. Back off and re-prime rather
+     than reporting a dead end the user cannot act on. */
+  if ((res.status === 429 || res.status >= 500) && attempt < 3) {
+    await sleep(600 * Math.pow(2, attempt));
     return nseJson(url, attempt + 1);
   }
   if (!res.ok) throw new Error(`NSE ${res.status} for ${url}`);
@@ -514,21 +523,43 @@ function parseHistory(payload) {
   return out;
 }
 
+/* NSE's historical endpoints answer 503 on a wide date range — reliably so
+   past roughly a quarter. Ask in windows and stitch the results together. */
+const HISTORY_WINDOW_DAYS = 80;
+
 async function dailyBars(symbol, days) {
-  /* Ask for calendar days, not sessions — roughly 5 sessions per 7 days, plus
-     a fortnight of slack for holidays. */
-  const span = Math.max(30, Math.ceil(days * 1.5) + 14);
   const to = Date.now();
-  const from = to - span * 86400000;
-  const payload = await nseJson(historyUrl(symbol, from, to));
-  const bars = parseHistory(payload);
+  const span = Math.max(30, Math.ceil(days));
+  const windows = [];
+  for (let end = to; end > to - span * 86400000; end -= HISTORY_WINDOW_DAYS * 86400000) {
+    const start = Math.max(end - HISTORY_WINDOW_DAYS * 86400000, to - span * 86400000);
+    windows.push([start, end]);
+  }
+
+  const byDay = new Map();
+  const failures = [];
+  for (const [from, until] of windows) {
+    try {
+      parseHistory(await nseJson(historyUrl(symbol, from, until)))
+        .forEach((b) => byDay.set(b.day, b));
+    } catch (err) {
+      failures.push(err.message);
+    }
+    if (windows.length > 1) await sleep(250);   /* NSE throttles bursts */
+  }
+
+  const bars = Array.from(byDay.values()).sort((a, b) => a.t - b.t);
   if (!bars.length) {
     throw new Error(
-      'the historical endpoint returned no rows for ' + symbol +
-      '. NSE serves equities and indices from different URLs; this used\n  ' +
-      historyUrl(symbol, from, to)
+      'the historical endpoint returned no rows for ' + symbol + '.' +
+      (failures.length ? '\n  ' + failures.join('\n  ') : '') +
+      '\nNSE serves equities and indices from different URLs; this used\n  ' +
+      historyUrl(symbol, to - span * 86400000, to)
     );
   }
+  /* Some windows may have failed while others answered — say so rather than
+     silently working from a short history. */
+  if (failures.length) bars.partial = failures.length;
   return bars;
 }
 
@@ -595,13 +626,15 @@ async function hourlyBars(symbol, nowMs) {
 
 const TIMEFRAMES = ['1h', '1d', '1w', '1M'];
 
-/* Calendar days of daily history each timeframe needs to yield `want`
-   COMPLETED bars — the current week and month are always dropped, so ask for
-   one extra period on top. */
+/* CALENDAR days of daily history each timeframe needs to yield `want`
+   COMPLETED bars. The current week and month are always dropped, so ask for one
+   extra period; daily also converts sessions to calendar days (five sessions
+   per seven days) and adds slack for holidays. Keep this tight — every extra
+   day is another window fetched, and NSE is happier with fewer. */
 function lookbackDays(tf, want) {
-  if (tf === '1d') return want + 12;
+  if (tf === '1d') return Math.ceil((want + 4) * 1.5) + 10;
   if (tf === '1w') return (want + 2) * 7 + 10;
-  return (want + 2) * 31 + 10;
+  return (want + 1) * 31 + 20;
 }
 
 /**
@@ -642,6 +675,13 @@ async function history(opts, nowMs) {
     const days = Math.max.apply(null, needDaily.map((tf) => lookbackDays(tf, want)));
     try {
       daily = await dailyBars(symbol, days);
+      if (daily.partial) {
+        skipped.push({
+          tf: 'daily history',
+          reason: daily.partial + ' of the history windows failed — the oldest ' +
+                  'candles may be missing, so a weekly or monthly bar could be short'
+        });
+      }
     } catch (err) {
       skipped.push({ tf: 'daily history', reason: err.message });
     }

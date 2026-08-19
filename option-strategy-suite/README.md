@@ -279,6 +279,13 @@ premium**, which means nothing on a share price — it would demand a ₹16 step
 all on a ₹3,000 one. Here the floor is a percentage of price instead, `swingMinStepPct`, default 0.25%. At
 that value the range term dominates in almost every real case, which is the intent: a floor, not a driver.
 
+**NSE's historical endpoint refuses wide date ranges** — a single request spanning a couple of quarters comes
+back `503`. History is therefore fetched in 80-day windows and stitched together, deduplicated by session
+date; a year of monthly candles is five requests, not one. Transient `503` and `429` are retried with backoff
+and a re-primed session, since the endpoint also throttles bursts. If some windows fail while others answer,
+the scan says so rather than quietly working from a short history — a weekly or monthly bar built on missing
+sessions would be wrong without looking wrong.
+
 Timeframe agreement is per symbol rather than per strike: the latest closed candle on each, and whether they
 point the same way. An hourly signal fighting the weekly and monthly is the one worth being careful about.
 
