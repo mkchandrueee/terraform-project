@@ -8,6 +8,7 @@
  *   node tools/nse-fetch.js --dump chain    → which chain endpoint answered, and its shape
  *   node tools/nse-fetch.js --dump expiries → the expiry dates it will try
  *   node tools/nse-fetch.js --dump history  → which history endpoint answers, and its shape
+ *   node tools/nse-fetch.js --probe         → why an endpoint refuses: status, server and body
  *
  *   node tools/nse-fetch.js --serve --token SECRET
  *       serves the app AND the API on one port, gated by a shared secret, so a
@@ -262,7 +263,14 @@ function baseHeaders(referer) {
     'User-Agent': UA,
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Referer': referer || BASE + '/option-chain',
+    /* The site's own XHRs carry these. Their absence is one of the cheaper
+       ways a request looks automated. */
+    'X-Requested-With': 'XMLHttpRequest',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
     'Connection': 'keep-alive'
   };
 }
@@ -591,6 +599,9 @@ function historyUrls(symbol, fromMs, toMs) {
     ['securityArchives EQ', archive('EQ')],
     ['cm/equity EQ', BASE + '/api/historical/cm/equity?symbol=' + sym +
                      '&series=' + encodeURIComponent('["EQ"]') + '&from=' + from + '&to=' + to],
+    ['generateSecurityWiseHistoricalData',
+      BASE + '/api/historicalOR/generateSecurityWiseHistoricalData?from=' + from +
+      '&to=' + to + '&symbol=' + sym + '&type=priceVolumeDeliverable&series=EQ'],
     ['securityArchives BE', archive('BE')],
     ['securityArchives any series', archive('')]
   ];
@@ -797,6 +808,92 @@ async function hourlyBars(symbol, nowMs) {
     if (bar) out.push(Object.assign({ t: from, key: istClock(from).slice(0, 5) }, bar));
   }
   return { bars: out, session: istDateKey(anchor), convention: conv.convention };
+}
+
+/* ------------------------------------------------------------------ */
+/* --probe : find out WHY the historical endpoints refuse us.
+   Two diagnoses from the status code alone have now been wrong, so this stops
+   inferring and reports what NSE actually sends back — status, which server
+   answered, and the body. An Akamai block, an application error and a genuine
+   outage all say 503 and are only told apart by the body.        */
+/* ------------------------------------------------------------------ */
+
+async function rawGet(url, headers) {
+  try {
+    const res = await fetch(url, { headers });
+    const text = await res.text();
+    return {
+      status: res.status,
+      server: res.headers.get('server') || '—',
+      ctype: (res.headers.get('content-type') || '—').split(';')[0],
+      setCookie: readSetCookies(res).length,
+      len: text.length,
+      body: text.replace(/\s+/g, ' ').trim().slice(0, 220)
+    };
+  } catch (err) {
+    return { status: 0, server: '—', ctype: '—', setCookie: 0, len: 0, body: 'fetch failed: ' + err.message };
+  }
+}
+
+function show(label, r) {
+  const mark = r.status === 200 ? '✓' : '✗';
+  console.log(`  ${mark} ${label}`);
+  console.log(`      HTTP ${r.status}  server=${r.server}  type=${r.ctype}  bytes=${r.len}` +
+              (r.setCookie ? `  set-cookie=${r.setCookie}` : ''));
+  if (r.status !== 200 || r.len < 400) console.log(`      body: ${r.body || '(empty)'}`);
+}
+
+async function probe() {
+  const symbol = SYMBOL;
+  const to = Date.now();
+  console.log(`NSE probe — ${symbol}\n`);
+  console.log('Everything below is one request. Paste the whole output back.\n');
+
+  console.log('1. Session priming');
+  await primeSession(true);
+  console.log(`   cookies held: ${cookieJar.split('; ').filter(Boolean).map((c) => c.split('=')[0]).join(', ') || '(none)'}\n`);
+
+  console.log('2. Control — an endpoint that works for you');
+  show('option chain', await rawGet(
+    BASE + '/api/option-chain-v3?type=Indices&symbol=NIFTY&expiry=' +
+    encodeURIComponent(upcomingExpiries(1)[0] || ''),
+    Object.assign(baseHeaders(BASE + '/option-chain'), { Cookie: cookieJar })));
+  console.log('');
+
+  console.log('3. Historical, same session, varying one thing at a time');
+  const short = [to - 5 * 86400000, to];
+  const long = [to - 40 * 86400000, to];
+  const eqUrl = (range) => historyUrls(symbol, range[0], range[1])[0][1];
+
+  show('5-day range, full headers, quote-page Referer', await rawGet(eqUrl(short),
+    Object.assign(baseHeaders(BASE + '/get-quotes/equity?symbol=' + symbol), { Cookie: cookieJar })));
+  show('40-day range, full headers, quote-page Referer', await rawGet(eqUrl(long),
+    Object.assign(baseHeaders(BASE + '/get-quotes/equity?symbol=' + symbol), { Cookie: cookieJar })));
+  show('40-day range, option-chain Referer', await rawGet(eqUrl(long),
+    Object.assign(baseHeaders(BASE + '/option-chain'), { Cookie: cookieJar })));
+  show('40-day range, NO cookies', await rawGet(eqUrl(long),
+    baseHeaders(BASE + '/get-quotes/equity?symbol=' + symbol)));
+  show('40-day range, bare headers (UA only)', await rawGet(eqUrl(long),
+    { 'User-Agent': UA, Cookie: cookieJar }));
+  console.log('');
+
+  console.log('4. After actually visiting the quote page');
+  const page = await rawGet(BASE + '/get-quotes/equity?symbol=' + symbol,
+    Object.assign(baseHeaders(BASE + '/'), { Accept: 'text/html,application/xhtml+xml', Cookie: cookieJar }));
+  show('the quote page itself', page);
+  await warmFor(eqUrl(long), true);
+  show('historical, immediately after', await rawGet(eqUrl(long),
+    Object.assign(baseHeaders(BASE + '/get-quotes/equity?symbol=' + symbol), { Cookie: cookieJar })));
+  console.log('');
+
+  console.log('5. Every candidate endpoint, 40-day range');
+  for (const [name, url] of historyUrls(symbol, long[0], long[1])) {
+    show(name, await rawGet(url,
+      Object.assign(baseHeaders(refererFor(url)), { Cookie: cookieJar })));
+  }
+  console.log('');
+  console.log('If section 2 is 200 and every request in 3-5 is 503, the block is');
+  console.log('specific to the historical APIs rather than to this machine or IP.');
 }
 
 const TIMEFRAMES = ['1h', '1d', '1w', '1M'];
@@ -1635,7 +1732,11 @@ function summarise(results) {
 }
 
 if (require.main === module) {
-  if (has('check')) {
+  if (has('probe')) {
+    probe()
+      .then(() => process.exit(0))
+      .catch((e) => { console.error('probe crashed:', e.message); process.exit(1); });
+  } else if (has('check')) {
     selfCheck()
       .then((r) => process.exit(r.every((x) => x.ok) ? 0 : 1))
       .catch((e) => { console.error('self-check crashed:', e.message); process.exit(1); });
@@ -1668,7 +1769,7 @@ module.exports = {
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
   detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
   history, dailyBars, hourlyBars, parseHistory, groupBars, weekKey, monthKey,
-  isRunning, lookbackDays, historyUrl, historyUrls, TIMEFRAMES,
+  isRunning, lookbackDays, historyUrl, historyUrls, TIMEFRAMES, probe, refererFor,
   formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
   isIndex, cleanSymbol, strikeStepFromChain, marketLot,
   legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS

@@ -234,6 +234,18 @@ curl "http://127.0.0.1:8123/history?symbol=WIPRO&tfs=1d&bars=1"
 Asking for fewer candles per timeframe, or dropping the monthly box, shortens the history needed and so the
 number of requests.
 
+**Swing scan fails with 503 — find out why**
+A 503 can be NSE's bot protection, an application error, or a real outage, and the status code alone cannot
+tell them apart. This prints what NSE actually sends back for each variation:
+
+```bat
+node tools\nse-fetch.js --symbol BAJAJFINSV --probe
+```
+
+It fetches a known-working endpoint as a control, then the historical one with the range, Referer, cookies and
+headers varied one at a time, showing the status, which server answered, and the response body. That output
+identifies the cause; nothing else has.
+
 **Swing scan fails with 503 on every historical endpoint**
 Not an outage. NSE's bot protection checks the `Referer` against the API and wants a session that has browsed
 the matching page; the helper now visits the quote page first and sends the right Referer, which is what this
@@ -289,6 +301,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | `node tools\nse-fetch.js --mock` | Fixture data, no network — dry run |
 | `node tools\nse-fetch.js --dump CE` | Raw NSE payload |
 | `node tools\nse-fetch.js --dump history` | Which history endpoint answers, and its shape |
+| `node tools\nse-fetch.js --probe` | Why one refuses: status, server and body, variable by variable |
 | `node tools\nse-fetch.js --serve --token X` | App + API on one port, gated by a secret |
 | `curl "http://127.0.0.1:8123/history?symbol=RELIANCE&tfs=1d,1w,1M"` | Swing candles the Scan tab reads |
 | `python build.py` | Single-file bundle in `dist\` |
