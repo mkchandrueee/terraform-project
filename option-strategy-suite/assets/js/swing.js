@@ -321,9 +321,9 @@
       })
       .catch(function (err) {
         var msg = String(err && err.message || err);
-        status('err', /Failed to fetch|NetworkError/i.test(msg)
-          ? t('af.helperOffline', { endpoint: endpoint })
-          : t('sw.failed', { reason: msg }));
+        if (!APP.helper.handleError('swing', err, endpoint, status, run)) {
+          status('err', t('sw.failed', { reason: msg }));
+        }
         U.$('swing-output').hidden = true;
         APP.state.swing = null;
         return null;

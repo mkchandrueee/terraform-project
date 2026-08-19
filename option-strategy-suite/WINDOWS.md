@@ -29,6 +29,7 @@ Extract the zip so the folder looks like this:
 D:\Claude\niftyoptionsuite\
 ├── index.html
 ├── start.cmd            ← double-click this to run everything
+├── run-helper.cmd       ← the NSE helper, restarted automatically if it stops
 ├── start-lan.cmd        ← the same, but reachable from your phone on wifi
 ├── start-tunnel.cmd     ← one https link, phone from anywhere
 ├── serve.cmd            ← app only, no NSE helper
@@ -191,8 +192,17 @@ Something else has the port. Use another: `node tools\serve.js 8788`, then brows
 *Local helper address* box in the app to match.
 
 **The app says "No helper at http://127.0.0.1:8123"**
-The helper window is not running or has exited. Look at that window for an error, or start it with
-`node tools\nse-fetch.js`.
+This should now heal on its own. The app starts polling as soon as it sees the helper missing, and re-runs
+whatever you asked for the moment it answers — you do not need to click anything, and the status line says so
+while it waits.
+
+If it stays gone, the helper window has been closed. Start it with **`run-helper.cmd`**, which keeps it
+running: if the process ever exits, that window restarts it after a few seconds. `start.cmd` and
+`start-lan.cmd` both use it now, so a crash no longer leaves you with a dead helper and a working window.
+
+The helper itself no longer exits on an unexpected error either — it logs and stays up — so the common cause
+of this message is gone. A `Port 8123 is already in use` line in that window means an older copy is still
+running: close the other window, or use `run-helper.cmd --port 8124` and set the same address in the app.
 
 **`--check` fails at "Reach nseindia.com + session cookies"**
 Almost always your IP. NSE refuses datacenter, cloud and many VPN addresses while serving a home connection
@@ -289,6 +299,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | Command | What it does |
 |---|---|
 | `start.cmd` | Helper + app + browser, all at once |
+| `run-helper.cmd` | Just the helper, restarted automatically if it ever stops |
 | `start-lan.cmd` | The same, but reachable from your iPhone on the same wifi |
 | `start-tunnel.cmd` | One https link, usable from the phone anywhere |
 | `serve.cmd` | App only |

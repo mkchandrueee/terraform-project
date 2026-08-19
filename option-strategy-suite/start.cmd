@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 echo Starting the NSE helper on port 8123...
-start "NSE helper" cmd /k "node tools\nse-fetch.js"
+start "NSE helper" cmd /k "run-helper.cmd"
 
 echo Starting the app on port 8787...
 start "Option Suite" cmd /k "node tools\serve.js 8787"

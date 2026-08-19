@@ -1832,6 +1832,8 @@ window.APP = window.APP || {};
       'af.armed': 'Armed — will fetch at {time} and retry until 09:22:30 if the feed lags.',
       'af.filled': 'Filled from {source}: {symbol} ATM {atm}, 09:15–09:20 candle built from {ticks} ticks, as of {time} IST.',
       'af.healthy': 'Helper is up — {mode}, {symbol}, its clock reads {ist} IST.',
+      'hp.waiting': 'Waiting for the helper at {endpoint} — checking again (attempt {n}). It will pick up on its own the moment it is running; nothing to click.',
+      'hp.back': 'Helper is back — carrying on.',
       'af.helperOffline': 'No helper at {endpoint}. Start it with: node tools/nse-fetch.js',
       'af.failed': 'Fetch failed — {reason}',
       'af.badPayload': 'the helper returned an incomplete candle',
@@ -2536,6 +2538,8 @@ window.APP = window.APP || {};
       'af.armed': 'Armed — {time}-க்கு எடுக்கும், feed தாமதம் ஆனா 09:22:30 வரை retry பண்ணும்.',
       'af.filled': '{source}-ல இருந்து நிரப்பியாச்சு: {symbol} ATM {atm}, {ticks} ticks வெச்சு 09:15–09:20 candle, {time} IST நிலவரம்.',
       'af.healthy': 'Helper ஓடுது — {mode}, {symbol}, அதோட clock {ist} IST காட்டுது.',
+      'hp.waiting': '{endpoint}-ல helper-க்காக காத்திருக்கேன் — மறுபடி பாக்குறேன் (attempt {n}). அது ஓட ஆரம்பிச்ச உடனே தானா தொடரும்; எதுவும் click பண்ண வேணாம்.',
+      'hp.back': 'Helper திரும்ப வந்தாச்சு — தொடர்றேன்.',
       'af.helperOffline': '{endpoint}-ல helper இல்ல. இப்படி start பண்ணு: node tools/nse-fetch.js',
       'af.failed': 'Fetch fail ஆச்சு — {reason}',
       'af.badPayload': 'helper முழுசான candle கொடுக்கல',
@@ -3295,6 +3299,112 @@ window.APP = window.APP || {};
 })(window.APP);
 </script>
 <script>
+/* Staying connected to the local helper.
+
+   "No helper at 127.0.0.1:8123" was a dead end: the message told you to start a
+   process, and nothing happened afterwards even once you had. Two things fix
+   that, and neither is a button.
+
+   The helper itself no longer exits on an unhandled error, and the Windows
+   launcher restarts it if it ever does — see tools/nse-fetch.js and
+   run-helper.cmd. This module handles the other half: when a request fails
+   because nothing is listening, it polls /health in the background and re-runs
+   whatever failed the moment the helper answers again. Closing the laptop lid,
+   restarting the helper mid-session, or starting the app before the helper all
+   heal on their own. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+
+  /* One watcher per tab, keyed, so two tabs failing do not fight each other. */
+  var watchers = {};
+
+  /* A fetch that never reached a server, as opposed to one that answered with
+     an error. Only the former is worth waiting on. */
+  function isOffline(err) {
+    var msg = String(err && err.message || err || '');
+    return /Failed to fetch|NetworkError|ERR_CONNECTION|Load failed|abort|TypeError/i.test(msg);
+  }
+
+  function stop(key) {
+    var w = watchers[key];
+    if (!w) return;
+    if (w.timer) window.clearTimeout(w.timer);
+    delete watchers[key];
+  }
+
+  function stopAll() {
+    Object.keys(watchers).forEach(stop);
+  }
+
+  /**
+   * Begin waiting for the helper to come back.
+   *
+   * @param {string}   key       one per tab
+   * @param {string}   endpoint  base URL to poll
+   * @param {function} onStatus  (kind, message) — render into that tab's status line
+   * @param {function} onBack    called once, when /health answers again
+   */
+  function watch(key, endpoint, onStatus, onBack) {
+    stop(key);
+    var attempt = 0;
+
+    function tick() {
+      attempt += 1;
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timeout = window.setTimeout(function () { if (controller) controller.abort(); }, 4000);
+
+      window.fetch(endpoint + '/health', { signal: controller ? controller.signal : undefined })
+        .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+        .then(function () {
+          window.clearTimeout(timeout);
+          stop(key);
+          onStatus('ok', t('hp.back'));
+          /* Re-run what failed, so the user does not have to notice at all. */
+          try { onBack(); } catch (e) { /* the tab will show its own error */ }
+        })
+        .catch(function () {
+          window.clearTimeout(timeout);
+          if (!watchers[key]) return;          /* stopped while in flight */
+          onStatus('busy', t('hp.waiting', { endpoint: endpoint, n: attempt }));
+          /* 2s, then easing out to 15s — quick enough to catch a restart, slow
+             enough not to hammer a machine where the helper is simply not run. */
+          var delay = Math.min(2000 * Math.pow(1.4, attempt - 1), 15000);
+          watchers[key].timer = window.setTimeout(tick, delay);
+        });
+    }
+
+    watchers[key] = { timer: null };
+    onStatus('busy', t('hp.waiting', { endpoint: endpoint, n: 1 }));
+    watchers[key].timer = window.setTimeout(tick, 1200);
+  }
+
+  /**
+   * The standard failure branch for every tab that talks to the helper.
+   * Returns the message to show; starts a watcher when the helper is missing.
+   */
+  function handleError(key, err, endpoint, onStatus, onBack) {
+    if (isOffline(err)) {
+      onStatus('err', t('af.helperOffline', { endpoint: endpoint }));
+      watch(key, endpoint, onStatus, onBack);
+      return true;
+    }
+    return false;
+  }
+
+  APP.helper = {
+    isOffline: isOffline,
+    watch: watch,
+    stop: stop,
+    stopAll: stopAll,
+    handleError: handleError,
+    watching: function (key) { return !!watchers[key]; }
+  };
+})(window.APP);
+</script>
+<script>
 /* Tool 1 — Options Analyser (Phases 1–2).
 
    Input : the 09:15–09:20 candle of the ATM call and the ATM put.
@@ -3751,10 +3861,11 @@ window.APP = window.APP || {};
       return p;
     }).catch(function (err) {
       var msg = String(err && err.message || err);
-      var offline = /Failed to fetch|NetworkError|abort/i.test(msg);
-      status('err', offline
-        ? t('af.helperOffline', { endpoint: endpoint() })
-        : t('af.failed', { reason: msg }));
+      /* Nothing listening: say so, then wait for it and retry by itself. */
+      var handled = APP.helper.handleError('analyser', err, endpoint(), status, function () {
+        fetchNow(fresh, true);
+      });
+      if (!handled) status('err', t('af.failed', { reason: msg }));
       if (!quiet) throw err;
       return null;
     });
@@ -3816,8 +3927,10 @@ window.APP = window.APP || {};
           ist: h.ist || '—'
         }));
       })
-      .catch(function () {
-        status('err', t('af.helperOffline', { endpoint: endpoint() }));
+      .catch(function (err) {
+        if (!APP.helper.handleError('analyser', err, endpoint(), status, checkHealth)) {
+          status('err', t('af.helperOffline', { endpoint: endpoint() }));
+        }
       });
   }
 
@@ -5223,9 +5336,9 @@ window.APP = window.APP || {};
       })
       .catch(function (err) {
         var msg = String(err && err.message || err);
-        status('err', /Failed to fetch|NetworkError/i.test(msg)
-          ? t('af.helperOffline', { endpoint: endpoint })
-          : t('sc.failed', { reason: msg }));
+        if (!APP.helper.handleError('scan', err, endpoint, status, run)) {
+          status('err', t('sc.failed', { reason: msg }));
+        }
         U.$('scan-output').hidden = true;
         APP.state.scan = null;
         return null;
@@ -5605,9 +5718,9 @@ window.APP = window.APP || {};
       })
       .catch(function (err) {
         var msg = String(err && err.message || err);
-        status('err', /Failed to fetch|NetworkError/i.test(msg)
-          ? t('af.helperOffline', { endpoint: endpoint })
-          : t('sw.failed', { reason: msg }));
+        if (!APP.helper.handleError('swing', err, endpoint, status, run)) {
+          status('err', t('sw.failed', { reason: msg }));
+        }
         U.$('swing-output').hidden = true;
         APP.state.swing = null;
         return null;
@@ -5845,9 +5958,9 @@ window.APP = window.APP || {};
       })
       .catch(function (err) {
         var msg = String(err && err.message || err);
-        status('err', /Failed to fetch|NetworkError/i.test(msg)
-          ? t('af.helperOffline', { endpoint: endpoint })
-          : t('cs.failed', { reason: msg }));
+        if (!APP.helper.handleError('confidence', err, endpoint, status, run)) {
+          status('err', t('cs.failed', { reason: msg }));
+        }
         U.$('confidence-output').hidden = true;
         APP.state.confidence = null;
         return null;

@@ -132,10 +132,11 @@
       return p;
     }).catch(function (err) {
       var msg = String(err && err.message || err);
-      var offline = /Failed to fetch|NetworkError|abort/i.test(msg);
-      status('err', offline
-        ? t('af.helperOffline', { endpoint: endpoint() })
-        : t('af.failed', { reason: msg }));
+      /* Nothing listening: say so, then wait for it and retry by itself. */
+      var handled = APP.helper.handleError('analyser', err, endpoint(), status, function () {
+        fetchNow(fresh, true);
+      });
+      if (!handled) status('err', t('af.failed', { reason: msg }));
       if (!quiet) throw err;
       return null;
     });
@@ -197,8 +198,10 @@
           ist: h.ist || '—'
         }));
       })
-      .catch(function () {
-        status('err', t('af.helperOffline', { endpoint: endpoint() }));
+      .catch(function (err) {
+        if (!APP.helper.handleError('analyser', err, endpoint(), status, checkHealth)) {
+          status('err', t('af.helperOffline', { endpoint: endpoint() }));
+        }
       });
   }
 

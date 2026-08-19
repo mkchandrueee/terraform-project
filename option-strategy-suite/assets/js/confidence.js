@@ -191,9 +191,9 @@
       })
       .catch(function (err) {
         var msg = String(err && err.message || err);
-        status('err', /Failed to fetch|NetworkError/i.test(msg)
-          ? t('af.helperOffline', { endpoint: endpoint })
-          : t('cs.failed', { reason: msg }));
+        if (!APP.helper.handleError('confidence', err, endpoint, status, run)) {
+          status('err', t('cs.failed', { reason: msg }));
+        }
         U.$('confidence-output').hidden = true;
         APP.state.confidence = null;
         return null;

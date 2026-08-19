@@ -22,7 +22,7 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
 if not defined LANIP set LANIP=your-pc-ip
 
 echo Starting the NSE helper on port 8123 (all interfaces)...
-start "NSE helper" cmd /k "node tools\nse-fetch.js --host 0.0.0.0"
+start "NSE helper" cmd /k "run-helper.cmd --host 0.0.0.0"
 
 echo Starting the app on port 8787 (all interfaces)...
 start "Option Suite" cmd /k "node tools\serve.js 8787 lan"

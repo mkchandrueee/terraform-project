@@ -337,6 +337,22 @@ session its high, low and close are all still moving, so every level moves with 
 the close. And the levels are **share prices**, as on the swing scan: to trade one as an option you still pick
 a strike and read that contract's own premium, which is what *Take top to Analyser* sets up.
 
+### Staying connected
+
+"No helper at 127.0.0.1:8123" used to be a dead end — it named a command and then nothing happened, even once
+you had run it. Three changes remove it:
+
+- **The helper does not exit on an unexpected error.** Its request handler is async, so anything throwing
+  outside a route's own try/catch became an unhandled rejection, which Node has terminated the process for
+  since v15 — one malformed request could take it down. The handler is wrapped, process-level handlers log
+  and stay up, and `EADDRINUSE` prints what to do instead of a stack trace.
+- **`run-helper.cmd` restarts it** if it ever does stop, so a closed window or a sleeping laptop is not fatal.
+  `start.cmd` and `start-lan.cmd` both use it.
+- **The app waits and retries by itself.** When a request finds nothing listening, it polls `/health` — 2s
+  easing out to 15s — and re-runs whatever failed the moment the helper answers. Starting the app before the
+  helper, or restarting the helper mid-session, both heal with no clicks. A test kills the helper mid-session
+  and asserts the fetch completes on its own once it returns.
+
 ## Auto-fetching the first candle from NSE
 
 The Analyser tab can fill the CE/PE OHLC fields itself instead of you typing them at 09:21. Two things make
@@ -565,6 +581,7 @@ option-strategy-suite/
         ├── scan.js            tool 5 — multi-timeframe / strike / expiry scan
         ├── swing.js           tool 5b — 1h / 1d / 1w / 1M on the underlying
         ├── confidence.js      tool 6 — the whole board, ranked
+        ├── helper.js          reconnects and retries when the helper drops
         ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference
 ```

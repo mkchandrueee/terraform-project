@@ -1573,8 +1573,31 @@ function presentedToken(req, url) {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${HOST}:${PORT}`);
+/**
+ * Every route already try/catches its own work, but the handler is async, and
+ * anything throwing OUTSIDE those blocks — a malformed request URL reaching
+ * new URL(), a write to an already-closed socket — becomes an unhandled
+ * rejection, which Node has terminated the process for since v15. One bad
+ * request could take the helper down, which is exactly what "no helper at
+ * 127.0.0.1:8123" looks like from the app. So the whole thing is wrapped.
+ */
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((err) => {
+    console.error(`  ! request failed: ${req.method} ${req.url} — ${err && err.message}`);
+    try {
+      if (!res.headersSent) send(res, 500, { error: 'helper error: ' + String(err && err.message || err) });
+      else res.end();
+    } catch (e) { /* socket already gone */ }
+  });
+});
+
+async function handle(req, res) {
+  let url;
+  try {
+    url = new URL(req.url, `http://${HOST}:${PORT}`);
+  } catch (e) {
+    return send(res, 400, { error: 'malformed request URL' });
+  }
 
   if (req.method === 'OPTIONS') return send(res, 204, {});
 
@@ -1660,6 +1683,29 @@ const server = http.createServer(async (req, res) => {
   /* Anything left is the app itself when --serve is on, a 404 otherwise. */
   if (SERVE_APP) return serveStatic(req, res, url);
   return send(res, 404, { error: 'try /health, /first-candle, /scan, /history or /universe' });
+}
+
+/* A helper that dies is worse than a helper that misbehaves: the app can retry
+   a bad answer, but it cannot retry a process that is gone. Log and stay up. */
+process.on('uncaughtException', (err) => {
+  console.error('  ! uncaught error (staying up):', err && err.stack || err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('  ! unhandled rejection (staying up):', err && err.stack || err);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\nPort ${PORT} is already in use — another helper is probably still running.`);
+    console.error(`Either use that one, or start this on another port:`);
+    console.error(`  node tools/nse-fetch.js --port ${PORT + 1}`);
+    console.error(`(then set the same address in the app's "Local helper address" box)`);
+  } else if (err.code === 'EACCES') {
+    console.error(`\nNot allowed to listen on port ${PORT}. Try a port above 1024.`);
+  } else {
+    console.error('\nServer error:', err.message);
+  }
+  process.exit(1);
 });
 
 /* ------------------------------------------------------------------ */
