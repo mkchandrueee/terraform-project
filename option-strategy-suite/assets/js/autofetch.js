@@ -113,6 +113,7 @@
     status('busy', t('af.fetching'));
     return request(fresh).then(function (p) {
       if (!validPayload(p)) throw new Error(t('af.badPayload'));
+      APP.helper.ok('analyser');
       applyPayload(p);
       var lot = applyLotSize(p);
       var msg = t('af.filled', {

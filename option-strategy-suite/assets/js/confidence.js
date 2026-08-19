@@ -178,6 +178,7 @@
       })
       .then(function (payload) {
         if (!payload.rows || !payload.rows.length) throw new Error(t('cs.empty'));
+        APP.helper.ok('confidence');
         var result = evaluate(payload, APP.config.get(), options());
         last = result;
         APP.state.confidence = result;

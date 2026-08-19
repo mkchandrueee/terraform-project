@@ -309,6 +309,7 @@
           var why = (payload.skipped || [])[0];
           throw new Error(why && why.reason ? String(why.reason) : t('sw.empty'));
         }
+        APP.helper.ok('swing');
         var result = evaluate(payload, APP.config.get());
         last = result;
         APP.state.swing = result;

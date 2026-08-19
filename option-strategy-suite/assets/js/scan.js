@@ -241,6 +241,7 @@
           }
           throw new Error(why || t('sc.empty'));
         }
+        APP.helper.ok('scan');
         var lot = applyLotSize(payload);
         var result = evaluate(payload, APP.config.get());
         last = result;
