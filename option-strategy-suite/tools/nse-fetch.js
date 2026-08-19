@@ -452,11 +452,258 @@ async function optionChain(symbol) {
  * The timestamps are the one part of this that is undocumented and may need a
  * nudge — run with --dump CE to see what your feed actually sends.
  */
-async function tickSeries(identifier) {
+async function tickSeries(identifier, indices) {
   const url = BASE + '/api/chart-databyindex' +
-              `?index=${encodeURIComponent(identifier)}&indices=false`;
+              `?index=${encodeURIComponent(identifier)}&indices=${indices ? 'true' : 'false'}`;
   const data = await nseJson(url);
   return (data && (data.grapthData || data.graphData)) || [];
+}
+
+/* ------------------------------------------------------------------ */
+/* history — hourly / daily / weekly / monthly bars of the UNDERLYING.
+   A different question from the intraday scan: not "the first candle of the
+   day at length N" but "the last completed candle at this timeframe", which is
+   what a swing or positional read is built on. Options have no daily history
+   worth reading (each contract is young and thin), so these are the stock's or
+   index's own price bars.                                             */
+/* ------------------------------------------------------------------ */
+
+function ddmmyyyy(ms) {
+  const p = istParts(ms);
+  return String(p.d).padStart(2, '0') + '-' + String(p.m + 1).padStart(2, '0') + '-' + p.y;
+}
+
+/** NSE keeps equities and indices on separate historical endpoints. */
+function historyUrl(symbol, fromMs, toMs) {
+  const from = ddmmyyyy(fromMs), to = ddmmyyyy(toMs);
+  if (isIndex(symbol)) {
+    return BASE + '/api/historical/indicesHistory?indexType=' +
+           encodeURIComponent(INDEX_HISTORY_NAMES[symbol] || symbol) +
+           '&from=' + from + '&to=' + to;
+  }
+  return BASE + '/api/historical/cm/equity?symbol=' + encodeURIComponent(symbol) +
+         '&series=' + encodeURIComponent('["EQ"]') + '&from=' + from + '&to=' + to;
+}
+
+/* The historical endpoint keys on the index's display name, not its symbol. */
+const INDEX_HISTORY_NAMES = {
+  NIFTY: 'NIFTY 50',
+  BANKNIFTY: 'NIFTY BANK',
+  FINNIFTY: 'NIFTY FINANCIAL SERVICES',
+  MIDCPNIFTY: 'NIFTY MIDCAP SELECT',
+  NIFTYNXT50: 'NIFTY NEXT 50'
+};
+
+/** One row shape out of two very different payloads. Ascending by date. */
+function parseHistory(payload) {
+  const data = (payload && payload.data) || [];
+  const list = Array.isArray(data) ? data : (data.indexCloseOnlineRecords || []);
+
+  const out = [];
+  for (const r of list) {
+    const o = Number(r.CH_OPENING_PRICE != null ? r.CH_OPENING_PRICE : r.EOD_OPEN_INDEX_VAL);
+    const h = Number(r.CH_TRADE_HIGH_PRICE != null ? r.CH_TRADE_HIGH_PRICE : r.EOD_HIGH_INDEX_VAL);
+    const l = Number(r.CH_TRADE_LOW_PRICE != null ? r.CH_TRADE_LOW_PRICE : r.EOD_LOW_INDEX_VAL);
+    const c = Number(r.CH_CLOSING_PRICE != null ? r.CH_CLOSING_PRICE : r.EOD_CLOSE_INDEX_VAL);
+    const stamp = r.CH_TIMESTAMP || r.mTIMESTAMP || r.EOD_TIMESTAMP || r.TIMESTAMP;
+    const ms = Date.parse(stamp);
+    if (![o, h, l, c].every(Number.isFinite) || !Number.isFinite(ms)) continue;
+    out.push({ t: ms, o: o, h: h, l: l, c: c, day: istDateKey(ms) });
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+async function dailyBars(symbol, days) {
+  /* Ask for calendar days, not sessions — roughly 5 sessions per 7 days, plus
+     a fortnight of slack for holidays. */
+  const span = Math.max(30, Math.ceil(days * 1.5) + 14);
+  const to = Date.now();
+  const from = to - span * 86400000;
+  const payload = await nseJson(historyUrl(symbol, from, to));
+  const bars = parseHistory(payload);
+  if (!bars.length) {
+    throw new Error(
+      'the historical endpoint returned no rows for ' + symbol +
+      '. NSE serves equities and indices from different URLs; this used\n  ' +
+      historyUrl(symbol, from, to)
+    );
+  }
+  return bars;
+}
+
+/** ISO-ish week key — Monday starts the week, which is how NSE's weeks run. */
+function weekKey(ms) {
+  const d = new Date(ms + IST_OFFSET_MIN * 60000);
+  const dow = (d.getUTCDay() + 6) % 7;              /* Mon = 0 */
+  const monday = new Date(d.getTime() - dow * 86400000);
+  return istDateKey(monday.getTime() - IST_OFFSET_MIN * 60000);
+}
+
+function monthKey(ms) {
+  const p = istParts(ms);
+  return p.y + '-' + String(p.m + 1).padStart(2, '0');
+}
+
+/** Fold daily bars into weeks or months: first open, max high, min low, last close. */
+function groupBars(bars, keyOf) {
+  const groups = new Map();
+  for (const b of bars) {
+    const k = keyOf(b.t);
+    const g = groups.get(k);
+    if (!g) {
+      groups.set(k, { key: k, t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, days: 1, last: b.t });
+    } else {
+      g.h = Math.max(g.h, b.h);
+      g.l = Math.min(g.l, b.l);
+      g.c = b.c;
+      g.days += 1;
+      g.last = b.t;
+    }
+  }
+  return Array.from(groups.values()).sort((a, b) => a.t - b.t);
+}
+
+/** Today's ticks folded into clock hours from the open. Intraday only — NSE
+    publishes no multi-day intraday history on this endpoint. */
+async function hourlyBars(symbol, nowMs) {
+  const id = isIndex(symbol)
+    ? (INDEX_HISTORY_NAMES[symbol] || symbol)
+    : symbol.toUpperCase() + 'EQN';
+  const raw = await tickSeries(id, isIndex(symbol));
+  if (!raw.length) throw new Error('no intraday ticks for ' + symbol + ' (identifier tried: ' + id + ')');
+
+  const conv = detectTickOffset(raw);
+  const ticks = shiftTicks(raw, conv.offset);
+  const anchor = ticks[0][0];
+  const open = istTimeToEpoch(CANDLE_FROM, anchor);
+  const lastTick = ticks[ticks.length - 1][0];
+
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const from = open + i * 3600000;
+    const to = from + 3600000;
+    /* Only hours that have actually closed. Mid-hour the feed still has ticks
+       for the current one, and folding those into a "candle" would invent a
+       high and low that are not final. */
+    if (to > Math.max(nowMs, lastTick)) break;
+    const bar = aggregate(ticks, from, to);
+    if (bar) out.push(Object.assign({ t: from, key: istClock(from).slice(0, 5) }, bar));
+  }
+  return { bars: out, session: istDateKey(anchor), convention: conv.convention };
+}
+
+const TIMEFRAMES = ['1h', '1d', '1w', '1M'];
+
+/* Calendar days of daily history each timeframe needs to yield `want`
+   COMPLETED bars — the current week and month are always dropped, so ask for
+   one extra period on top. */
+function lookbackDays(tf, want) {
+  if (tf === '1d') return want + 12;
+  if (tf === '1w') return (want + 2) * 7 + 10;
+  return (want + 2) * 31 + 10;
+}
+
+/**
+ * Is this the bar still being formed?
+ *
+ * The whole point of a daily/weekly/monthly read is the CLOSED candle. Half a
+ * month of price action wearing a month's label would produce levels that
+ * change under you every session, so the running bar is dropped unless it is
+ * explicitly asked for, and is flagged when it is.
+ */
+function isRunning(tf, bar, nowMs) {
+  if (tf === '1M') return monthKey(bar.t) === monthKey(nowMs);
+  if (tf === '1w') return weekKey(bar.t) === weekKey(nowMs);
+  if (tf === '1d') {
+    if (istDateKey(bar.t) !== istDateKey(nowMs)) return false;
+    return nowMs < istTimeToEpoch('15:30', nowMs);   /* today, still trading */
+  }
+  return false;   /* hourly bars are only emitted once their hour has closed */
+}
+
+async function history(opts, nowMs) {
+  const symbol = cleanSymbol(opts.symbol, SYMBOL);
+  if (MOCK) return mockHistory(opts, nowMs, symbol);
+
+  const tfs = (opts.tfs && opts.tfs.length ? opts.tfs : TIMEFRAMES)
+    .filter((tf) => TIMEFRAMES.indexOf(tf) !== -1);
+  const want = Math.max(1, Math.min(10, opts.bars || 1));
+  const keepRunning = !!opts.running;
+  const rows = [];
+  const skipped = [];
+  let session = null, convention = null;
+
+  /* Daily is the source for daily, weekly and monthly alike, so fetch it once
+     — at whatever lookback the hungriest requested timeframe needs. */
+  let daily = null;
+  const needDaily = tfs.filter((tf) => tf !== '1h');
+  if (needDaily.length) {
+    const days = Math.max.apply(null, needDaily.map((tf) => lookbackDays(tf, want)));
+    try {
+      daily = await dailyBars(symbol, days);
+    } catch (err) {
+      skipped.push({ tf: 'daily history', reason: err.message });
+    }
+  }
+
+  function emit(tf, series) {
+    const running = series.filter((b) => isRunning(tf, b, nowMs));
+    const closed = series.filter((b) => !isRunning(tf, b, nowMs));
+    if (!closed.length && !keepRunning) {
+      skipped.push({ tf: tf, reason: 'no completed ' + tf + ' bar yet — only one still forming' });
+      return;
+    }
+    closed.slice(-want).forEach((b) => {
+      rows.push({ tf: tf, label: b.key, running: false, bars: b.days || 1, bar: b });
+    });
+    if (keepRunning) {
+      running.forEach((b) => {
+        rows.push({ tf: tf, label: b.key, running: true, bars: b.days || 1, bar: b });
+      });
+    }
+  }
+
+  for (const tf of tfs) {
+    try {
+      if (tf === '1h') {
+        const h = await hourlyBars(symbol, nowMs);
+        session = h.session;
+        convention = h.convention;
+        if (!h.bars.length) {
+          skipped.push({ tf: tf, reason: 'no completed hour yet in this session' });
+        } else {
+          h.bars.slice(-want).forEach((b) => {
+            rows.push({ tf: tf, label: b.key + ' IST', running: false, bars: 1, bar: b });
+          });
+        }
+        continue;
+      }
+      if (!daily) { skipped.push({ tf: tf, reason: 'no daily history to build it from' }); continue; }
+
+      if (tf === '1d') emit(tf, daily.map((b) => Object.assign({ key: b.day }, b)));
+      else if (tf === '1w') emit(tf, groupBars(daily, weekKey));
+      else emit(tf, groupBars(daily, monthKey));
+    } catch (err) {
+      skipped.push({ tf: tf, reason: err.message });
+    }
+  }
+
+  return {
+    symbol: symbol,
+    kind: isIndex(symbol) ? 'index' : 'equity',
+    instrument: 'underlying',
+    session: session,
+    /* Before the open, or on a holiday, the tick feed serves the LAST session.
+       The hourly rows are then yesterday's, which must not read as today's. */
+    stale: session ? session !== istDateKey(nowMs) : false,
+    tickConvention: convention || 'n/a',
+    dailyBars: daily ? daily.length : 0,
+    asOf: istClock(nowMs),
+    source: 'nseindia.com',
+    rows: rows,
+    skipped: skipped
+  };
 }
 
 function pickContracts(payload, strike, expiry) {
@@ -717,6 +964,41 @@ function mockScan(opts, nowMs, symbol) {
   };
 }
 
+/* Deterministic swing fixture. Ranges widen with the timeframe, which is the
+   thing worth seeing: a monthly candle is not a daily one scaled up. */
+function mockHistory(opts, nowMs, symbol) {
+  symbol = cleanSymbol(symbol, SYMBOL);
+  const index = isIndex(symbol);
+  const base = index ? 24350 : 1512;
+  const tfs = (opts.tfs && opts.tfs.length ? opts.tfs : TIMEFRAMES)
+    .filter((tf) => TIMEFRAMES.indexOf(tf) !== -1);
+  const want = Math.max(1, Math.min(10, opts.bars || 1));
+  const WIDTH = { '1h': 0.004, '1d': 0.012, '1w': 0.028, '1M': 0.06 };
+  const rows = [];
+
+  tfs.forEach(function (tf, ti) {
+    for (let i = want - 1; i >= 0; i--) {
+      const drift = base * 0.002 * (ti - i);
+      const span = base * WIDTH[tf];
+      const o = round2(base + drift);
+      const c = round2(o + span * 0.42);
+      rows.push({
+        tf: tf,
+        label: tf === '1h' ? ['09:15', '10:15', '11:15'][i % 3] + ' IST' : 'MOCK-' + tf + '-' + (i + 1),
+        running: false,
+        bars: tf === '1w' ? 5 : (tf === '1M' ? 21 : 1),
+        bar: { t: nowMs - i * 86400000, o: o, h: round2(o + span * 0.6), l: round2(o - span * 0.4), c: c, ticks: 60 }
+      });
+    }
+  });
+
+  return {
+    symbol: symbol, kind: index ? 'index' : 'equity', instrument: 'underlying',
+    session: istDateKey(nowMs), stale: false, tickConvention: 'mock', dailyBars: 60,
+    asOf: istClock(nowMs), source: 'mock', rows: rows, skipped: []
+  };
+}
+
 function round2(n) { return Number(n.toFixed(2)); }
 
 function mockPayload(nowMs, symbol) {
@@ -901,6 +1183,21 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === '/history') {
+    try {
+      const raw = url.searchParams.get('tfs');
+      const opts = {
+        symbol: url.searchParams.get('symbol') || SYMBOL,
+        tfs: raw ? raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : TIMEFRAMES,
+        bars: Number(url.searchParams.get('bars')) || 1,
+        running: url.searchParams.get('running') === '1'
+      };
+      return send(res, 200, await history(opts, Date.now()));
+    } catch (err) {
+      return send(res, 502, { error: String(err.message || err), mode: MOCK ? 'mock' : 'live' });
+    }
+  }
+
   if (url.pathname === '/first-candle') {
     try {
       const payload = await cachedFirstCandle(
@@ -913,7 +1210,7 @@ const server = http.createServer(async (req, res) => {
 
   /* Anything left is the app itself when --serve is on, a 404 otherwise. */
   if (SERVE_APP) return serveStatic(req, res, url);
-  return send(res, 404, { error: 'try /health, /first-candle or /scan' });
+  return send(res, 404, { error: 'try /health, /first-candle, /scan or /history' });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1110,7 +1407,7 @@ if (require.main === module) {
       console.log(`  symbol    ${SYMBOL} (default; ?symbol=RELIANCE etc. per request)`);
       console.log(`  candle    ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
-      console.log(`  endpoints /health  /first-candle  /scan`);
+      console.log(`  endpoints /health  /first-candle  /scan  /history`);
       if (SERVE_APP) {
         console.log(`  app       served from this same port — open http://${HOST}:${PORT}/`);
       } else {
@@ -1129,6 +1426,8 @@ module.exports = {
   aggregate, atmStrike, istTimeToEpoch, istClock, istDateKey, readSetCookies,
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
   detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
+  history, dailyBars, hourlyBars, parseHistory, groupBars, weekKey, monthKey,
+  isRunning, lookbackDays, historyUrl, TIMEFRAMES,
   formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
   isIndex, cleanSymbol, strikeStepFromChain, marketLot,
   legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS

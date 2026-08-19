@@ -705,6 +705,36 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* 3. Momentum scrolling inside the wide scan table rather than the whole page. */
 .table-scroll { -webkit-overflow-scrolling: touch; }
+
+/* ---------- scan mode switch ----------
+   Intraday and swing are different questions, not different filters, so they
+   get a segmented control rather than another checkbox. */
+.mode-switch { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .mode-switch { grid-template-columns: 1fr 1fr; } }
+.mode-btn {
+  font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg-elev-2); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.mode-btn b { font-size: 14px; font-weight: 650; }
+.mode-btn em { font-size: 12px; color: var(--text-faint); }
+.mode-btn:hover { border-color: #2e4155; color: var(--text); }
+.mode-btn.is-active {
+  border-color: var(--accent); color: var(--text);
+  background: rgba(55, 214, 160, .09);
+}
+.mode-btn.is-active b { color: var(--accent); }
+.mode-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+
+.checkfield > .checkline { margin-top: 6px; }
+.running-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em;
+  color: var(--warn); border: 1px solid rgba(255, 180, 84, .45);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
 </style>
 </head>
 <body>
@@ -744,6 +774,7 @@ input[type=number] { -moz-appearance: textfield; }
         <label class="field"><span data-i18n="cfg.t3Mult"></span><input type="number" id="cfg-t3Mult" step="0.1" min="0.1" max="20" /></label>
         <label class="field"><span><span data-i18n="cfg.slRangeMult"></span> <em data-i18n="cfg.slRangeMult.hint"></em></span><input type="number" id="cfg-slRangeMult" step="0.05" min="0" max="5" /></label>
         <label class="field"><span data-i18n="cfg.takeConfidence"></span><input type="number" id="cfg-takeConfidence" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.swingMinStepPct"></span> <em data-i18n="cfg.swingMinStepPct.hint"></em></span><input type="number" id="cfg-swingMinStepPct" step="0.05" min="0" max="10" /></label>
         <label class="field"><span data-i18n="cfg.bookT1Pct"></span><input type="number" id="cfg-bookT1Pct" step="5" min="0" max="100" /></label>
         <label class="field"><span data-i18n="cfg.bookT2Pct"></span><input type="number" id="cfg-bookT2Pct" step="5" min="0" max="100" /></label>
         <label class="field"><span data-i18n="cfg.holdT3Pct"></span><input type="number" id="cfg-holdT3Pct" step="5" min="0" max="100" /></label>
@@ -1221,6 +1252,71 @@ input[type=number] { -moz-appearance: textfield; }
 
     <div class="card">
       <div class="card-head">
+        <h2 data-i18n="sc.modeTitle"></h2>
+        <p class="muted" data-i18n="sc.modeDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="mode-switch" role="tablist" aria-label="Scan mode">
+          <button type="button" class="mode-btn is-active" id="mode-intraday" role="tab" aria-selected="true">
+            <b data-i18n="sc.modeIntraday"></b><em data-i18n="sc.modeIntradayHint"></em>
+          </button>
+          <button type="button" class="mode-btn" id="mode-swing" role="tab" aria-selected="false">
+            <b data-i18n="sc.modeSwing"></b><em data-i18n="sc.modeSwingHint"></em>
+          </button>
+        </div>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="sc-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+        <p class="muted small" id="sc-symbol-note" data-i18n="sym.note"></p>
+      </div>
+    </div>
+
+    <div class="card" id="swing-setup" hidden>
+      <div class="card-head">
+        <h2 data-i18n="sw.setupTitle"></h2>
+        <p class="muted" data-i18n="sw.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <fieldset class="tf-box">
+          <legend data-i18n="sw.timeframes"></legend>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1h" checked /> <span data-i18n="sw.tf1hLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1d" checked /> <span data-i18n="sw.tf1dLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1w" checked /> <span data-i18n="sw.tf1wLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1M" checked /> <span data-i18n="sw.tf1MLong"></span></label>
+        </fieldset>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field"><span><span data-i18n="sw.bars"></span> <em data-i18n="sw.barsHint"></em></span><input type="number" id="sw-bars" step="1" min="1" max="10" value="1" /></label>
+          <label class="field checkfield"><span data-i18n="sw.runningLabel"></span>
+            <label class="checkline"><input type="checkbox" id="sw-running" /> <span data-i18n="sw.runningHint"></span></label>
+          </label>
+        </div>
+
+        <p class="af-status af-idle" id="sw-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-sw-run" data-i18n="sw.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sw-use" data-i18n="sw.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sw-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="sw.note"></p>
+      </div>
+    </div>
+
+    <div id="swing-output" hidden>
+      <div class="card verdict-card an-verdict" id="sw-headline"></div>
+      <div class="card" id="sw-agreement"></div>
+      <div class="card" id="sw-table"></div>
+    </div>
+
+    <div class="card" id="intraday-setup">
+      <div class="card-head">
         <h2 data-i18n="sc.setupTitle"></h2>
         <p class="muted" data-i18n="sc.setupDesc"></p>
       </div>
@@ -1234,18 +1330,8 @@ input[type=number] { -moz-appearance: textfield; }
         </fieldset>
 
         <div class="ohlc ohlc-3" style="margin-top:14px">
-          <label class="field field-symbol">
-            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
-            <input type="text" id="sc-symbol" list="symbol-list" spellcheck="false"
-                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
-          </label>
           <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
           <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
-        </div>
-        <p class="muted small" id="sc-symbol-note" data-i18n="sym.note"></p>
-
-        <div class="ohlc ohlc-3" style="margin-top:10px">
-          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
         </div>
 
         <p class="af-status af-idle" id="sc-status" role="status" aria-live="polite"></p>
@@ -1525,20 +1611,6 @@ window.APP = window.APP || {};
       'cfg.bookT1Pct': 'Book at Target 1 (%)',
       'cfg.bookT2Pct': 'Book at Target 2 (%)',
       'cfg.holdT3Pct': 'Hold to Target 3 (%)',
-      'cfg.entryPremiumPct': 'Close-க்கு மேல entry premium',
-      'cfg.entryPremiumPct.hint': '(entry = close + இந்த %)',
-      'cfg.targetStepMult': 'Target step',
-      'cfg.targetStepMult.hint': '(first-candle range × எத்தனை)',
-      'cfg.minTargetStep': 'குறைந்தபட்ச target step',
-      'cfg.minTargetStep.hint': '(points floor)',
-      'cfg.t2Mult': 'Target 2 (× step)',
-      'cfg.t3Mult': 'Target 3 (× step)',
-      'cfg.slRangeMult': 'Low-க்கு கீழ stop loss',
-      'cfg.slRangeMult.hint': '(× range)',
-      'cfg.takeConfidence': 'YES சொல்ல வேண்டிய confidence',
-      'cfg.bookT1Pct': 'Target 1-ல book (%)',
-      'cfg.bookT2Pct': 'Target 2-ல book (%)',
-      'cfg.holdT3Pct': 'Target 3 வரை hold (%)',
       'cfg.g2': 'T1 Decision Helper',
       'cfg.bodyStrong': 'Strong body threshold',
       'cfg.bodyStrong.hint': '(body ÷ range for full credit)',
@@ -1562,6 +1634,8 @@ window.APP = window.APP || {};
       'cfg.minRR': 'Min. risk : reward to T2',
       'cfg.takeThreshold': 'Confluence needed for a full-size trade',
       'cfg.lotSize': 'Lot size',
+      'cfg.swingMinStepPct': 'Swing step floor',
+      'cfg.swingMinStepPct.hint': '(% of price, replaces the ₹16 premium floor)',
       'cfg.costPerLot': 'Brokerage & charges per lot',
       'cfg.baseWinRate': 'Your base win rate',
       'cfg.baseWinRate.hint': '(from your own journal)',
@@ -1594,7 +1668,6 @@ window.APP = window.APP || {};
       'an.buyCall': 'BUY CALL',
       'an.buyPut': 'BUY PUT',
       'an.reason': '{side} candle: {dir} · body {body} · close position {close} of range · PCR {pcr} ({pcrBias}).',
-      'an.entryPrice': 'Entry price',
       'an.condTitle': 'Entry conditions',
       'an.condDesc': 'Every one of these should read green before the order goes in.',
       'an.cond.closed': '5-minute candle fully closed?',
@@ -1615,10 +1688,8 @@ window.APP = window.APP || {};
       'an.putTargets': 'PUT TARGETS',
       'an.tradeThis': 'trade this side',
       'an.entry': 'ENTRY',
-      'an.target1': 'TARGET 1',
       'an.target2': 'TARGET 2',
       'an.target3': 'TARGET 3',
-      'an.stopLoss': 'STOP LOSS',
       'an.pts': 'pts',
       'an.book': 'BOOK {pct}%',
       'an.hold': 'HOLD {pct}%',
@@ -1631,9 +1702,6 @@ window.APP = window.APP || {};
       'an.rule4': 'At Target 2 {t2}, book another 40% — 80% of the position is now closed.',
       'an.rule5': 'Let the last 20% run to Target 3 {t3}, and move the stop to {entry} so it cannot turn into a loss.',
       'an.rule6': 'If price falls back below {entry} before Target 1, exit the rest — the setup has failed.',
-      'an.sendT1': 'Send to T1 Helper',
-      'an.sendT1Call': 'Send CALL to T1 Helper',
-      'an.sendT1Put': 'Send PUT to T1 Helper',
       'an.step1': 'Step 1',
       'an.step1.title': 'ATM strike selection',
       'an.step1.desc': 'Open price of the 09:15–09:20 NIFTY candle, rounded down to the 100 strike — 23670 gives 23600.',
@@ -1908,11 +1976,64 @@ window.APP = window.APP || {};
       'g.f4': 'Stoploss Pullback Entry — side and zones',
       'g.f4n': 'Entries sit inside the first-candle range rather than above it — the setup buys the pullback into liquidity, which is why no stop loss is placed.',
 
+      'sc.modeTitle': 'What to scan',
+      'sc.modeDesc': 'Two different questions on one tab. Both use the same maths; they differ in which candle they read.',
+      'sc.modeIntraday': 'Intraday — first candle',
+      'sc.modeIntradayHint': 'the 09:15 candle, across option strikes and expiries',
+      'sc.modeSwing': 'Swing — 1h / 1d / 1w / 1M',
+      'sc.modeSwingHint': 'the last completed candle of the stock or index itself',
+
+      'sw.setupTitle': 'Swing timeframes',
+      'sw.setupDesc': 'The last COMPLETED candle at each length. A candle still forming is excluded, because its high, low and close are not final — levels built on it would move under you every session.',
+      'sw.timeframes': 'Timeframes',
+      'sw.tf1h': '1h',
+      'sw.tf1d': '1d',
+      'sw.tf1w': '1w',
+      'sw.tf1M': '1M',
+      'sw.tf1hLong': '1 hour — intraday momentum (today only)',
+      'sw.tf1dLong': '1 day — short-term swing',
+      'sw.tf1wLong': '1 week — positional',
+      'sw.tf1MLong': '1 month — positional, slowest',
+      'sw.bars': 'Candles per timeframe',
+      'sw.barsHint': '(1 = the latest closed one)',
+      'sw.runningLabel': 'Forming candle',
+      'sw.runningHint': 'also show the one still open',
+      'sw.run': 'Run swing scan',
+      'sw.useBest': 'Take best to Analyser',
+      'sw.idle': 'Idle — pick your timeframes and run it.',
+      'sw.running.status': 'Reading history…',
+      'sw.done': 'Read {rows} candles for {symbol} from {source}.',
+      'sw.failed': 'Swing scan failed — {reason}',
+      'sw.empty': 'the helper returned no candles',
+      'sw.note': 'Needs the local helper: daily history comes from NSE\u2019s historical endpoint, and weekly and monthly are folded from it. Hourly is built from today\u2019s ticks, so it only exists during and after a session.',
+      'sw.bestIs': 'BEST — {side} {symbol} on the {tf} candle',
+      'sw.noneQualify': 'NO TIMEFRAME QUALIFIES — STAND ASIDE',
+      'sw.context': '{symbol} ({kind}) — {rows} candles read. Levels below are SHARE PRICES, not option premiums.',
+      'sw.kindIndex': 'index',
+      'sw.kindEquity': 'stock',
+      'sw.staleHour': 'The hourly rows are from session {session}, not today — the feed is serving the last completed session.',
+      'sw.long': 'LONG',
+      'sw.short': 'SHORT',
+      'sw.longShort': 'LONG',
+      'sw.shortShort': 'SHORT',
+      'sw.running': 'still forming',
+      'sw.trendTitle': 'Do the timeframes agree?',
+      'sw.trendDesc': 'The latest closed candle on each. An hourly signal fighting the weekly and monthly is the one worth being careful about.',
+      'sw.aligned': 'all {n} agree — {side}',
+      'sw.split': 'split — {longs} long / {shorts} short',
+      'sw.tableTitle': 'Every candle read',
+      'sw.tableDesc': '{n} rows, shortest timeframe first. Dimmed rows fall below the confidence threshold.',
+      'sw.skipped': 'Some timeframes were skipped — {detail}',
+      'sw.priceNote': 'These levels are prices of the underlying. To trade them as options you still pick a strike and read that contract\u2019s own premium — the ₹16 minimum target step used on premiums is replaced here by a percentage of price, since a flat rupee floor means nothing across a ₹100 and a ₹3,000 stock.',
+      'sw.h.tf': 'TF',
+      'sw.h.period': 'Candle',
+      'sw.h.rr': 'R:R to T2',
+
       'tab.scan': 'Scan',
       'sc.pill': 'Trail',
       'sc.badge': 'Multi-timeframe scan',
-      'sc.hero': 'Does the setup hold at 15, 30 and 60 minutes?',
-      'sc.heroSub': 'The same first-candle maths, measured over longer opening candles and across neighbouring strikes and expiries. A side that only shows up on 5 minutes is noise; one that holds across all of them is worth trading.',
+      'sc.hero': 'Does the setup hold on a longer candle?',
+      'sc.heroSub': 'The same maths measured over more than one timeframe. Intraday widens the first candle of the day to 15, 30 and 60 minutes across neighbouring strikes and expiries; swing reads the stock or index itself hourly, daily, weekly and monthly. A side that shows up on only one timeframe is noise.',
       'sc.setupTitle': 'What to scan',
       'sc.setupDesc': 'Each timeframe is the first candle of the day at that length — 15m is 09:15–09:30, 60m is 09:15–10:15.',
       'sc.timeframes': 'Timeframes',
@@ -1970,6 +2091,8 @@ window.APP = window.APP || {};
       'g.p6': 'Phase 6 · Scan (does it hold on other timeframes?)',
       'g.p6s17': '<b>Widen the same maths.</b> The scan measures the first candle of the day over 5, 15, 30 and 60 minutes, across neighbouring strikes and the next expiry, running every row through the Option Analyser model unchanged.',
       'g.p6s18': '<b>Read the agreement, not just the best row.</b> All timeframes picking the same side is the confirmation worth having; a side that appears only on the 5-minute candle is noise. Send the best row to the Analyser to carry on through the normal workflow.',
+      'g.f7': 'Swing scan — hourly, daily, weekly, monthly',
+      'g.f7n': 'The same formulas read on the stock or index itself, so the levels come out in share prices. A short is the long reflected, not a different model — every coefficient is the one above. Only the target-step floor changes, because 16 rupees of option premium is not a meaningful floor on a share price.',
       'g.f6': 'Scan — timeframes, strikes and expiries',
       'g.f6n': 'No new arithmetic: the scan is breadth over the same model. Its value is the agreement view, which tells you whether a side survives being looked at over a longer opening candle.',
 
@@ -2142,6 +2265,20 @@ window.APP = window.APP || {};
       'cfg.t1Multiplier.hint': '(entry-க்கு மேல range × எத்தனை)',
       'cfg.tickSize': 'Tick size',
       'cfg.tickSize.hint': '(confirmation close இத்தனை தாண்டணும்)',
+      'cfg.entryPremiumPct': 'Close-க்கு மேல entry premium',
+      'cfg.entryPremiumPct.hint': '(entry = close + இந்த %)',
+      'cfg.targetStepMult': 'Target step',
+      'cfg.targetStepMult.hint': '(first-candle range × எத்தனை)',
+      'cfg.minTargetStep': 'குறைந்தபட்ச target step',
+      'cfg.minTargetStep.hint': '(points floor)',
+      'cfg.t2Mult': 'Target 2 (× step)',
+      'cfg.t3Mult': 'Target 3 (× step)',
+      'cfg.slRangeMult': 'Low-க்கு கீழ stop loss',
+      'cfg.slRangeMult.hint': '(× range)',
+      'cfg.takeConfidence': 'YES சொல்ல வேண்டிய confidence',
+      'cfg.bookT1Pct': 'Target 1-ல book (%)',
+      'cfg.bookT2Pct': 'Target 2-ல book (%)',
+      'cfg.holdT3Pct': 'Target 3 வரை hold (%)',
       'cfg.g2': 'T1 Decision Helper',
       'cfg.bodyStrong': 'Strong body threshold',
       'cfg.bodyStrong.hint': '(full credit-க்கு body ÷ range)',
@@ -2165,6 +2302,8 @@ window.APP = window.APP || {};
       'cfg.minRR': 'Min. risk : reward — T2 வரை',
       'cfg.takeThreshold': 'Full size trade-க்கு வேண்டிய confluence',
       'cfg.lotSize': 'Lot size',
+      'cfg.swingMinStepPct': 'Swing step floor',
+      'cfg.swingMinStepPct.hint': '(விலையோட %, ₹16 premium floor-க்கு பதிலா)',
       'cfg.costPerLot': 'ஒரு lot-க்கு brokerage & charges',
       'cfg.baseWinRate': 'உன் base win rate',
       'cfg.baseWinRate.hint': '(உன் journal-ல இருந்து)',
@@ -2196,7 +2335,6 @@ window.APP = window.APP || {};
       'an.buyCall': 'BUY CALL',
       'an.buyPut': 'BUY PUT',
       'an.reason': '{side} candle: {dir} · body {body} · range-ல close position {close} · PCR {pcr} ({pcrBias}).',
-      'an.entryPrice': 'ENTRY PRICE',
       'an.condTitle': 'ENTRY CONDITIONS',
       'an.condDesc': 'Order போடுறதுக்கு முன்னாடி இதெல்லாம் green-ஆ இருக்கணும்.',
       'an.cond.closed': '5-Min candle முழுசா close ஆச்சா?',
@@ -2217,10 +2355,8 @@ window.APP = window.APP || {};
       'an.putTargets': 'PUT TARGETS',
       'an.tradeThis': 'இந்த side-ல trade',
       'an.entry': 'ENTRY',
-      'an.target1': 'TARGET 1',
       'an.target2': 'TARGET 2',
       'an.target3': 'TARGET 3',
-      'an.stopLoss': 'STOP LOSS',
       'an.pts': 'pts',
       'an.book': 'BOOK {pct}%',
       'an.hold': 'HOLD {pct}%',
@@ -2233,9 +2369,6 @@ window.APP = window.APP || {};
       'an.rule4': 'Target 2 {t2} hit ஆனா → இன்னும் 40% book பண்ணு (மொத்தம் 80% close ஆச்சு).',
       'an.rule5': 'மீதி 20%-ஐ Target 3 {t3} வரை hold பண்ணு, SL-ஐ {entry}-க்கு நகர்த்து — நஷ்டமா மாறவே கூடாது.',
       'an.rule6': 'Target 1-க்கு முன்னாடி price {entry}-க்கு கீழ வந்தா மீதியை exit பண்ணு — setup fail ஆயிடுச்சு.',
-      'an.sendT1': 'T1 Helper-க்கு அனுப்பு',
-      'an.sendT1Call': 'CALL-ஐ T1 Helper-க்கு அனுப்பு',
-      'an.sendT1Put': 'PUT-ஐ T1 Helper-க்கு அனுப்பு',
       'an.step1': 'STEP 1',
       'an.step1.title': 'ATM strike select பண்ணு',
       'an.step1.desc': '09:15–09:20 NIFTY candle-ஓட open price-ஐ கீழ 100 strike-க்கு round பண்ணு — 23670 ஆனா 23600.',
@@ -2506,11 +2639,64 @@ window.APP = window.APP || {};
       'g.f4': 'Stoploss Pullback Entry — side & zones',
       'g.f4n': 'Entry range-க்கு மேல இல்லாம range-க்குள்ளயே இருக்கு — liquidity-க்குள்ள வர்ற pullback-ஐ buy பண்ற setup, அதனாலதான் stop loss கிடையாது.',
 
+      'sc.modeTitle': 'எதை scan பண்ணணும்',
+      'sc.modeDesc': 'ஒரே tab-ல ரெண்டு வேற கேள்வி. கணக்கு ஒண்ணுதான்; எந்த candle-ஐ படிக்குதுங்கிறதுல தான் வித்தியாசம்.',
+      'sc.modeIntraday': 'Intraday — first candle',
+      'sc.modeIntradayHint': '09:15 candle, option strikes-ம் expiries-ம் சேர்த்து',
+      'sc.modeSwing': 'Swing — 1h / 1d / 1w / 1M',
+      'sc.modeSwingHint': 'stock அல்லது index-ஓட முடிஞ்ச கடைசி candle',
+
+      'sw.setupTitle': 'Swing timeframes',
+      'sw.setupDesc': 'ஒவ்வொரு நீளத்துலயும் முடிஞ்ச கடைசி candle. இன்னும் ஓடிட்டு இருக்கிற candle எடுக்கல — அதோட high, low, close final இல்ல; அதை வெச்சு போட்ட levels தினமும் மாறிட்டே இருக்கும்.',
+      'sw.timeframes': 'Timeframes',
+      'sw.tf1h': '1h',
+      'sw.tf1d': '1d',
+      'sw.tf1w': '1w',
+      'sw.tf1M': '1M',
+      'sw.tf1hLong': '1 மணி — intraday momentum (இன்னைக்கு மட்டும்)',
+      'sw.tf1dLong': '1 நாள் — short-term swing',
+      'sw.tf1wLong': '1 வாரம் — positional',
+      'sw.tf1MLong': '1 மாசம் — positional, மெதுவானது',
+      'sw.bars': 'Timeframe-க்கு எத்தன candle',
+      'sw.barsHint': '(1 = கடைசியா முடிஞ்சது)',
+      'sw.runningLabel': 'ஓடிட்டு இருக்கிற candle',
+      'sw.runningHint': 'இன்னும் முடியாததையும் காட்டு',
+      'sw.run': 'Swing scan பண்ணு',
+      'sw.useBest': 'Best-ஐ Analyser-க்கு எடு',
+      'sw.idle': 'Idle — timeframes தேர்ந்தெடுத்து ஓட்டு.',
+      'sw.running.status': 'History படிக்கிறேன்…',
+      'sw.done': '{source}-ல இருந்து {symbol}-க்கு {rows} candles படிச்சாச்சு.',
+      'sw.failed': 'Swing scan fail ஆச்சு — {reason}',
+      'sw.empty': 'helper எந்த candle-ம் கொடுக்கல',
+      'sw.note': 'Local helper வேணும்: daily history NSE-ஓட historical endpoint-ல இருந்து வருது, weekly-ம் monthly-ம் அதுலயே கூட்டி எடுக்கப்படுது. Hourly இன்னைக்கு ticks-ல இருந்து — அதனால session நடக்கும்போது அல்லது அதுக்கு அப்புறம் தான் இருக்கும்.',
+      'sw.bestIs': 'BEST — {side} {symbol}, {tf} candle-ல',
+      'sw.noneQualify': 'எந்த timeframe-ம் தகுதி இல்ல — விட்டுடு',
+      'sw.context': '{symbol} ({kind}) — {rows} candles. கீழ இருக்கிற levels SHARE PRICE, option premium இல்ல.',
+      'sw.kindIndex': 'index',
+      'sw.kindEquity': 'stock',
+      'sw.staleHour': 'Hourly rows {session} session-ஓடது, இன்னைக்கு இல்ல — feed கடைசியா முடிஞ்ச session-ஐ கொடுக்குது.',
+      'sw.long': 'LONG',
+      'sw.short': 'SHORT',
+      'sw.longShort': 'LONG',
+      'sw.shortShort': 'SHORT',
+      'sw.running': 'இன்னும் முடியல',
+      'sw.trendTitle': 'Timeframes ஒத்துப் போகுதா?',
+      'sw.trendDesc': 'ஒவ்வொண்ணுலயும் முடிஞ்ச கடைசி candle. Weekly-க்கும் monthly-க்கும் எதிரா வர்ற hourly signal தான் ஜாக்கிரதையா பாக்க வேண்டியது.',
+      'sw.aligned': '{n}-ம் ஒத்துப் போகுது — {side}',
+      'sw.split': 'split — {longs} long / {shorts} short',
+      'sw.tableTitle': 'படிச்ச எல்லா candle-ம்',
+      'sw.tableDesc': '{n} rows, குறைஞ்ச timeframe முதல்ல. மங்கலான rows confidence threshold-க்கு கீழ.',
+      'sw.skipped': 'சில timeframes விடப்பட்டது — {detail}',
+      'sw.priceNote': 'இந்த levels underlying-ஓட விலை. Options-ஆ trade பண்ண strike தேர்ந்தெடுத்து அந்த contract-ஓட premium-ஐ தனியா பாக்கணும் — premium-ல வர்ற ₹16 minimum target step-க்கு பதிலா இங்க விலையோட percentage; ₹100 stock-க்கும் ₹3,000 stock-க்கும் ஒரே ரூபாய் floor அர்த்தமில்ல.',
+      'sw.h.tf': 'TF',
+      'sw.h.period': 'Candle',
+      'sw.h.rr': 'R:R → T2',
+
       'tab.scan': 'Scan',
       'sc.pill': 'Trail',
       'sc.badge': 'Multi-timeframe scan',
-      'sc.hero': '15, 30, 60 நிமிஷத்துலயும் setup நிக்குதா?',
-      'sc.heroSub': 'அதே first-candle கணக்கு, நீளமான opening candle-ல, பக்கத்து strikes-ம் expiries-ம் சேர்த்து. 5 நிமிஷத்துல மட்டும் வர்ற side noise; எல்லாத்துலயும் நிக்கிற side தான் trade பண்ண தகுதியானது.',
+      'sc.hero': 'நீளமான candle-லயும் setup நிக்குதா?',
+      'sc.heroSub': 'ஒரே கணக்கு, ஒன்னுக்கும் மேற்பட்ட timeframe-ல. Intraday-ல அன்றைய first candle 15, 30, 60 நிமிஷமா விரியுது — பக்கத்து strikes-ம் expiries-ம் சேர்த்து; Swing-ல stock அல்லது index-ஐயே hourly, daily, weekly, monthly-ஆ படிக்குது. ஒரே timeframe-ல மட்டும் வர்ற side noise.',
       'sc.setupTitle': 'எதை scan பண்ணணும்',
       'sc.setupDesc': 'ஒவ்வொரு timeframe-ம் அந்த நீளத்துல அன்றைய first candle — 15m = 09:15–09:30, 60m = 09:15–10:15.',
       'sc.timeframes': 'Timeframes',
@@ -2568,6 +2754,8 @@ window.APP = window.APP || {};
       'g.p6': 'Phase 6 · Scan (வேற timeframe-லயும் நிக்குதா?)',
       'g.p6s17': '<b>அதே கணக்கை விரிவாக்கு.</b> Scan அன்றைய first candle-ஐ 5, 15, 30, 60 நிமிஷத்துல அளக்குது — பக்கத்து strikes, அடுத்த expiry சேர்த்து — ஒவ்வொரு row-ம் Option Analyser model வழியாவே போகுது.',
       'g.p6s18': '<b>Best row-ஐ மட்டும் பாக்காத, agreement-ஐ பாரு.</b> எல்லா timeframe-ம் ஒரே side சொன்னா அதுதான் நல்ல confirmation; 5 நிமிஷத்துல மட்டும் வர்ற side noise. Best row-ஐ Analyser-க்கு அனுப்பி வழக்கமான workflow-ல தொடரு.',
+      'g.f7': 'Swing scan — hourly, daily, weekly, monthly',
+      'g.f7n': 'அதே formulas, stock அல்லது index மேலயே — அதனால levels share price-ல வரும். Short-ங்கிறது long-ஓட பிரதிபலிப்பு, வேற model இல்ல; மேல இருக்கிற ஒவ்வொரு coefficient-ம் அதேதான். Target-step floor மட்டும் மாறுது — ₹16 option premium share price-க்கு floor-ஆ அர்த்தமில்ல.',
       'g.f6': 'Scan — timeframes, strikes, expiries',
       'g.f6n': 'புது கணக்கு இல்ல: அதே model-ஐ அகலமா பாக்குறது. இதோட மதிப்பு agreement view — நீளமான opening candle-ல பாத்தாலும் அந்த side தாக்குப்பிடிக்குதானு சொல்லுது.',
 
@@ -2782,6 +2970,15 @@ window.APP = window.APP || {};
     holdT3Pct: 20,
     takeConfidence: 60,     // side confidence needed for a YES verdict
     tickSize: 0.05,         // exchange tick
+
+    /* Swing scan (1h / 1d / 1w / 1M on the underlying's own price).
+       Same formulas as above with one substitution: minTargetStep is 16 RUPEES
+       OF OPTION PREMIUM, which means nothing on a share price — on a ₹100 stock
+       it would demand a ₹16 target step, on a ₹3000 one it never binds at all.
+       So the floor becomes a percentage of price instead. At 0.25% the range
+       term dominates in almost every real case, which is the intent: a floor,
+       not a driver. */
+    swingMinStepPct: 0.25,
 
     /* T1 Decision Helper.
        Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
@@ -4931,6 +5128,373 @@ window.APP = window.APP || {};
 })(window.APP);
 </script>
 <script>
+/* Swing scan — the same maths on hourly, daily, weekly and monthly candles.
+
+   The intraday scan asks "what did the first candle of the day do?". This asks
+   "what did the last COMPLETED candle at this timeframe do?", which is the
+   question a short-term or positional read is built on. 1h picks up intraday
+   momentum, 1d a swing, 1w and 1M a position.
+
+   Two things genuinely differ from the intraday scan, and both are about the
+   instrument rather than the formula:
+
+   1. These are the UNDERLYING's price candles, not an option premium's. NSE
+      publishes no daily history worth reading for an individual option
+      contract — each one is young, thin, and stops existing at expiry. So a
+      stock's own bars drive the read, and the levels come out in share prices.
+
+   2. There is no CE candle and no PE candle to compare, so the side is decided
+      by reading the one candle two ways — bullish and bearish — and taking the
+      higher score. The bullish reading IS APP.analyser.analyseSide, called
+      unchanged. The bearish reading is its mirror, written out below.
+
+   No coefficient is re-tuned. The single substitution is the target-step floor,
+   which is 16 rupees of premium upstairs and a percentage of price here —
+   see config.js for why. */
+(function (APP) {
+  'use strict';
+
+  var U = APP.util;
+  function t(key, vars) { return APP.i18n.t(key, vars); }
+  function money(n) { return '₹' + U.fmt(n); }
+  function round2(n) { return Number(n.toFixed(2)); }
+
+  var TFS = ['1h', '1d', '1w', '1M'];
+  var last = null;
+
+  /* ---------- the two readings of one candle ---------- */
+
+  /* A price-scale floor in place of the premium-scale ₹16. */
+  function priceCfg(candle, cfg) {
+    var floor = Math.abs(candle.c) * (cfg.swingMinStepPct / 100);
+    var out = {};
+    for (var k in cfg) { if (Object.prototype.hasOwnProperty.call(cfg, k)) out[k] = cfg[k]; }
+    out.minTargetStep = floor;
+    return out;
+  }
+
+  /* Long: the analyser's own function, unmodified. */
+  function longRead(candle, cfg) {
+    var r = APP.analyser.analyseSide(candle, priceCfg(candle, cfg));
+    r.direction = 'long';
+    return r;
+  }
+
+  /**
+   * Short: the same formulas reflected. Every constant is the one above —
+   * entry steps the same 0.5% off the close but downward, the step is the same
+   * 0.8 × range with the same floor, the targets are the same 1 / 2 / 3.5
+   * multiples, and the stop sits the same 0.3 × range beyond the extreme. Only
+   * the sign of "away from the close" changes.
+   */
+  function shortRead(candle, cfg) {
+    var c = priceCfg(candle, cfg);
+    var s = U.candleStats(candle);
+    var range = s.range;
+
+    var entry = round2(candle.c * (1 - c.entryPremiumPct / 100));
+    var step = Math.max(c.targetStepMult * range, c.minTargetStep);
+    var target1 = round2(entry - step);
+    var target2 = round2(entry - c.t2Mult * step);
+    var target3 = round2(entry - c.t3Mult * step);
+    var stopLoss = round2(candle.h + c.slRangeMult * range);
+
+    /* Mirrored confidence: a bearish candle, a strong body, and a close near
+       the low — the same three terms with the same 20 / 40 / 40 weights. */
+    var confidence = U.clamp(
+      20 * (candle.c < candle.o ? 1 : 0) + 40 * s.bodyRatio + 40 * (1 - s.closePos), 0, 100
+    );
+
+    return {
+      candle: candle, stats: s, range: range, step: step,
+      entry: entry, target1: target1, target2: target2, target3: target3,
+      stopLoss: stopLoss, risk: stopLoss - entry,
+      confidence: confidence, direction: 'short',
+      targets: [
+        { key: 't1', level: target1, action: 'book', pct: c.bookT1Pct },
+        { key: 't2', level: target2, action: 'book', pct: c.bookT2Pct },
+        { key: 't3', level: target3, action: 'hold', pct: c.holdT3Pct }
+      ]
+    };
+  }
+
+  function readCandle(candle, cfg) {
+    var up = longRead(candle, cfg);
+    var down = shortRead(candle, cfg);
+    var side = up.confidence >= down.confidence ? 'long' : 'short';
+    var chosen = side === 'long' ? up : down;
+    return {
+      long: up, short: down, side: side, chosen: chosen,
+      confidence: chosen.confidence,
+      verdict: chosen.confidence >= cfg.takeConfidence ? 'yes' : 'no'
+    };
+  }
+
+  /* ---------- evaluate a payload ---------- */
+  function evaluate(payload, cfg) {
+    var rows = (payload.rows || []).map(function (r) {
+      var read = readCandle(r.bar, cfg);
+      var leg = read.chosen;
+      return {
+        tf: r.tf, label: r.label, running: !!r.running, barCount: r.bars || 1,
+        candle: r.bar,
+        side: read.side, confidence: read.confidence, verdict: read.verdict,
+        entry: leg.entry, target1: leg.target1, target2: leg.target2,
+        target3: leg.target3, stopLoss: leg.stopLoss, range: leg.range,
+        risk: Math.abs(leg.entry - leg.stopLoss),
+        rr: Math.abs(leg.entry - leg.stopLoss) > 0
+          ? Math.abs(leg.target2 - leg.entry) / Math.abs(leg.entry - leg.stopLoss) : NaN
+      };
+    });
+
+    var order = { '1h': 0, '1d': 1, '1w': 2, '1M': 3 };
+    rows.sort(function (a, b) { return (order[a.tf] - order[b.tf]) || a.label.localeCompare(b.label); });
+
+    /* The best row is chosen only from each timeframe's LATEST closed candle.
+       Older candles are shown for context — asking for 3 daily bars is how you
+       see whether the read has been consistent — but they are not tradable:
+       last Tuesday's setup is not on offer today, and letting a stale candle
+       win "BEST" would point at a level the market has already left behind. */
+    var agree = agreement(rows);
+    var best = agree.rows.reduce(function (acc, r) {
+      if (r.verdict !== 'yes') return acc;
+      return !acc || r.confidence > acc.confidence ? r : acc;
+    }, null);
+
+    return { payload: payload, rows: rows, best: best, agreement: agree };
+  }
+
+  /* Do the timeframes point the same way? The useful question here is whether
+     an intraday signal is swimming against the weekly and monthly trend. */
+  function agreement(rows) {
+    var latest = {};
+    rows.forEach(function (r) {
+      if (r.running) return;
+      /* evaluate() sorts each timeframe's candles oldest first, so the last
+         one seen is the most recent closed candle — which is the only one the
+         trend read should use. */
+      latest[r.tf] = r;
+    });
+    var picked = TFS.map(function (tf) { return latest[tf]; }).filter(Boolean);
+    var longs = picked.filter(function (r) { return r.side === 'long'; }).length;
+    var shorts = picked.length - longs;
+    return {
+      rows: picked,
+      longs: longs, shorts: shorts, count: picked.length,
+      majority: longs === shorts ? null : (longs > shorts ? 'long' : 'short'),
+      aligned: picked.length > 1 && (longs === picked.length || shorts === picked.length)
+    };
+  }
+
+  /* ---------- rendering ---------- */
+  var TF_LABEL = { '1h': 'sw.tf1h', '1d': 'sw.tf1d', '1w': 'sw.tf1w', '1M': 'sw.tf1M' };
+
+  function sideChip(side) {
+    return '<span class="scan-side is-' + (side === 'long' ? 'call' : 'put') + '">' +
+      U.escapeHtml(t(side === 'long' ? 'sw.long' : 'sw.short')) + '</span>';
+  }
+
+  function renderHeadline(result) {
+    var p = result.payload;
+    var best = result.best;
+    var el = U.$('sw-headline');
+    el.className = 'card verdict-card ' + (best ? 'an-verdict is-yes' : 'an-verdict is-no');
+    el.innerHTML =
+      '<div class="an-verdict-top">' +
+        '<div class="verdict-badge ' + (best ? (best.side === 'long' ? 'v-hold' : 'v-put') : 'v-partial') + '">' +
+          (best
+            ? U.escapeHtml(t('sw.bestIs', {
+                side: t(best.side === 'long' ? 'sw.long' : 'sw.short'),
+                symbol: p.symbol, tf: t(TF_LABEL[best.tf]) }))
+            : U.escapeHtml(t('sw.noneQualify'))) +
+        '</div>' +
+        (best ? '<div class="an-confidence"><b>' + U.fmt(best.confidence, 0) + '%</b>' +
+          '<span>' + U.escapeHtml(t('an.confidence')) + '</span></div>' : '') +
+      '</div>' +
+      '<p class="verdict-sub">' + U.escapeHtml(t('sw.context', {
+        symbol: p.symbol,
+        kind: t(p.kind === 'index' ? 'sw.kindIndex' : 'sw.kindEquity'),
+        rows: result.rows.length
+      })) +
+      (p.stale && p.session
+        ? ' ' + U.escapeHtml(t('sw.staleHour', { session: p.session }))
+        : '') + '</p>' +
+      (best
+        ? '<div class="entry-strip">' +
+            '<span class="entry-label">' + U.escapeHtml(t('an.entryPrice')) + '</span>' +
+            '<span class="entry-value">' + money(best.entry) + '</span>' +
+            '<span class="entry-side ' + (best.side === 'long' ? 'is-call' : 'is-put') + '">' +
+              U.escapeHtml(t(best.side === 'long' ? 'sw.long' : 'sw.short')) + '</span>' +
+          '</div>'
+        : '');
+  }
+
+  function renderAgreement(result) {
+    var a = result.agreement;
+    var el = U.$('sw-agreement');
+    if (!a.count) { el.innerHTML = ''; el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('sw.trendTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('sw.trendDesc')) + '</p></div>' +
+      '<div class="agree-card ' + (a.aligned ? 'is-aligned' : 'is-split') + '">' +
+        '<div class="agree-head">' +
+          '<b>' + U.escapeHtml(result.payload.symbol) + '</b>' +
+          (a.aligned
+            ? '<span class="agree-tag is-aligned">' + U.escapeHtml(t('sw.aligned', {
+                n: a.count, side: t(a.majority === 'long' ? 'sw.long' : 'sw.short') })) + '</span>'
+            : '<span class="agree-tag is-split">' + U.escapeHtml(t('sw.split', {
+                longs: a.longs, shorts: a.shorts })) + '</span>') +
+        '</div>' +
+        '<div class="agree-tfs">' +
+          a.rows.map(function (r) {
+            return '<span class="agree-tf ' + (r.side === a.majority ? 'is-with' : 'is-against') + '">' +
+              U.escapeHtml(t(TF_LABEL[r.tf])) + ' ' +
+              U.escapeHtml(t(r.side === 'long' ? 'sw.longShort' : 'sw.shortShort')) +
+              ' <b>' + U.fmt(r.confidence, 0) + '%</b></span>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderTable(result) {
+    var rows = result.rows.map(function (r) {
+      var isBest = result.best && r === result.best;
+      return '<tr class="' + (isBest ? 'is-best' : '') + (r.verdict === 'yes' ? '' : ' is-no') + '">' +
+        '<td>' + U.escapeHtml(t(TF_LABEL[r.tf])) + '</td>' +
+        '<td class="exp">' + U.escapeHtml(r.label) +
+          (r.running ? ' <span class="running-tag">' + U.escapeHtml(t('sw.running')) + '</span>' : '') + '</td>' +
+        '<td>' + sideChip(r.side) + '</td>' +
+        '<td class="num conf">' + U.fmt(r.confidence, 0) + '%</td>' +
+        '<td class="num">' + money(r.entry) + '</td>' +
+        '<td class="num t">' + money(r.target1) + '</td>' +
+        '<td class="num t">' + money(r.target2) + '</td>' +
+        '<td class="num t">' + money(r.target3) + '</td>' +
+        '<td class="num sl">' + money(r.stopLoss) + '</td>' +
+        '<td class="num">' + U.fmt(r.range) + '</td>' +
+        '<td class="num">' + (isFinite(r.rr) ? U.fmt(r.rr, 2) + '×' : '—') + '</td>' +
+        '<td>' + (isBest ? '<span class="best-tag">' + U.escapeHtml(t('sc.best')) + '</span>' : '') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    U.$('sw-table').innerHTML =
+      '<div class="card-head"><h3>' + U.escapeHtml(t('sw.tableTitle')) + '</h3>' +
+      '<p class="muted">' + U.escapeHtml(t('sw.tableDesc', { n: result.rows.length })) + '</p></div>' +
+      '<div class="table-scroll"><table class="scan-table"><thead><tr>' +
+        ['sw.h.tf', 'sw.h.period', 'sc.h.side', 'sc.h.conf', 'sc.h.entry',
+         'sc.h.t1', 'sc.h.t2', 'sc.h.t3', 'sc.h.sl', 'sc.h.range', 'sw.h.rr', 'sc.h.flag']
+          .map(function (k) { return '<th>' + U.escapeHtml(t(k)) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="muted small" style="margin-top:10px">' + U.escapeHtml(t('sw.priceNote')) + '</p>' +
+      (result.payload.skipped && result.payload.skipped.length
+        ? '<p class="muted small">' + U.escapeHtml(t('sw.skipped', {
+            detail: result.payload.skipped.map(function (s) { return s.tf + ': ' + s.reason; }).join('; ')
+          })) + '</p>'
+        : '');
+  }
+
+  function render(result) {
+    renderHeadline(result);
+    renderAgreement(result);
+    renderTable(result);
+    U.$('swing-output').hidden = false;
+  }
+
+  /* ---------- controller ---------- */
+  function selectedTfs() {
+    var out = TFS.filter(function (tf) {
+      var el = U.$('sw-tf-' + tf);
+      return el && el.checked;
+    });
+    return out.length ? out : ['1d'];
+  }
+
+  function status(kind, message) {
+    var el = U.$('sw-status');
+    el.className = 'af-status af-' + kind;
+    el.textContent = message;
+  }
+
+  function run() {
+    var endpoint = (U.$('sc-endpoint').value || '').trim().replace(/\/+$/, '') || U.defaultEndpoint(8123);
+    var sym = APP.symbols.clean(U.$('sc-symbol').value) || 'NIFTY';
+    var url = endpoint + '/history?symbol=' + encodeURIComponent(sym) +
+              '&tfs=' + selectedTfs().join(',') +
+              '&bars=' + Math.max(1, Math.min(10, Math.round(U.num(U.$('sw-bars').value)) || 1)) +
+              (U.$('sw-running').checked ? '&running=1' : '');
+
+    status('busy', t('sw.running.status'));
+    return window.fetch(url)
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body && body.error ? body.error : 'HTTP ' + res.status);
+          return body;
+        });
+      })
+      .then(function (payload) {
+        if (!payload.rows || !payload.rows.length) {
+          var why = (payload.skipped || [])[0];
+          throw new Error(why && why.reason ? String(why.reason).split('\n')[0] : t('sw.empty'));
+        }
+        var result = evaluate(payload, APP.config.get());
+        last = result;
+        APP.state.swing = result;
+        render(result);
+        status('ok', t('sw.done', {
+          rows: result.rows.length, symbol: payload.symbol,
+          source: payload.source === 'mock' ? t('af.mockSource') : payload.source
+        }));
+        return result;
+      })
+      .catch(function (err) {
+        var msg = String(err && err.message || err);
+        status('err', /Failed to fetch|NetworkError/i.test(msg)
+          ? t('af.helperOffline', { endpoint: endpoint })
+          : t('sw.failed', { reason: msg }));
+        U.$('swing-output').hidden = true;
+        APP.state.swing = null;
+        return null;
+      });
+  }
+
+  function reset() {
+    U.$('swing-output').hidden = true;
+    APP.state.swing = null;
+    last = null;
+    status('idle', t('sw.idle'));
+  }
+
+  /* Hand off to the Analyser's strike step — NOT to the Trade Signal tab.
+     These levels are in share prices; every downstream tool works in option
+     premium, and ₹1,520 of RELIANCE is not ₹1,520 of anything you can buy.
+     What does carry across is the read itself: this underlying, at this price,
+     leaning this way — so send the price to the ATM selector and let the normal
+     option workflow start from there. */
+  function useBest() {
+    if (!last || !last.best) return;
+    var r = last.best;
+    U.$('atm-open').value = String(r.candle.c);
+    U.$('af-symbol').value = last.payload.symbol;
+    APP.symbols.remember(last.payload.symbol);
+    APP.analyser.renderAtm();
+    APP.tabs.show('analyser');
+  }
+
+  function init() {
+    U.$('btn-sw-run').addEventListener('click', run);
+    U.$('btn-sw-reset').addEventListener('click', reset);
+    U.$('btn-sw-use').addEventListener('click', useBest);
+    status('idle', t('sw.idle'));
+  }
+
+  APP.swing = {
+    init: init, run: run, reset: reset,
+    evaluate: evaluate, readCandle: readCandle,
+    longRead: longRead, shortRead: shortRead, agreement: agreement
+  };
+})(window.APP);
+</script>
+<script>
 /* Notifications and the 5-minute candle-close scheduler.
 
    Two honest limits, stated in the UI as well: the page must stay open for a
@@ -5093,7 +5657,9 @@ window.APP = window.APP || {};
 (function (APP) {
   'use strict';
 
-  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null, scan: null };
+  APP.state = APP.state || {
+    analyser: null, t1: null, pullback: null, signal: null, scan: null, swing: null
+  };
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
@@ -5303,6 +5869,27 @@ window.APP = window.APP || {};
           'best row = highest confidence among rows whose verdict is YES'
       },
       {
+        title: 'g.f7', note: 'g.f7n',
+        code:
+          'the same maths on the UNDERLYING\u2019s own candle, not an option premium\n' +
+          '\n' +
+          '1h  last completed clock hour of today\u2019s session\n' +
+          '1d  last completed daily candle      1w / 1M  folded from the dailies\n' +
+          '  a candle still forming is excluded \u2014 its high, low and close are not final\n' +
+          '\n' +
+          'long  = analyser.analyseSide, unchanged:\n' +
+          '        entry = close \u00d7 ' + (1 + cfg.entryPremiumPct / 100) + ', targets up, stop = low \u2212 ' +
+            cfg.slRangeMult + ' \u00d7 range\n' +
+          'short = the same reflected:\n' +
+          '        entry = close \u00d7 ' + (1 - cfg.entryPremiumPct / 100) + ', targets down, stop = high + ' +
+            cfg.slRangeMult + ' \u00d7 range\n' +
+          'side  = whichever reading scores higher, same 20 / 40 / 40 weights\n' +
+          '\n' +
+          'one substitution: the target-step floor is ' + cfg.swingMinStepPct + '% of price,\n' +
+          '  not the \u20b9' + cfg.minTargetStep + ' premium floor \u2014 a flat rupee floor means\n' +
+          '  nothing across a \u20b9100 and a \u20b93,000 stock'
+      },
+      {
         title: 'g.f5', note: 'g.f5n',
         code:
           'confluence = passed weights ÷ available weights × 100\n' +
@@ -5343,6 +5930,31 @@ window.APP = window.APP || {};
     U.$('guide-body').innerHTML = html;
   }
 
+  /* ---------- scan mode: intraday first candle vs swing timeframes ----------
+     Two different questions on one tab. Intraday reads the 09:15 candle across
+     option strikes and expiries; swing reads the last completed 1h / 1d / 1w /
+     1M candle of the underlying itself. They share the symbol and the helper
+     address, so those live above the switch. */
+  function initScanMode() {
+    var buttons = { intraday: U.$('mode-intraday'), swing: U.$('mode-swing') };
+
+    function show(mode) {
+      Object.keys(buttons).forEach(function (key) {
+        var active = key === mode;
+        buttons[key].classList.toggle('is-active', active);
+        buttons[key].setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      U.$('intraday-setup').hidden = mode !== 'intraday';
+      U.$('scan-output').hidden = mode !== 'intraday' || !APP.state.scan;
+      U.$('swing-setup').hidden = mode !== 'swing';
+      U.$('swing-output').hidden = mode !== 'swing' || !APP.state.swing;
+    }
+
+    buttons.intraday.addEventListener('click', function () { show('intraday'); });
+    buttons.swing.addEventListener('click', function () { show('swing'); });
+    APP.scanMode = show;
+  }
+
   /* ---------- clear everything ---------- */
   function initClearAll() {
     U.$('btn-clear-all').addEventListener('click', function () {
@@ -5351,6 +5963,7 @@ window.APP = window.APP || {};
       APP.pullback.reset();
       APP.signal.reset();
       APP.scan.reset();
+      APP.swing.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -5367,6 +5980,8 @@ window.APP = window.APP || {};
     APP.pullback.init();
     APP.signal.init();
     APP.scan.init();
+    APP.swing.init();
+    initScanMode();
     APP.alerts.init();
     APP.analyser.renderAtm();
     renderGuide();

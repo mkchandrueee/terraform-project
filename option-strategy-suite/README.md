@@ -17,7 +17,8 @@ remembered.
 | 3 (steps 6–10) | **T1 Decision Helper** | Trade side, the three mapped levels, and the OHLC of the candle that confirmed the entry | Hold → T2 vs partial book vs book now, a momentum score, the T1→T2 reward ratio, four condition checks, the condition-4 gate and an action plan |
 | 4 (steps 11–13) | **Stoploss Pullback Entry** | The original first-candle OHLC of both sides | Call buy / put buy / **wait**, three entry zones, a stop and three targets |
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
-| 6 (steps 17–18) | **Scan** | An underlying (index or NIFTY 50 stock), timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
+| 6 (steps 17–18) | **Scan — intraday** | An underlying (index or NIFTY 50 stock), timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
+| 6 (steps 17–18) | **Scan — swing** | The same underlying, and which of 1h / 1d / 1w / 1M to read | The last completed candle at each timeframe through the same model, long or short, and whether the timeframes agree |
 
 The tools hand off to each other:
 
@@ -239,6 +240,47 @@ targets and stop. *Send best row to Analyser* loads its candles into the normal 
 The part worth reading is **timeframe agreement**, shown per strike: whether every selected timeframe picks the
 same side. All four agreeing is the confirmation worth having; a side that appears only on the 5-minute candle
 is noise, and the card says *split* rather than pretending otherwise.
+
+## Swing scan — hourly, daily, weekly, monthly
+
+The Scan tab has two modes. **Intraday** is everything above: the 09:15 candle, widened, across option
+strikes and expiries. **Swing** asks a different question — *what did the last completed candle at this
+timeframe do?* — which is what a short-term or positional read is built on.
+
+| Timeframe | Built from | Reads as |
+|---|---|---|
+| 1 hour | today's tick series, folded into clock hours | intraday momentum |
+| 1 day | NSE's historical endpoint | short-term swing |
+| 1 week | the dailies, grouped Monday to Friday | positional |
+| 1 month | the dailies, grouped by calendar month | positional, slowest |
+
+Three things are worth understanding, because they are where this differs from the intraday scan.
+
+**These are the underlying's own candles.** NSE publishes no daily history worth reading for an individual
+option contract — each one is young, thin, and ceases to exist at expiry. So a stock's or index's price bars
+drive the read, and **the levels come out in share prices, not option premiums**. To trade them as options you
+still pick a strike and read that contract's own premium; *Take best to Analyser* carries the price into the
+ATM selector to start that off, which is the only hand-off that is honest here.
+
+**A candle still forming is excluded.** Half a month wearing a month's label would produce levels that move
+under you every session. The running bar is dropped unless you tick *also show the one still open*, and it is
+labelled and can never be the best row. Nor can a stale one: with several candles per timeframe requested, the
+older ones are shown for context, but *BEST* is chosen only among each timeframe's newest closed candle —
+last Tuesday's setup is not on offer today.
+
+**The maths is unchanged.** The long reading is `APP.analyser.analyseSide` called verbatim; a test asserts the
+two are identical to the last decimal. The short reading is that reflected — entry `close × 0.995` instead of
+`× 1.005`, targets below instead of above, stop `high + 0.3 × range` instead of `low − 0.3 × range`, and the
+same 20 / 40 / 40 confidence weights read for a down candle. The side is whichever scores higher, exactly as
+CE versus PE is decided upstairs.
+
+The one substitution is the target-step floor. `max(0.8 × range, 16)` has a floor of **16 rupees of option
+premium**, which means nothing on a share price — it would demand a ₹16 step on a ₹100 stock and never bind at
+all on a ₹3,000 one. Here the floor is a percentage of price instead, `swingMinStepPct`, default 0.25%. At
+that value the range term dominates in almost every real case, which is the intent: a floor, not a driver.
+
+Timeframe agreement is per symbol rather than per strike: the latest closed candle on each, and whether they
+point the same way. An hourly signal fighting the weekly and monthly is the one worth being careful about.
 
 ## Auto-fetching the first candle from NSE
 
@@ -466,6 +508,7 @@ option-strategy-suite/
         ├── autofetch.js       talks to the local NSE helper
         ├── signal.js          tool 4 — confluence, win estimate, metrics
         ├── scan.js            tool 5 — multi-timeframe / strike / expiry scan
+        ├── swing.js           tool 5b — 1h / 1d / 1w / 1M on the underlying
         ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference
 ```

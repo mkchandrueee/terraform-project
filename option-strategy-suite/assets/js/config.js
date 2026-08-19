@@ -27,6 +27,15 @@
     takeConfidence: 60,     // side confidence needed for a YES verdict
     tickSize: 0.05,         // exchange tick
 
+    /* Swing scan (1h / 1d / 1w / 1M on the underlying's own price).
+       Same formulas as above with one substitution: minTargetStep is 16 RUPEES
+       OF OPTION PREMIUM, which means nothing on a share price — on a ₹100 stock
+       it would demand a ₹16 target step, on a ₹3000 one it never binds at all.
+       So the floor becomes a percentage of price instead. At 0.25% the range
+       term dominates in almost every real case, which is the intent: a floor,
+       not a driver. */
+    swingMinStepPct: 0.25,
+
     /* T1 Decision Helper.
        Momentum = direction 40 + body {strong 15, moderate 7.5, weak 0} + close 40,
        floored. Those weights reproduce the reference tool's published scores. */

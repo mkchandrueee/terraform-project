@@ -253,4 +253,5 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | `node tools\nse-fetch.js --mock` | Fixture data, no network — dry run |
 | `node tools\nse-fetch.js --dump CE` | Raw NSE payload |
 | `node tools\nse-fetch.js --serve --token X` | App + API on one port, gated by a secret |
+| `curl "http://127.0.0.1:8123/history?symbol=RELIANCE&tfs=1d,1w,1M"` | Swing candles the Scan tab reads |
 | `python build.py` | Single-file bundle in `dist\` |

@@ -3,7 +3,9 @@
 (function (APP) {
   'use strict';
 
-  APP.state = APP.state || { analyser: null, t1: null, pullback: null, signal: null, scan: null };
+  APP.state = APP.state || {
+    analyser: null, t1: null, pullback: null, signal: null, scan: null, swing: null
+  };
 
   var U = APP.util;
   function t(key, vars) { return APP.i18n.t(key, vars); }
@@ -213,6 +215,27 @@
           'best row = highest confidence among rows whose verdict is YES'
       },
       {
+        title: 'g.f7', note: 'g.f7n',
+        code:
+          'the same maths on the UNDERLYING\u2019s own candle, not an option premium\n' +
+          '\n' +
+          '1h  last completed clock hour of today\u2019s session\n' +
+          '1d  last completed daily candle      1w / 1M  folded from the dailies\n' +
+          '  a candle still forming is excluded \u2014 its high, low and close are not final\n' +
+          '\n' +
+          'long  = analyser.analyseSide, unchanged:\n' +
+          '        entry = close \u00d7 ' + (1 + cfg.entryPremiumPct / 100) + ', targets up, stop = low \u2212 ' +
+            cfg.slRangeMult + ' \u00d7 range\n' +
+          'short = the same reflected:\n' +
+          '        entry = close \u00d7 ' + (1 - cfg.entryPremiumPct / 100) + ', targets down, stop = high + ' +
+            cfg.slRangeMult + ' \u00d7 range\n' +
+          'side  = whichever reading scores higher, same 20 / 40 / 40 weights\n' +
+          '\n' +
+          'one substitution: the target-step floor is ' + cfg.swingMinStepPct + '% of price,\n' +
+          '  not the \u20b9' + cfg.minTargetStep + ' premium floor \u2014 a flat rupee floor means\n' +
+          '  nothing across a \u20b9100 and a \u20b93,000 stock'
+      },
+      {
         title: 'g.f5', note: 'g.f5n',
         code:
           'confluence = passed weights ÷ available weights × 100\n' +
@@ -253,6 +276,31 @@
     U.$('guide-body').innerHTML = html;
   }
 
+  /* ---------- scan mode: intraday first candle vs swing timeframes ----------
+     Two different questions on one tab. Intraday reads the 09:15 candle across
+     option strikes and expiries; swing reads the last completed 1h / 1d / 1w /
+     1M candle of the underlying itself. They share the symbol and the helper
+     address, so those live above the switch. */
+  function initScanMode() {
+    var buttons = { intraday: U.$('mode-intraday'), swing: U.$('mode-swing') };
+
+    function show(mode) {
+      Object.keys(buttons).forEach(function (key) {
+        var active = key === mode;
+        buttons[key].classList.toggle('is-active', active);
+        buttons[key].setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      U.$('intraday-setup').hidden = mode !== 'intraday';
+      U.$('scan-output').hidden = mode !== 'intraday' || !APP.state.scan;
+      U.$('swing-setup').hidden = mode !== 'swing';
+      U.$('swing-output').hidden = mode !== 'swing' || !APP.state.swing;
+    }
+
+    buttons.intraday.addEventListener('click', function () { show('intraday'); });
+    buttons.swing.addEventListener('click', function () { show('swing'); });
+    APP.scanMode = show;
+  }
+
   /* ---------- clear everything ---------- */
   function initClearAll() {
     U.$('btn-clear-all').addEventListener('click', function () {
@@ -261,6 +309,7 @@
       APP.pullback.reset();
       APP.signal.reset();
       APP.scan.reset();
+      APP.swing.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -277,6 +326,8 @@
     APP.pullback.init();
     APP.signal.init();
     APP.scan.init();
+    APP.swing.init();
+    initScanMode();
     APP.alerts.init();
     APP.analyser.renderAtm();
     renderGuide();

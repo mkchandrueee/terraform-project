@@ -684,3 +684,33 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* 3. Momentum scrolling inside the wide scan table rather than the whole page. */
 .table-scroll { -webkit-overflow-scrolling: touch; }
+
+/* ---------- scan mode switch ----------
+   Intraday and swing are different questions, not different filters, so they
+   get a segmented control rather than another checkbox. */
+.mode-switch { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .mode-switch { grid-template-columns: 1fr 1fr; } }
+.mode-btn {
+  font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg-elev-2); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.mode-btn b { font-size: 14px; font-weight: 650; }
+.mode-btn em { font-size: 12px; color: var(--text-faint); }
+.mode-btn:hover { border-color: #2e4155; color: var(--text); }
+.mode-btn.is-active {
+  border-color: var(--accent); color: var(--text);
+  background: rgba(55, 214, 160, .09);
+}
+.mode-btn.is-active b { color: var(--accent); }
+.mode-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+
+.checkfield > .checkline { margin-top: 6px; }
+.running-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em;
+  color: var(--warn); border: 1px solid rgba(255, 180, 84, .45);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
