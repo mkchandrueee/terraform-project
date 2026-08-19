@@ -239,7 +239,7 @@
           if (/no option-chain endpoint/.test(why)) {
             throw new Error(t('sym.noChain', { symbol: payload.symbol || sym }));
           }
-          throw new Error(why ? why.split('\n')[0] : t('sc.empty'));
+          throw new Error(why || t('sc.empty'));
         }
         var lot = applyLotSize(payload);
         var result = evaluate(payload, APP.config.get());

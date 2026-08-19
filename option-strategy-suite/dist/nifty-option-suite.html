@@ -735,6 +735,10 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--warn); border: 1px solid rgba(255, 180, 84, .45);
   border-radius: 999px; padding: 1px 7px; white-space: nowrap;
 }
+
+/* A helper error names every endpoint it tried, one per line. Collapsing that
+   to a single run-on line is what made the last two failures undiagnosable. */
+.af-status.af-err { white-space: pre-line; }
 </style>
 </head>
 <body>
@@ -5051,7 +5055,7 @@ window.APP = window.APP || {};
           if (/no option-chain endpoint/.test(why)) {
             throw new Error(t('sym.noChain', { symbol: payload.symbol || sym }));
           }
-          throw new Error(why ? why.split('\n')[0] : t('sc.empty'));
+          throw new Error(why || t('sc.empty'));
         }
         var lot = applyLotSize(payload);
         var result = evaluate(payload, APP.config.get());
@@ -5433,8 +5437,11 @@ window.APP = window.APP || {};
       })
       .then(function (payload) {
         if (!payload.rows || !payload.rows.length) {
+          /* Keep the whole reason. The helper's message names every endpoint it
+             tried and what each answered, which is the only thing that makes
+             this diagnosable — the first line alone says nothing useful. */
           var why = (payload.skipped || [])[0];
-          throw new Error(why && why.reason ? String(why.reason).split('\n')[0] : t('sw.empty'));
+          throw new Error(why && why.reason ? String(why.reason) : t('sw.empty'));
         }
         var result = evaluate(payload, APP.config.get());
         last = result;

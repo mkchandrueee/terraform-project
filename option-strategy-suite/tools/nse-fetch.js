@@ -7,6 +7,7 @@
  *   node tools/nse-fetch.js --dump CE    → print the raw tick payload it is reading
  *   node tools/nse-fetch.js --dump chain    → which chain endpoint answered, and its shape
  *   node tools/nse-fetch.js --dump expiries → the expiry dates it will try
+ *   node tools/nse-fetch.js --dump history  → which history endpoint answers, and its shape
  *
  *   node tools/nse-fetch.js --serve --token SECRET
  *       serves the app AND the API on one port, gated by a shared secret, so a
@@ -482,16 +483,47 @@ function ddmmyyyy(ms) {
   return String(p.d).padStart(2, '0') + '-' + String(p.m + 1).padStart(2, '0') + '-' + p.y;
 }
 
-/** NSE keeps equities and indices on separate historical endpoints. */
-function historyUrl(symbol, fromMs, toMs) {
+/**
+ * Candidate history endpoints, in the order to try them.
+ *
+ * NSE moves these the same way it moved the option chain, and a retired path
+ * does not 404 — it answers 200 with an empty list, which is indistinguishable
+ * from "this symbol has no data" unless you try another. securityArchives is
+ * the current one; cm/equity is the older path still serving some accounts.
+ * A stock that trades in a series other than EQ (BE, BZ) also comes back empty
+ * from an EQ-filtered request, so the last attempt drops the filter entirely.
+ */
+function historyUrls(symbol, fromMs, toMs) {
   const from = ddmmyyyy(fromMs), to = ddmmyyyy(toMs);
+  const sym = encodeURIComponent(symbol);
+
   if (isIndex(symbol)) {
-    return BASE + '/api/historical/indicesHistory?indexType=' +
-           encodeURIComponent(INDEX_HISTORY_NAMES[symbol] || symbol) +
-           '&from=' + from + '&to=' + to;
+    const name = encodeURIComponent(INDEX_HISTORY_NAMES[symbol] || symbol);
+    return [
+      ['indicesHistory', BASE + '/api/historical/indicesHistory?indexType=' + name +
+                         '&from=' + from + '&to=' + to],
+      ['indexArchives', BASE + '/api/historical/indicesHistory?indexType=' + name +
+                        '&from=' + from + '&to=' + to + '&indices=true']
+    ];
   }
-  return BASE + '/api/historical/cm/equity?symbol=' + encodeURIComponent(symbol) +
-         '&series=' + encodeURIComponent('["EQ"]') + '&from=' + from + '&to=' + to;
+
+  const archive = (series) =>
+    BASE + '/api/historical/securityArchives?from=' + from + '&to=' + to +
+    '&symbol=' + sym + '&dataType=priceVolumeDeliverable' +
+    (series ? '&series=' + series : '');
+
+  return [
+    ['securityArchives EQ', archive('EQ')],
+    ['cm/equity EQ', BASE + '/api/historical/cm/equity?symbol=' + sym +
+                     '&series=' + encodeURIComponent('["EQ"]') + '&from=' + from + '&to=' + to],
+    ['securityArchives BE', archive('BE')],
+    ['securityArchives any series', archive('')]
+  ];
+}
+
+/** The first candidate, for messages that need one URL to point at. */
+function historyUrl(symbol, fromMs, toMs) {
+  return historyUrls(symbol, fromMs, toMs)[0][1];
 }
 
 /* The historical endpoint keys on the index's display name, not its symbol. */
@@ -503,20 +535,49 @@ const INDEX_HISTORY_NAMES = {
   NIFTYNXT50: 'NIFTY NEXT 50'
 };
 
-/** One row shape out of two very different payloads. Ascending by date. */
+/* Field names differ per endpoint and NSE renames them; take the first that is
+   present rather than hardcoding one spelling. */
+const OHLC_KEYS = {
+  o: ['CH_OPENING_PRICE', 'EOD_OPEN_INDEX_VAL', 'OPEN_PRICE', 'open', 'OPEN'],
+  h: ['CH_TRADE_HIGH_PRICE', 'EOD_HIGH_INDEX_VAL', 'HIGH_PRICE', 'high', 'HIGH'],
+  l: ['CH_TRADE_LOW_PRICE', 'EOD_LOW_INDEX_VAL', 'LOW_PRICE', 'low', 'LOW'],
+  c: ['CH_CLOSING_PRICE', 'EOD_CLOSE_INDEX_VAL', 'CLOSE_PRICE', 'close', 'CLOSE',
+      'CH_LAST_TRADED_PRICE', 'LAST_PRICE']
+};
+const DATE_KEYS = ['CH_TIMESTAMP', 'EOD_TIMESTAMP', 'mTIMESTAMP', 'TIMESTAMP', 'TradDt', 'date'];
+
+function firstNumber(row, keys) {
+  for (const k of keys) {
+    if (row[k] == null) continue;
+    /* NSE sometimes sends these as strings with thousands separators. */
+    const n = Number(String(row[k]).replace(/,/g, ''));
+    if (Number.isFinite(n)) return n;
+  }
+  return NaN;
+}
+
+/** One row shape out of several different payloads. Ascending by date. */
 function parseHistory(payload) {
   const data = (payload && payload.data) || [];
-  const list = Array.isArray(data) ? data : (data.indexCloseOnlineRecords || []);
+  const list = Array.isArray(data)
+    ? data
+    : (data.indexCloseOnlineRecords || data.records || []);
 
   const out = [];
-  for (const r of list) {
-    const o = Number(r.CH_OPENING_PRICE != null ? r.CH_OPENING_PRICE : r.EOD_OPEN_INDEX_VAL);
-    const h = Number(r.CH_TRADE_HIGH_PRICE != null ? r.CH_TRADE_HIGH_PRICE : r.EOD_HIGH_INDEX_VAL);
-    const l = Number(r.CH_TRADE_LOW_PRICE != null ? r.CH_TRADE_LOW_PRICE : r.EOD_LOW_INDEX_VAL);
-    const c = Number(r.CH_CLOSING_PRICE != null ? r.CH_CLOSING_PRICE : r.EOD_CLOSE_INDEX_VAL);
-    const stamp = r.CH_TIMESTAMP || r.mTIMESTAMP || r.EOD_TIMESTAMP || r.TIMESTAMP;
-    const ms = Date.parse(stamp);
+  for (const r of (Array.isArray(list) ? list : [])) {
+    if (!r || typeof r !== 'object') continue;
+    const o = firstNumber(r, OHLC_KEYS.o);
+    const h = firstNumber(r, OHLC_KEYS.h);
+    const l = firstNumber(r, OHLC_KEYS.l);
+    const c = firstNumber(r, OHLC_KEYS.c);
+    let ms = NaN;
+    for (const k of DATE_KEYS) {
+      if (r[k] == null) continue;
+      ms = Date.parse(r[k]);
+      if (Number.isFinite(ms)) break;
+    }
     if (![o, h, l, c].every(Number.isFinite) || !Number.isFinite(ms)) continue;
+    if (!(h >= l) || o <= 0 || c <= 0) continue;
     out.push({ t: ms, o: o, h: h, l: l, c: c, day: istDateKey(ms) });
   }
   out.sort((a, b) => a.t - b.t);
@@ -538,23 +599,46 @@ async function dailyBars(symbol, days) {
 
   const byDay = new Map();
   const failures = [];
+  const tried = [];
+  let endpoint = null;   /* the candidate that works, reused for later windows */
+
   for (const [from, until] of windows) {
-    try {
-      parseHistory(await nseJson(historyUrl(symbol, from, until)))
-        .forEach((b) => byDay.set(b.day, b));
-    } catch (err) {
-      failures.push(err.message);
+    const candidates = historyUrls(symbol, from, until);
+    const order = endpoint
+      ? candidates.filter((c) => c[0] === endpoint).concat(candidates.filter((c) => c[0] !== endpoint))
+      : candidates;
+
+    let got = 0;
+    for (const [name, url] of order) {
+      try {
+        const rows = parseHistory(await nseJson(url));
+        if (rows.length) {
+          rows.forEach((b) => byDay.set(b.day, b));
+          endpoint = name;
+          got = rows.length;
+          break;
+        }
+        /* 200 with nothing in it. A retired endpoint answers exactly like a
+           symbol with no data, so record it and try the next candidate. */
+        if (!endpoint) tried.push(name + ' → 200 but no rows');
+      } catch (err) {
+        if (!endpoint) tried.push(name + ' → ' + err.message);
+        else failures.push(err.message);
+      }
     }
+    if (!got && endpoint) failures.push('window from ' + ddmmyyyy(from) + ' returned nothing');
     if (windows.length > 1) await sleep(250);   /* NSE throttles bursts */
   }
 
   const bars = Array.from(byDay.values()).sort((a, b) => a.t - b.t);
   if (!bars.length) {
     throw new Error(
-      'the historical endpoint returned no rows for ' + symbol + '.' +
-      (failures.length ? '\n  ' + failures.join('\n  ') : '') +
-      '\nNSE serves equities and indices from different URLs; this used\n  ' +
-      historyUrl(symbol, to - span * 86400000, to)
+      'no historical endpoint returned rows for ' + symbol +
+      ' (' + (isIndex(symbol) ? 'index' : 'equity') + '). Tried:\n  ' +
+      tried.join('\n  ') +
+      '\nA 200 with no rows usually means NSE has retired that path, or the' +
+      '\nsymbol is not the NSE trading symbol. Check the symbol on nseindia.com,' +
+      '\nthen run:  node tools/nse-fetch.js --symbol ' + symbol + ' --dump history'
     );
   }
   /* Some windows may have failed while others answered — say so rather than
@@ -1256,12 +1340,30 @@ const server = http.createServer(async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 async function dump(which) {
-  const chain = await optionChain(SYMBOL);
-  const spot = chainUnderlying(chain.payload);
-  const step = STRIKE_STEP || strikeStepFromChain(chain.payload) || (isIndex(SYMBOL) ? 100 : 0);
-  const strike = atmStrike(spot, step);
-  const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
-                 (chainRows(chain.payload)[0] || {}).expiryDate;
+  /* These two answer without an option chain, and must not be blocked by one:
+     a stock with no listed options still has price history. */
+  if (which.toLowerCase() === 'history') {
+    const to = Date.now(), from = to - 40 * 86400000;
+    console.log('symbol:', SYMBOL, isIndex(SYMBOL) ? '(index)' : '(equity)');
+    console.log('window:', ddmmyyyy(from), '→', ddmmyyyy(to), '\n');
+    for (const [name, url] of historyUrls(SYMBOL, from, to)) {
+      try {
+        const payload = await nseJson(url);
+        const rows = parseHistory(payload);
+        const keys = Array.isArray(payload && payload.data) && payload.data[0]
+          ? Object.keys(payload.data[0]).slice(0, 10).join(', ') : '(no row to inspect)';
+        console.log(`  ${rows.length ? '✓' : '·'} ${name}: ${rows.length} usable rows`);
+        console.log(`      ${url}`);
+        console.log(`      top-level keys: ${Object.keys(payload || {}).join(', ') || '(none)'}`);
+        console.log(`      first row keys: ${keys}`);
+        if (rows.length) console.log(`      newest: ${JSON.stringify(rows[rows.length - 1])}`);
+      } catch (err) {
+        console.log(`  ✗ ${name}: ${err.message}`);
+        console.log(`      ${url}`);
+      }
+    }
+    return;
+  }
 
   if (which.toLowerCase() === 'expiries') {
     var found = await expiryList(SYMBOL);
@@ -1272,6 +1374,14 @@ async function dump(which) {
       (isIndex(SYMBOL) ? upcomingExpiries(6) : upcomingMonthlies(3)).join(', '));
     return;
   }
+
+
+  const chain = await optionChain(SYMBOL);
+  const spot = chainUnderlying(chain.payload);
+  const step = STRIKE_STEP || strikeStepFromChain(chain.payload) || (isIndex(SYMBOL) ? 100 : 0);
+  const strike = atmStrike(spot, step);
+  const expiry = chain.expiry || chainExpiries(chain.payload)[0] ||
+                 (chainRows(chain.payload)[0] || {}).expiryDate;
 
   if (which.toLowerCase() === 'chain') {
     console.log('endpoint that answered:', chain.url);
@@ -1467,7 +1577,7 @@ module.exports = {
   chainRows, chainUnderlying, chainExpiries, pickContracts, optionChain,
   detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
   history, dailyBars, hourlyBars, parseHistory, groupBars, weekKey, monthKey,
-  isRunning, lookbackDays, historyUrl, TIMEFRAMES,
+  isRunning, lookbackDays, historyUrl, historyUrls, TIMEFRAMES,
   formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
   isIndex, cleanSymbol, strikeStepFromChain, marketLot,
   legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS

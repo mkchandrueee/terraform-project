@@ -279,6 +279,13 @@ premium**, which means nothing on a share price — it would demand a ₹16 step
 all on a ₹3,000 one. Here the floor is a percentage of price instead, `swingMinStepPct`, default 0.25%. At
 that value the range term dominates in almost every real case, which is the intent: a floor, not a driver.
 
+**NSE moves these paths, and a retired one does not 404** — it answers `200` with an empty list, which reads
+exactly like "this symbol has no data". So history is tried against the current `securityArchives` path, the
+older `cm/equity` one, and two series variants for stocks that trade outside EQ, keeping whichever answers for
+the remaining windows. `--dump history` prints every candidate with its row count and field names, which is
+how you tell a moved endpoint from a wrong symbol. The row reader takes the first field name present out of
+several spellings, and copes with numbers sent as comma-formatted strings.
+
 **NSE's historical endpoint refuses wide date ranges** — a single request spanning a couple of quarters comes
 back `503`. History is therefore fetched in 80-day windows and stitched together, deduplicated by session
 date; a year of monthly candles is five requests, not one. Transient `503` and `429` are retried with backoff

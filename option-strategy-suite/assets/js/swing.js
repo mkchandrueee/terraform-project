@@ -303,8 +303,11 @@
       })
       .then(function (payload) {
         if (!payload.rows || !payload.rows.length) {
+          /* Keep the whole reason. The helper's message names every endpoint it
+             tried and what each answered, which is the only thing that makes
+             this diagnosable — the first line alone says nothing useful. */
           var why = (payload.skipped || [])[0];
-          throw new Error(why && why.reason ? String(why.reason).split('\n')[0] : t('sw.empty'));
+          throw new Error(why && why.reason ? String(why.reason) : t('sw.empty'));
         }
         var result = evaluate(payload, APP.config.get());
         last = result;

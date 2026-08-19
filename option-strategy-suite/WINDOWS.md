@@ -234,6 +234,19 @@ curl "http://127.0.0.1:8123/history?symbol=WIPRO&tfs=1d&bars=1"
 Asking for fewer candles per timeframe, or dropping the monthly box, shortens the history needed and so the
 number of requests.
 
+**"Swing scan failed — no historical endpoint returned rows for ..."**
+NSE moves these paths and a retired one answers `200` with an empty list rather than a 404, so it looks
+identical to "this symbol has no data". The helper tries the current path, the older one, and two series
+variants before giving up, and the error now names each and what it answered. To see it directly:
+
+```bat
+node tools\nse-fetch.js --symbol ASIANPAINT --dump history
+```
+
+That prints every candidate, how many usable rows it returned, and the field names in the response — enough to
+tell a moved endpoint from a wrong symbol. Use the NSE *trading* symbol; this works even for a stock with no
+listed options, since price history and option chains are separate.
+
 **A stock's strikes or lot size look wrong**
 Both are read live from that symbol's own chain, so they follow NSE rather than a table in the app. Confirm
 what it found:
@@ -264,6 +277,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | `node tools\nse-fetch.js --symbol RELIANCE --check` | The same checks against a stock |
 | `node tools\nse-fetch.js --mock` | Fixture data, no network — dry run |
 | `node tools\nse-fetch.js --dump CE` | Raw NSE payload |
+| `node tools\nse-fetch.js --dump history` | Which history endpoint answers, and its shape |
 | `node tools\nse-fetch.js --serve --token X` | App + API on one port, gated by a secret |
 | `curl "http://127.0.0.1:8123/history?symbol=RELIANCE&tfs=1d,1w,1M"` | Swing candles the Scan tab reads |
 | `python build.py` | Single-file bundle in `dist\` |

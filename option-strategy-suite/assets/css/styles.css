@@ -714,3 +714,7 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--warn); border: 1px solid rgba(255, 180, 84, .45);
   border-radius: 999px; padding: 1px 7px; white-space: nowrap;
 }
+
+/* A helper error names every endpoint it tried, one per line. Collapsing that
+   to a single run-on line is what made the last two failures undiagnosable. */
+.af-status.af-err { white-space: pre-line; }
