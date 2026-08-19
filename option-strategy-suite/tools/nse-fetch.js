@@ -8,6 +8,10 @@
  *   node tools/nse-fetch.js --dump chain    → which chain endpoint answered, and its shape
  *   node tools/nse-fetch.js --dump expiries → the expiry dates it will try
  *
+ *   node tools/nse-fetch.js --serve --token SECRET
+ *       serves the app AND the API on one port, gated by a shared secret, so a
+ *       single tunnel puts the whole thing on a phone from anywhere. See IOS.md.
+ *
  * Why this exists: nseindia.com sends no CORS headers and gates its APIs behind
  * session cookies set by a browser-like homepage visit. A static page therefore
  * cannot call NSE directly — the request is blocked before it leaves the tab.
@@ -20,6 +24,9 @@
 'use strict';
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 const ARGS = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -37,6 +44,14 @@ const HOST = flag('host', '127.0.0.1');
 const SYMBOL = flag('symbol', 'NIFTY').toUpperCase();
 const STRIKE_STEP = Number(flag('strike-step', 0));   /* 0 = derive from the chain */
 const MOCK = has('mock');
+
+/* --serve makes this one process the whole app: the API and the static files
+   on a single origin. That matters off the LAN, where the phone reaches the PC
+   through one tunnel — two ports would need two tunnels and two URLs.
+   --token gates it, because a tunnel is reachable by anyone holding the URL. */
+const SERVE_APP = has('serve');
+const TOKEN = flag('token', '');
+const APP_ROOT = path.resolve(__dirname, '..');
 
 /* The window the strategy is built on, in IST. */
 const CANDLE_FROM = flag('from', '09:15');
@@ -747,10 +762,111 @@ function send(res, status, body) {
   res.end(json);
 }
 
+/* ------------------------------------------------------------------ */
+/* serving the app from this same process (--serve)                    */
+/* ------------------------------------------------------------------ */
+
+const STATIC_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.md': 'text/markdown; charset=utf-8'
+};
+
+/* Tells the page the helper is its own origin, so it stops guessing from the
+   hostname — behind a tunnel there is no ":8123" to append. */
+const SAME_ORIGIN_META = '<meta name="nos-helper" content="" />';
+
+function injectHelperMeta(html) {
+  if (html.indexOf('name="nos-helper"') !== -1) return html;
+  /* After the charset declaration, which has to stay first. */
+  const charset = '<meta charset="utf-8" />';
+  if (html.indexOf(charset) !== -1) {
+    return html.replace(charset, charset + '\n' + SAME_ORIGIN_META);
+  }
+  return html.replace('<head>', '<head>\n' + SAME_ORIGIN_META);
+}
+
+function serveStatic(req, res, url) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('bad request');
+  }
+  pathname = '/' + pathname.replace(/^\/+/, '');
+  if (pathname.endsWith('/')) pathname += 'index.html';
+
+  const filePath = path.resolve(APP_ROOT, '.' + pathname);
+  if (filePath !== APP_ROOT && !filePath.startsWith(APP_ROOT + path.sep)) {
+    res.writeHead(403).end('forbidden');
+    return;
+  }
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('404 — ' + pathname);
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    let body = data;
+    if (ext === '.html') body = Buffer.from(injectHelperMeta(data.toString('utf8')), 'utf8');
+    res.writeHead(200, {
+      'Content-Type': STATIC_TYPES[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(body);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* token gate — only active when --token is passed                     */
+/* ------------------------------------------------------------------ */
+
+const COOKIE = 'nos_token';
+
+function sameSecret(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  /* Compare every time even on a length mismatch, so the reply time does not
+     leak the length. */
+  if (x.length !== y.length) return crypto.timingSafeEqual(x, x) && false;
+  return crypto.timingSafeEqual(x, y);
+}
+
+function presentedToken(req, url) {
+  const q = url.searchParams.get('token');
+  if (q) return q;
+  const header = req.headers['x-helper-token'];
+  if (header) return String(header);
+  const cookies = String(req.headers.cookie || '');
+  const match = cookies.match(new RegExp('(?:^|;\\s*)' + COOKIE + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
 
   if (req.method === 'OPTIONS') return send(res, 204, {});
+
+  if (TOKEN) {
+    if (!sameSecret(presentedToken(req, url), TOKEN)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('401 — add ?token=… to the URL');
+    }
+    /* Remember it, so a reload, an Add-to-Home-Screen launch and the page's own
+       fetches all carry it without the secret being written into the HTML. */
+    if (url.searchParams.get('token')) {
+      res.setHeader('Set-Cookie',
+        COOKIE + '=' + encodeURIComponent(TOKEN) + '; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax');
+    }
+  }
 
   if (url.pathname === '/health') {
     return send(res, 200, {
@@ -795,6 +911,8 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /* Anything left is the app itself when --serve is on, a 404 otherwise. */
+  if (SERVE_APP) return serveStatic(req, res, url);
   return send(res, 404, { error: 'try /health, /first-candle or /scan' });
 });
 
@@ -993,7 +1111,16 @@ if (require.main === module) {
       console.log(`  candle    ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
       console.log(`  endpoints /health  /first-candle  /scan`);
-      console.log('  point the app at this URL under "Auto-fetch" on the Analyser tab.');
+      if (SERVE_APP) {
+        console.log(`  app       served from this same port — open http://${HOST}:${PORT}/`);
+      } else {
+        console.log('  point the app at this URL under "Auto-fetch" on the Analyser tab.');
+      }
+      if (TOKEN) {
+        console.log(`  token     required — open http://${HOST}:${PORT}/?token=${TOKEN}`);
+      } else if (SERVE_APP && HOST !== '127.0.0.1') {
+        console.log('  WARNING   no --token set, and this is not bound to localhost only.');
+      }
     });
   }
 }

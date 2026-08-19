@@ -29,7 +29,8 @@ Extract the zip so the folder looks like this:
 D:\Claude\niftyoptionsuite\
 ├── index.html
 ├── start.cmd            ← double-click this to run everything
-├── start-lan.cmd        ← the same, but reachable from your phone
+├── start-lan.cmd        ← the same, but reachable from your phone on wifi
+├── start-tunnel.cmd     ← one https link, phone from anywhere
 ├── serve.cmd            ← app only, no NSE helper
 ├── check-nse.cmd        ← "will the NSE fetch work on my machine?"
 ├── build.py
@@ -104,6 +105,34 @@ values typed in by hand, which is exactly how you would have used it anyway.
 
 Prefer to do it by hand? Type the four values into each side and press **Analyse**. Nothing about the rest of
 the app depends on the helper.
+
+---
+
+## Optional — use it from your iPhone ANYWHERE (mobile data included)
+
+`start-lan.cmd` below only works when the phone is on your wifi. To use it from anywhere, publish the
+PC through a tunnel instead. The PC still does the NSE talking — it has to, NSE blocks cloud IPs — the
+tunnel just gives it an https address your phone can open from mobile data.
+
+Install cloudflared once:
+
+```bat
+winget install --id Cloudflare.cloudflared
+```
+
+Then double-click **`start-tunnel.cmd`**. It generates a one-time secret, starts the suite with the app
+and the API on a **single port** (so one tunnel covers both), and starts cloudflared, which prints
+something like `https://calm-river-fox-12.trycloudflare.com`. On the phone open:
+
+```
+https://calm-river-fox-12.trycloudflare.com/?token=YOUR-SECRET
+```
+
+Both strings are in the window. No firewall rule, no IP addresses, no wifi requirement. Because the
+link is https, notifications also work once you Add to Home Screen — the LAN option cannot do that.
+
+The secret matters: a quick tunnel URL is public, and `--token` is what stops anyone holding it from
+driving your helper. A new one is generated per run, so old links die. See [IOS.md](IOS.md).
 
 ---
 
@@ -213,6 +242,7 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 |---|---|
 | `start.cmd` | Helper + app + browser, all at once |
 | `start-lan.cmd` | The same, but reachable from your iPhone on the same wifi |
+| `start-tunnel.cmd` | One https link, usable from the phone anywhere |
 | `serve.cmd` | App only |
 | `check-nse.cmd` | Self-check of the NSE pipeline |
 | `node tools\serve.js 8787` | App on a chosen port |
@@ -222,4 +252,5 @@ Run these from `D:\Claude\niftyoptionsuite` in Command Prompt.
 | `node tools\nse-fetch.js --symbol RELIANCE --check` | The same checks against a stock |
 | `node tools\nse-fetch.js --mock` | Fixture data, no network — dry run |
 | `node tools\nse-fetch.js --dump CE` | Raw NSE payload |
+| `node tools\nse-fetch.js --serve --token X` | App + API on one port, gated by a secret |
 | `python build.py` | Single-file bundle in `dist\` |

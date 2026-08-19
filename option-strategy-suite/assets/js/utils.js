@@ -143,6 +143,12 @@ window.APP = window.APP || {};
   function defaultEndpoint(port) {
     var p = port || 8123;
     try {
+      /* The helper injects this when it is serving the page itself (--serve).
+         Then it IS this origin — port and all — and guessing from the hostname
+         would be wrong, because behind a tunnel there is no :8123 to append. */
+      var meta = document.querySelector('meta[name="nos-helper"]');
+      if (meta) return (meta.getAttribute('content') || '').trim() || window.location.origin;
+
       var host = window.location.hostname;
       if (host && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/i.test(host) &&
           /^https?:$/.test(window.location.protocol)) {

@@ -367,17 +367,31 @@ unchanged. See [IOS.md](IOS.md).
 
 ## On an iPhone or iPad
 
-The app runs fine on a phone; the NSE helper cannot, because iOS has no Node runtime. So auto-fetch needs your
-PC on the same wifi, and everything else does not:
+The helper must run on a machine with a **home** internet connection — not because of iOS, but because NSE
+refuses datacenter and cloud IP ranges, so a hosted copy gets blocked at the source. iOS has no Node runtime
+either. So the helper stays on your PC and the only question is how the phone reaches it:
 
-- **Phone + PC on one wifi** — run `start-lan.cmd` on the PC, open the printed `http://192.168.x.x:8787` in
-  Safari, *Add to Home Screen*. Full functionality including auto-fetch and the Scan tab. The app points
-  itself at the PC's helper automatically — loaded from a network address, it defaults the helper to that same
-  host rather than to `127.0.0.1`, which on a phone would mean the phone itself.
-- **Phone alone** — copy `dist/nifty-option-suite.html` across and open it from Files. Every tool works with
-  values typed from your broker app; no auto-fetch, and iOS may not persist settings from a local file.
+| | Reaches the helper | On mobile data | Auto-fetch + Scan | Notifications |
+|---|---|---|---|---|
+| **Tunnel** — `start-tunnel.cmd` | over the internet, https | **yes** | yes | **yes** |
+| **Same wifi** — `start-lan.cmd` | over your LAN, http | no | yes | no |
+| **Phone alone** — the single-file build | not at all | yes | no, type the values | no |
 
-[IOS.md](IOS.md) has the full walkthrough, the one firewall command, and the iOS-specific limits.
+The tunnel is the one to use if you do not want to depend on being on the same wifi. `--serve` puts the app
+and the API on **one port and one origin**, so a single `cloudflared` quick tunnel covers everything, and
+`--token` gates every route because that URL is public. Being https, it is also the only setup where iOS
+delivers notifications. Tailscale does the same privately.
+
+```sh
+node tools/nse-fetch.js --serve --token SECRET     # app + API on one origin, gated
+cloudflared tunnel --url http://127.0.0.1:8123     # → https://….trycloudflare.com
+```
+
+The app resolves the helper by itself in all three cases: served by the helper it uses its own origin (no
+`:8123` to append behind a tunnel), loaded from a LAN address it uses that host on 8123, and only a bare
+localhost page falls back to `127.0.0.1`.
+
+[IOS.md](IOS.md) has the full walkthrough for each, plus the iOS-specific limits.
 
 ## Running it locally
 
@@ -433,6 +447,7 @@ option-strategy-suite/
 ├── manifest.webmanifest       Home Screen install metadata
 ├── serve.sh                   one-command local server
 ├── start-lan.cmd              Windows: both servers on the wifi, for a phone
+├── start-tunnel.cmd           Windows: one https address, phone from anywhere
 ├── build.py                   single-file bundler
 ├── IOS.md                     running it on an iPhone or iPad
 ├── tools/
