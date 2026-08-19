@@ -766,6 +766,37 @@ input[type=number] { -moz-appearance: textfield; }
   font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   color: var(--text-faint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
 }
+
+/* ---------- top ten blocks ---------- */
+.top-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 900px) { .top-grid { grid-template-columns: repeat(3, 1fr); } }
+.top-block {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 12px 14px; background: var(--bg-elev-2); min-width: 0;
+}
+.top-block h3 { font-size: 14px; margin-bottom: 3px; }
+.top-block > p { margin-bottom: 9px; }
+.top-list { list-style: none; margin: 0; padding: 0; counter-reset: top; }
+.top-list li {
+  counter-increment: top;
+  display: grid; grid-template-columns: 20px 1fr auto auto; gap: 7px;
+  align-items: center; padding: 6px 0;
+  border-top: 1px solid var(--line-soft); font-size: 13px;
+}
+.top-list li:first-child { border-top: 0; }
+.top-rank::before {
+  content: counter(top); font-family: var(--mono); font-size: 11px;
+  color: var(--text-faint); font-weight: 700;
+}
+.top-sym { font-family: var(--mono); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.top-sym em { color: var(--text-faint); font-size: 11.5px; }
+.top-conf { font-family: var(--mono); font-weight: 700; }
+/* the levels line wraps under the row on narrow screens rather than squashing */
+.top-levels {
+  grid-column: 2 / -1; font-family: var(--mono); font-size: 11.5px;
+  color: var(--text-dim);
+}
+.top-levels .sl { color: var(--danger); }
 </style>
 </head>
 <body>
@@ -1419,6 +1450,7 @@ input[type=number] { -moz-appearance: textfield; }
 
         <div class="row-actions">
           <button type="button" class="btn btn-primary btn-decide" id="btn-cs-run" data-i18n="cs.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-options" data-i18n="cs.runOptions"></button>
           <button type="button" class="btn btn-ghost" id="btn-cs-use" data-i18n="cs.useBest"></button>
           <button type="button" class="btn btn-ghost" id="btn-cs-reset" data-i18n="f.reset"></button>
         </div>
@@ -1428,6 +1460,7 @@ input[type=number] { -moz-appearance: textfield; }
 
     <div id="confidence-output" hidden>
       <div class="card verdict-card an-verdict" id="cs-headline"></div>
+      <div class="card" id="cs-top" hidden></div>
       <div class="card" id="cs-table"></div>
     </div>
   </section>
@@ -2134,12 +2167,32 @@ window.APP = window.APP || {};
       'cs.empty': 'the helper returned no symbols',
       'cs.note': 'Needs the local helper. It reads NSE\u2019s own live-market endpoints — the all-indices board and the NIFTY 50 constituent list — which is two requests for all 55 symbols rather than 55 separate ones.',
       'cs.found': '{n} AT OR ABOVE {min}%',
-      'cs.foundNone': 'NOTHING REACHES {min}% — STAND ASIDE',
+      'cs.foundNone': 'NOTHING REACHES {min}% — best on the board is {top}%',
       'cs.topScore': 'top score',
       'cs.context': '{scanned} symbols read ({index} indices, {equity} stocks) — {longs} long, {shorts} short, as of {time} IST.',
       'cs.perfectLabel': '100% ({n}):',
       'cs.meaning': 'Confidence scores the SHAPE OF ONE CANDLE — 20 for direction, 40 for body size, 40 for where it closed in its range. 100% means the candle opened at its low, closed at its high and is all body. It is not a 100% chance of profit, not a probability, and says nothing about what happens next.',
       'cs.liveWarn': 'This is today\u2019s candle as it stands ({session}) — the market is still moving it, so these levels change through the session and are final only after the close.',
+      'cs.nothingRead': 'NOTHING WAS READ — {what} came back empty',
+      'cs.buyCE': 'BUY CE',
+      'cs.buyPE': 'BUY PE',
+      'cs.topTitle': 'Top ten',
+      'cs.topDesc': 'Highest confidence in each group. Ranking says where to look, not what will happen.',
+      'cs.topIndices': 'Top indices',
+      'cs.topIndicesDesc': 'The five F&O indices, best first.',
+      'cs.topStocks': 'Top NIFTY 50 stocks',
+      'cs.topStocksDesc': 'Share prices — pick a strike to trade one as an option.',
+      'cs.topOptions': 'Top stock options',
+      'cs.topOptionsDesc': 'ATM call and put premiums of the ten best symbols above, scored in option space.',
+      'cs.topNoIndices': 'No index rows in this scan.',
+      'cs.topNoStocks': 'No stock rows in this scan — see the note above for why.',
+      'cs.topNoOptions': 'Press "Scan top 10 options" — it fetches the option chain and ticks for the ten best symbols, so it takes a while.',
+      'cs.runOptions': 'Scan top 10 options',
+      'cs.optRunning': 'Reading option chains and ticks for {n} symbols — this is about thirty requests, give it a moment…',
+      'cs.optDone': 'Read the ATM call and put for {n} symbols from {source}.',
+      'cs.optFailed': 'Option scan failed — {reason}',
+      'cs.optBusy': 'Reading option chains…',
+      'cs.optNeedsBoard': 'Scan the board first — that is what picks which ten symbols are worth the option requests.',
       'cs.tableTitle': 'The board, ranked',
       'cs.tableDesc': '{n} symbols at or above {min}%, highest first. 100% rows are highlighted.',
       'cs.tableDescNone': 'Nothing reached the threshold — showing the top {n} anyway, so you can see how far off the board is.',
@@ -2837,12 +2890,32 @@ window.APP = window.APP || {};
       'cs.empty': 'helper எந்த symbol-ம் கொடுக்கல',
       'cs.note': 'Local helper வேணும். NSE-ஓட live-market endpoints — all-indices board-ம் NIFTY 50 constituent list-ம் — படிக்குது; 55 symbol-க்கு 55 request இல்லாம ரெண்டே request.',
       'cs.found': '{min}%-க்கு மேல {n}',
-      'cs.foundNone': '{min}% வரை எதுவும் இல்ல — விட்டுடு',
+      'cs.foundNone': '{min}% வரை எதுவும் இல்ல — board-ல அதிகபட்சம் {top}%',
       'cs.topScore': 'top score',
       'cs.context': '{scanned} symbols ({index} indices, {equity} stocks) — {longs} long, {shorts} short, {time} IST நிலவரம்.',
       'cs.perfectLabel': '100% ({n}):',
       'cs.meaning': 'Confidence ஒரு candle-ஓட வடிவத்தை மட்டும் தான் அளக்குது — direction-க்கு 20, body size-க்கு 40, range-ல எங்க close ஆச்சுங்கிறதுக்கு 40. 100%-ன்னா candle low-ல open ஆகி high-ல close ஆகி முழுக்க body. அது 100% லாபம்ங்கிற உத்தரவாதம் இல்ல, probability-ம் இல்ல, அடுத்து என்ன நடக்கும்ங்கிறதை பத்தி எதுவும் சொல்லல.',
       'cs.liveWarn': 'இது இன்னைக்கு ({session}) இப்ப வரைக்கும் இருக்கிற candle — market இன்னும் அதை நகர்த்திட்டு இருக்கு; அதனால இந்த levels session முழுக்க மாறும், close ஆனப்புறம் தான் final.',
+      'cs.nothingRead': 'எதுவும் படிக்கப்படல — {what} காலியா வந்துச்சு',
+      'cs.buyCE': 'BUY CE',
+      'cs.buyPE': 'BUY PE',
+      'cs.topTitle': 'Top ten',
+      'cs.topDesc': 'ஒவ்வொரு group-லயும் அதிக confidence. Ranking எங்க பாக்கணும்னு சொல்லுது; என்ன நடக்கும்னு இல்ல.',
+      'cs.topIndices': 'Top indices',
+      'cs.topIndicesDesc': 'அஞ்சு F&O indices, சிறந்தது முதல்ல.',
+      'cs.topStocks': 'Top NIFTY 50 stocks',
+      'cs.topStocksDesc': 'Share price — option-ஆ trade பண்ண strike தேர்ந்தெடுக்கணும்.',
+      'cs.topOptions': 'Top stock options',
+      'cs.topOptionsDesc': 'மேல இருக்கிற பத்து symbols-ஓட ATM call, put premium — option space-ல score ஆனது.',
+      'cs.topNoIndices': 'இந்த scan-ல index rows இல்ல.',
+      'cs.topNoStocks': 'இந்த scan-ல stock rows இல்ல — காரணம் மேல இருக்கிற note-ல.',
+      'cs.topNoOptions': '"Scan top 10 options" அழுத்து — பத்து symbols-ஓட option chain-ம் ticks-ம் எடுக்குது, கொஞ்சம் நேரம் ஆகும்.',
+      'cs.runOptions': 'Top 10 options scan',
+      'cs.optRunning': '{n} symbols-க்கு option chain-ம் ticks-ம் படிக்கிறேன் — சுமார் முப்பது request, கொஞ்சம் பொறு…',
+      'cs.optDone': '{source}-ல இருந்து {n} symbols-ஓட ATM call-ம் put-ம் படிச்சாச்சு.',
+      'cs.optFailed': 'Option scan fail ஆச்சு — {reason}',
+      'cs.optBusy': 'Option chains படிக்கிறேன்…',
+      'cs.optNeedsBoard': 'முதல்ல board scan பண்ணு — எந்த பத்து symbols-க்கு option request போடணும்னு அது தான் தேர்ந்தெடுக்குது.',
       'cs.tableTitle': 'Board, rank வரிசையில',
       'cs.tableDesc': '{min}%-க்கு மேல {n} symbols, அதிகம் முதல்ல. 100% rows highlight ஆகியிருக்கு.',
       'cs.tableDescNone': 'Threshold-ஐ எதுவும் எட்டல — இருந்தாலும் top {n} காட்டப்படுது, board எவ்வளவு தூரத்துல இருக்குனு தெரிய.',
@@ -5881,25 +5954,38 @@ window.APP = window.APP || {};
   }
 
   /* ---------- rendering ---------- */
-  function sideChip(side) {
-    return '<span class="scan-side is-' + (side === 'long' ? 'call' : 'put') + '">' +
-      U.escapeHtml(t(side === 'long' ? 'sw.long' : 'sw.short')) + '</span>';
+  /* On the underlying, long/short is the directional view. On an option row it
+     would read as "sell the put", which is not this strategy — every leg here
+     is bought. So option rows say BUY CE / BUY PE instead. */
+  function sideChip(side, kind) {
+    var call = side === 'long';
+    var key = kind === 'option'
+      ? (call ? 'cs.buyCE' : 'cs.buyPE')
+      : (call ? 'sw.long' : 'sw.short');
+    return '<span class="scan-side is-' + (call ? 'call' : 'put') + '">' +
+      U.escapeHtml(t(key)) + '</span>';
   }
 
   function renderHeadline(result) {
     var el = U.$('cs-headline');
     var n = result.qualifying.length;
     var p = result.perfect.length;
+    /* Nothing READ is a different fact from nothing SCORING, and reporting the
+       second when the first is true sent the user hunting for a threshold that
+       would never match. */
+    var nothingRead = result.rows.length === 0;
     el.className = 'card verdict-card ' + (n ? 'an-verdict is-yes' : 'an-verdict is-no');
 
     el.innerHTML =
       '<div class="an-verdict-top">' +
         '<div class="verdict-badge ' + (n ? 'v-hold' : 'v-partial') + '">' +
-          U.escapeHtml(n
-            ? t('cs.found', { n: n, min: U.fmt(result.min, 0) })
-            : t('cs.foundNone', { min: U.fmt(result.min, 0) })) +
+          U.escapeHtml(nothingRead
+            ? t('cs.nothingRead', { what: t(result.universe === 'index' ? 'cs.uIndex'
+                : (result.universe === 'equity' ? 'cs.uEquity' : 'cs.uAll')) })
+            : (n ? t('cs.found', { n: n, min: U.fmt(result.min, 0) })
+                 : t('cs.foundNone', { min: U.fmt(result.min, 0), top: U.fmt(result.rows[0].confidence, 0) }))) +
         '</div>' +
-        (n ? '<div class="an-confidence"><b>' + U.fmt(result.rows[0].confidence, 0) + '%</b>' +
+        (result.rows.length ? '<div class="an-confidence"><b>' + U.fmt(result.rows[0].confidence, 0) + '%</b>' +
           '<span>' + U.escapeHtml(t('cs.topScore')) + '</span></div>' : '') +
       '</div>' +
       '<p class="verdict-sub">' + U.escapeHtml(t('cs.context', {
@@ -5915,8 +6001,17 @@ window.APP = window.APP || {};
                return '<span class="perfect-chip is-' + r.side + '">' + U.escapeHtml(r.symbol) + '</span>';
              }).join('') +
            '</div>' : '') +
+      /* Why part of the board is missing belongs where the verdict is, not
+         buried below a table the user may never scroll to. */
+      ((result.payload.skipped || []).length
+        ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.skipped', {
+            detail: result.payload.skipped.map(function (x) {
+              return (x.group || x.symbol || '?') + ': ' + x.reason;
+            }).join('; ')
+          })) + '</p>'
+        : '') +
       /* The number invites "100% = certain". Say plainly that it is not. */
-      '<p class="muted small warn-note">' + U.escapeHtml(t('cs.meaning')) + '</p>' +
+      (result.rows.length ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.meaning')) + '</p>' : '') +
       (result.payload.live
         ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.liveWarn', {
             session: result.payload.session })) + '</p>'
@@ -5962,10 +6057,113 @@ window.APP = window.APP || {};
         : '');
   }
 
+  /* ---------- top ten, per kind ---------- */
+  function topTen(rows, kind) {
+    return rows.filter(function (r) { return r.kind === kind; }).slice(0, 10);
+  }
+
+  function topCard(titleKey, descKey, rows, emptyKey) {
+    if (!rows.length) {
+      return '<div class="top-block"><h3>' + U.escapeHtml(t(titleKey)) + '</h3>' +
+             '<p class="muted small">' + U.escapeHtml(t(emptyKey)) + '</p></div>';
+    }
+    return '<div class="top-block"><h3>' + U.escapeHtml(t(titleKey)) + '</h3>' +
+      '<p class="muted small">' + U.escapeHtml(t(descKey)) + '</p>' +
+      '<ol class="top-list">' +
+        rows.map(function (r) {
+          return '<li>' +
+            '<span class="top-rank"></span>' +
+            '<span class="top-sym">' + U.escapeHtml(r.symbol) +
+              (r.leg ? ' <em>' + U.escapeHtml(r.leg) + '</em>' : '') + '</span>' +
+            sideChip(r.side, r.kind) +
+            '<b class="top-conf">' + U.fmt(r.confidence, 0) + '%</b>' +
+            '<span class="top-levels">' + money(r.entry) + ' → ' + money(r.target1) +
+              ' <span class="sl">' + money(r.stopLoss) + '</span></span>' +
+          '</li>';
+        }).join('') +
+      '</ol></div>';
+  }
+
+  function renderTop(result) {
+    var el = U.$('cs-top');
+    var opts = APP.state.confidenceOptions;
+    el.innerHTML =
+      '<div class="card-head"><h2>' + U.escapeHtml(t('cs.topTitle')) + '</h2>' +
+      '<p class="muted">' + U.escapeHtml(t('cs.topDesc')) + '</p></div>' +
+      '<div class="top-grid">' +
+        topCard('cs.topIndices', 'cs.topIndicesDesc', topTen(result.rows, 'index'), 'cs.topNoIndices') +
+        topCard('cs.topStocks', 'cs.topStocksDesc', topTen(result.rows, 'equity'), 'cs.topNoStocks') +
+        topCard('cs.topOptions', 'cs.topOptionsDesc',
+                (opts && opts.rows) || [], opts === 'busy' ? 'cs.optBusy' : 'cs.topNoOptions') +
+      '</div>';
+    el.hidden = false;
+  }
+
   function render(result) {
     renderHeadline(result);
+    renderTop(result);
     renderTable(result);
     U.$('confidence-output').hidden = false;
+  }
+
+  /* ---------- top ten stock options ----------
+     A separate, opt-in step because it is expensive: each symbol costs an
+     option chain plus a tick series per leg, so ten symbols is about thirty
+     requests. The board scan above picks WHICH ten are worth that. */
+  function runOptions() {
+    if (!last) { status('err', t('cs.optNeedsBoard')); return Promise.resolve(null); }
+    var endpoint = (U.$('cs-endpoint').value || '').trim().replace(/\/+$/, '') || U.defaultEndpoint(8123);
+    var symbols = last.rows.slice(0, 10).map(function (r) { return r.symbol; });
+    if (!symbols.length) { status('err', t('cs.optNeedsBoard')); return Promise.resolve(null); }
+
+    APP.state.confidenceOptions = 'busy';
+    renderTop(last);
+    status('busy', t('cs.optRunning', { n: symbols.length }));
+
+    return window.fetch(endpoint + '/options-board?symbols=' + encodeURIComponent(symbols.join(',')))
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body && body.error ? body.error : 'HTTP ' + res.status);
+          return body;
+        });
+      })
+      .then(function (payload) {
+        var cfg = APP.config.get();
+        var rows = [];
+        (payload.rows || []).forEach(function (r) {
+          /* The option's own premium candle, through the analyser unchanged —
+             this is option space, so no price-scale substitution applies. */
+          var ce = APP.analyser.analyseSide(r.ce, cfg);
+          var pe = APP.analyser.analyseSide(r.pe, cfg);
+          [['CE', ce], ['PE', pe]].forEach(function (pair) {
+            rows.push({
+              symbol: r.symbol, leg: r.atm + ' ' + pair[0], kind: 'option',
+              side: pair[0] === 'CE' ? 'long' : 'short',
+              confidence: pair[1].confidence,
+              entry: pair[1].entry, target1: pair[1].target1, target2: pair[1].target2,
+              target3: pair[1].target3, stopLoss: pair[1].stopLoss,
+              expiry: r.expiry, lotSize: r.lotSize
+            });
+          });
+        });
+        rows.sort(function (a, b) { return b.confidence - a.confidence; });
+        APP.state.confidenceOptions = { rows: rows.slice(0, 10), payload: payload };
+        renderTop(last);
+        status('ok', t('cs.optDone', {
+          n: (payload.rows || []).length,
+          source: payload.source === 'mock' ? t('af.mockSource') : payload.source
+        }));
+        return rows;
+      })
+      .catch(function (err) {
+        APP.state.confidenceOptions = null;
+        renderTop(last);
+        var msg = String(err && err.message || err);
+        if (!APP.helper.handleError('confidence', err, endpoint, status, runOptions)) {
+          status('err', t('cs.optFailed', { reason: msg.split('\n')[0] }));
+        }
+        return null;
+      });
   }
 
   /* ---------- controller ---------- */
@@ -5996,6 +6194,7 @@ window.APP = window.APP || {};
       .then(function (payload) {
         if (!payload.rows || !payload.rows.length) throw new Error(t('cs.empty'));
         APP.helper.ok('confidence');
+        APP.state.confidenceOptions = null;
         var result = evaluate(payload, APP.config.get(), options());
         last = result;
         APP.state.confidence = result;
@@ -6020,7 +6219,9 @@ window.APP = window.APP || {};
 
   function reset() {
     U.$('confidence-output').hidden = true;
+    U.$('cs-top').hidden = true;
     APP.state.confidence = null;
+    APP.state.confidenceOptions = null;
     last = null;
     status('idle', t('cs.idle'));
   }
@@ -6046,10 +6247,14 @@ window.APP = window.APP || {};
     U.$('btn-cs-run').addEventListener('click', run);
     U.$('btn-cs-reset').addEventListener('click', reset);
     U.$('btn-cs-use').addEventListener('click', useBest);
+    U.$('btn-cs-options').addEventListener('click', runOptions);
     status('idle', t('cs.idle'));
   }
 
-  APP.confidence = { init: init, run: run, reset: reset, evaluate: evaluate };
+  APP.confidence = {
+    init: init, run: run, reset: reset, evaluate: evaluate,
+    runOptions: runOptions, topTen: topTen
+  };
 })(window.APP);
 </script>
 <script>

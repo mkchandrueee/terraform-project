@@ -64,25 +64,38 @@
   }
 
   /* ---------- rendering ---------- */
-  function sideChip(side) {
-    return '<span class="scan-side is-' + (side === 'long' ? 'call' : 'put') + '">' +
-      U.escapeHtml(t(side === 'long' ? 'sw.long' : 'sw.short')) + '</span>';
+  /* On the underlying, long/short is the directional view. On an option row it
+     would read as "sell the put", which is not this strategy — every leg here
+     is bought. So option rows say BUY CE / BUY PE instead. */
+  function sideChip(side, kind) {
+    var call = side === 'long';
+    var key = kind === 'option'
+      ? (call ? 'cs.buyCE' : 'cs.buyPE')
+      : (call ? 'sw.long' : 'sw.short');
+    return '<span class="scan-side is-' + (call ? 'call' : 'put') + '">' +
+      U.escapeHtml(t(key)) + '</span>';
   }
 
   function renderHeadline(result) {
     var el = U.$('cs-headline');
     var n = result.qualifying.length;
     var p = result.perfect.length;
+    /* Nothing READ is a different fact from nothing SCORING, and reporting the
+       second when the first is true sent the user hunting for a threshold that
+       would never match. */
+    var nothingRead = result.rows.length === 0;
     el.className = 'card verdict-card ' + (n ? 'an-verdict is-yes' : 'an-verdict is-no');
 
     el.innerHTML =
       '<div class="an-verdict-top">' +
         '<div class="verdict-badge ' + (n ? 'v-hold' : 'v-partial') + '">' +
-          U.escapeHtml(n
-            ? t('cs.found', { n: n, min: U.fmt(result.min, 0) })
-            : t('cs.foundNone', { min: U.fmt(result.min, 0) })) +
+          U.escapeHtml(nothingRead
+            ? t('cs.nothingRead', { what: t(result.universe === 'index' ? 'cs.uIndex'
+                : (result.universe === 'equity' ? 'cs.uEquity' : 'cs.uAll')) })
+            : (n ? t('cs.found', { n: n, min: U.fmt(result.min, 0) })
+                 : t('cs.foundNone', { min: U.fmt(result.min, 0), top: U.fmt(result.rows[0].confidence, 0) }))) +
         '</div>' +
-        (n ? '<div class="an-confidence"><b>' + U.fmt(result.rows[0].confidence, 0) + '%</b>' +
+        (result.rows.length ? '<div class="an-confidence"><b>' + U.fmt(result.rows[0].confidence, 0) + '%</b>' +
           '<span>' + U.escapeHtml(t('cs.topScore')) + '</span></div>' : '') +
       '</div>' +
       '<p class="verdict-sub">' + U.escapeHtml(t('cs.context', {
@@ -98,8 +111,17 @@
                return '<span class="perfect-chip is-' + r.side + '">' + U.escapeHtml(r.symbol) + '</span>';
              }).join('') +
            '</div>' : '') +
+      /* Why part of the board is missing belongs where the verdict is, not
+         buried below a table the user may never scroll to. */
+      ((result.payload.skipped || []).length
+        ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.skipped', {
+            detail: result.payload.skipped.map(function (x) {
+              return (x.group || x.symbol || '?') + ': ' + x.reason;
+            }).join('; ')
+          })) + '</p>'
+        : '') +
       /* The number invites "100% = certain". Say plainly that it is not. */
-      '<p class="muted small warn-note">' + U.escapeHtml(t('cs.meaning')) + '</p>' +
+      (result.rows.length ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.meaning')) + '</p>' : '') +
       (result.payload.live
         ? '<p class="muted small warn-note">' + U.escapeHtml(t('cs.liveWarn', {
             session: result.payload.session })) + '</p>'
@@ -145,10 +167,113 @@
         : '');
   }
 
+  /* ---------- top ten, per kind ---------- */
+  function topTen(rows, kind) {
+    return rows.filter(function (r) { return r.kind === kind; }).slice(0, 10);
+  }
+
+  function topCard(titleKey, descKey, rows, emptyKey) {
+    if (!rows.length) {
+      return '<div class="top-block"><h3>' + U.escapeHtml(t(titleKey)) + '</h3>' +
+             '<p class="muted small">' + U.escapeHtml(t(emptyKey)) + '</p></div>';
+    }
+    return '<div class="top-block"><h3>' + U.escapeHtml(t(titleKey)) + '</h3>' +
+      '<p class="muted small">' + U.escapeHtml(t(descKey)) + '</p>' +
+      '<ol class="top-list">' +
+        rows.map(function (r) {
+          return '<li>' +
+            '<span class="top-rank"></span>' +
+            '<span class="top-sym">' + U.escapeHtml(r.symbol) +
+              (r.leg ? ' <em>' + U.escapeHtml(r.leg) + '</em>' : '') + '</span>' +
+            sideChip(r.side, r.kind) +
+            '<b class="top-conf">' + U.fmt(r.confidence, 0) + '%</b>' +
+            '<span class="top-levels">' + money(r.entry) + ' → ' + money(r.target1) +
+              ' <span class="sl">' + money(r.stopLoss) + '</span></span>' +
+          '</li>';
+        }).join('') +
+      '</ol></div>';
+  }
+
+  function renderTop(result) {
+    var el = U.$('cs-top');
+    var opts = APP.state.confidenceOptions;
+    el.innerHTML =
+      '<div class="card-head"><h2>' + U.escapeHtml(t('cs.topTitle')) + '</h2>' +
+      '<p class="muted">' + U.escapeHtml(t('cs.topDesc')) + '</p></div>' +
+      '<div class="top-grid">' +
+        topCard('cs.topIndices', 'cs.topIndicesDesc', topTen(result.rows, 'index'), 'cs.topNoIndices') +
+        topCard('cs.topStocks', 'cs.topStocksDesc', topTen(result.rows, 'equity'), 'cs.topNoStocks') +
+        topCard('cs.topOptions', 'cs.topOptionsDesc',
+                (opts && opts.rows) || [], opts === 'busy' ? 'cs.optBusy' : 'cs.topNoOptions') +
+      '</div>';
+    el.hidden = false;
+  }
+
   function render(result) {
     renderHeadline(result);
+    renderTop(result);
     renderTable(result);
     U.$('confidence-output').hidden = false;
+  }
+
+  /* ---------- top ten stock options ----------
+     A separate, opt-in step because it is expensive: each symbol costs an
+     option chain plus a tick series per leg, so ten symbols is about thirty
+     requests. The board scan above picks WHICH ten are worth that. */
+  function runOptions() {
+    if (!last) { status('err', t('cs.optNeedsBoard')); return Promise.resolve(null); }
+    var endpoint = (U.$('cs-endpoint').value || '').trim().replace(/\/+$/, '') || U.defaultEndpoint(8123);
+    var symbols = last.rows.slice(0, 10).map(function (r) { return r.symbol; });
+    if (!symbols.length) { status('err', t('cs.optNeedsBoard')); return Promise.resolve(null); }
+
+    APP.state.confidenceOptions = 'busy';
+    renderTop(last);
+    status('busy', t('cs.optRunning', { n: symbols.length }));
+
+    return window.fetch(endpoint + '/options-board?symbols=' + encodeURIComponent(symbols.join(',')))
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body && body.error ? body.error : 'HTTP ' + res.status);
+          return body;
+        });
+      })
+      .then(function (payload) {
+        var cfg = APP.config.get();
+        var rows = [];
+        (payload.rows || []).forEach(function (r) {
+          /* The option's own premium candle, through the analyser unchanged —
+             this is option space, so no price-scale substitution applies. */
+          var ce = APP.analyser.analyseSide(r.ce, cfg);
+          var pe = APP.analyser.analyseSide(r.pe, cfg);
+          [['CE', ce], ['PE', pe]].forEach(function (pair) {
+            rows.push({
+              symbol: r.symbol, leg: r.atm + ' ' + pair[0], kind: 'option',
+              side: pair[0] === 'CE' ? 'long' : 'short',
+              confidence: pair[1].confidence,
+              entry: pair[1].entry, target1: pair[1].target1, target2: pair[1].target2,
+              target3: pair[1].target3, stopLoss: pair[1].stopLoss,
+              expiry: r.expiry, lotSize: r.lotSize
+            });
+          });
+        });
+        rows.sort(function (a, b) { return b.confidence - a.confidence; });
+        APP.state.confidenceOptions = { rows: rows.slice(0, 10), payload: payload };
+        renderTop(last);
+        status('ok', t('cs.optDone', {
+          n: (payload.rows || []).length,
+          source: payload.source === 'mock' ? t('af.mockSource') : payload.source
+        }));
+        return rows;
+      })
+      .catch(function (err) {
+        APP.state.confidenceOptions = null;
+        renderTop(last);
+        var msg = String(err && err.message || err);
+        if (!APP.helper.handleError('confidence', err, endpoint, status, runOptions)) {
+          status('err', t('cs.optFailed', { reason: msg.split('\n')[0] }));
+        }
+        return null;
+      });
   }
 
   /* ---------- controller ---------- */
@@ -179,6 +304,7 @@
       .then(function (payload) {
         if (!payload.rows || !payload.rows.length) throw new Error(t('cs.empty'));
         APP.helper.ok('confidence');
+        APP.state.confidenceOptions = null;
         var result = evaluate(payload, APP.config.get(), options());
         last = result;
         APP.state.confidence = result;
@@ -203,7 +329,9 @@
 
   function reset() {
     U.$('confidence-output').hidden = true;
+    U.$('cs-top').hidden = true;
     APP.state.confidence = null;
+    APP.state.confidenceOptions = null;
     last = null;
     status('idle', t('cs.idle'));
   }
@@ -229,8 +357,12 @@
     U.$('btn-cs-run').addEventListener('click', run);
     U.$('btn-cs-reset').addEventListener('click', reset);
     U.$('btn-cs-use').addEventListener('click', useBest);
+    U.$('btn-cs-options').addEventListener('click', runOptions);
     status('idle', t('cs.idle'));
   }
 
-  APP.confidence = { init: init, run: run, reset: reset, evaluate: evaluate };
+  APP.confidence = {
+    init: init, run: run, reset: reset, evaluate: evaluate,
+    runOptions: runOptions, topTen: topTen
+  };
 })(window.APP);

@@ -316,6 +316,24 @@ It is fast because it does not go near the option chains. Two of NSE's own live-
 all-indices board and the NIFTY 50 constituent list — return the entire 55-symbol board in **two requests**,
 where fetching 55 option chains would be minutes of work and a throttling risk.
 
+### Top ten
+
+Three ranked lists sit above the full table: **top indices**, **top NIFTY 50 stocks**, and **top stock
+options**. The first two come free with the board scan. The third is a separate button, because it is not
+free: each symbol costs an option chain plus a tick series per leg, so ten symbols is about thirty requests.
+The board scan is what decides *which* ten are worth that, and the ATM call and put of each are then scored in
+option space — the analyser's own model on the premium candle, with no price-scale substitution, since these
+really are premiums. Option rows read **BUY CE / BUY PE** rather than long/short: every leg in this strategy is
+bought, and "SHORT" on a put row would say the opposite.
+
+### When part of the board is missing
+
+If NSE's bulk constituent endpoint is refused, the scan no longer reports that as a scoring failure. It falls
+back — `equity-stockIndices`, then the pre-open board, then `quote-equity` per symbol, throttled — and if a
+group still comes back empty it says **"NOTHING WAS READ"** and names the reason in the headline, rather than
+**"NOTHING REACHES 10%"**, which sent you hunting for a threshold that could never match. Nothing scoring and
+nothing being read are different facts and now read differently.
+
 ### What 100% means, and what it does not
 
 ```

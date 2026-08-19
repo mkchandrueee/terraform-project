@@ -254,6 +254,10 @@ function refererFor(url) {
     return symbol ? BASE + '/get-quotes/derivatives?symbol=' + symbol
                   : BASE + '/option-chain';
   }
+  if (u.includes('/api/quote-equity')) {
+    return symbol ? BASE + '/get-quotes/equity?symbol=' + symbol : BASE + '/get-quotes/equity';
+  }
+  if (u.includes('/api/market-data-pre-open')) return BASE + '/market-data/pre-open-market-cm-and-emerge-market';
   if (u.includes('/api/equity-stockIndices')) return BASE + '/market-data/live-equity-market';
   if (u.includes('/api/allIndices')) return BASE + '/market-data/live-market-indices';
   if (u.includes('/api/chart-databyindex')) return BASE + '/option-chain';
@@ -925,6 +929,114 @@ function marketRow(r, symbolKey) {
   };
 }
 
+/* The NIFTY 50 trading symbols, used only when the bulk board is unavailable
+   and each has to be asked for individually. Index reconstitution makes this
+   list stale, never wrong — a dropped name simply is not fetched. */
+const NIFTY50 = [
+  'ADANIENT', 'ADANIPORTS', 'APOLLOHOSP', 'ASIANPAINT', 'AXISBANK',
+  'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJFINANCE', 'BEL', 'BHARTIARTL',
+  'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'ETERNAL',
+  'GRASIM', 'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HEROMOTOCO',
+  'HINDALCO', 'HINDUNILVR', 'ICICIBANK', 'INDUSINDBK', 'INFY',
+  'ITC', 'JIOFIN', 'JSWSTEEL', 'KOTAKBANK', 'LT',
+  'M&M', 'MARUTI', 'NESTLEIND', 'NTPC', 'ONGC',
+  'POWERGRID', 'RELIANCE', 'SBILIFE', 'SBIN', 'SHRIRAMFIN',
+  'SUNPHARMA', 'TATACONSUM', 'TATAMOTORS', 'TATASTEEL', 'TCS',
+  'TECHM', 'TITAN', 'TRENT', 'ULTRACEMCO', 'WIPRO'
+];
+
+/** Run `worker` over `items` with a small concurrency cap. */
+async function pooled(items, limit, worker) {
+  const out = [];
+  let i = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      try { out.push(await worker(items[idx])); } catch (e) { /* caller counts misses */ }
+    }
+  });
+  await Promise.all(runners);
+  return out.filter(Boolean);
+}
+
+/** One stock's day candle from its own quote page. */
+async function quoteRow(symbol) {
+  const data = await nseJson(BASE + '/api/quote-equity?symbol=' + encodeURIComponent(symbol));
+  const p = (data && data.priceInfo) || {};
+  const hl = p.intraDayHighLow || {};
+  const bar = marketRow({
+    symbol: symbol,
+    open: p.open, dayHigh: hl.max, dayLow: hl.min,
+    lastPrice: p.lastPrice, previousClose: p.previousClose, pChange: p.pChange
+  }, 'symbol');
+  return bar ? Object.assign(bar, { kind: 'equity' }) : null;
+}
+
+/**
+ * The NIFTY 50 board, by whatever route works.
+ *
+ * 1. equity-stockIndices — all fifty in one request, the normal path
+ * 2. market-data-pre-open — the same fifty before the bell, when the bulk
+ *    board has no intraday prices to give
+ * 3. quote-equity per symbol — fifty requests, throttled; slow, but it keeps
+ *    the tab working when the bulk endpoints are refused
+ */
+async function equityBoard() {
+  const notes = [];
+
+  try {
+    const payload = await nseJson(BASE + '/api/equity-stockIndices?index=' + encodeURIComponent('NIFTY 50'));
+    const rows = [];
+    for (const r of (payload && payload.data) || []) {
+      const bar = marketRow(r, 'symbol');
+      if (!bar) continue;
+      /* the board includes the index itself as its first row */
+      if (/^NIFTY/i.test(bar.symbol) && bar.symbol.indexOf(' ') !== -1) continue;
+      rows.push(Object.assign(bar, { kind: 'equity' }));
+    }
+    if (rows.length) return { rows: rows, notes: notes, via: 'equity-stockIndices' };
+    notes.push({ group: 'NIFTY 50', reason: 'equity-stockIndices answered with no usable rows' });
+  } catch (err) {
+    notes.push({ group: 'NIFTY 50', reason: 'equity-stockIndices: ' + err.message });
+  }
+
+  try {
+    const payload = await nseJson(BASE + '/api/market-data-pre-open?key=NIFTY');
+    const rows = [];
+    for (const entry of (payload && payload.data) || []) {
+      const m = entry.metadata || entry.detail || entry;
+      const bar = marketRow({
+        symbol: m.symbol,
+        open: m.iep != null ? m.iep : m.open,
+        dayHigh: m.dayHigh != null ? m.dayHigh : m.iep,
+        dayLow: m.dayLow != null ? m.dayLow : m.iep,
+        lastPrice: m.lastPrice != null ? m.lastPrice : m.iep,
+        previousClose: m.previousClose, pChange: m.pChange
+      }, 'symbol');
+      if (bar) rows.push(Object.assign(bar, { kind: 'equity' }));
+    }
+    if (rows.length) {
+      notes.push({ group: 'NIFTY 50', reason: 'fell back to the pre-open board — these are pre-open prices' });
+      return { rows: rows, notes: notes, via: 'market-data-pre-open' };
+    }
+  } catch (err) {
+    notes.push({ group: 'NIFTY 50', reason: 'pre-open board: ' + err.message });
+  }
+
+  const rows = await pooled(NIFTY50, 4, quoteRow);
+  if (rows.length) {
+    notes.push({
+      group: 'NIFTY 50',
+      reason: 'the bulk boards were unavailable, so each stock was fetched on its own — ' +
+              rows.length + ' of ' + NIFTY50.length + ' answered'
+    });
+    return { rows: rows, notes: notes, via: 'quote-equity per symbol' };
+  }
+
+  notes.push({ group: 'NIFTY 50', reason: 'no stock prices could be read by any route' });
+  return { rows: [], notes: notes, via: null };
+}
+
 async function universe(nowMs) {
   if (MOCK) return mockUniverse(nowMs);
 
@@ -948,23 +1060,13 @@ async function universe(nowMs) {
     skipped.push({ group: 'indices', reason: err.message });
   }
 
-  /* the fifty constituents, in one request */
-  try {
-    const payload = await nseJson(BASE + '/api/equity-stockIndices?index=' + encodeURIComponent('NIFTY 50'));
-    const list = (payload && payload.data) || [];
-    let added = 0;
-    for (const r of list) {
-      const bar = marketRow(r, 'symbol');
-      if (!bar) continue;
-      /* the board includes the index itself as its first row */
-      if (/^NIFTY/i.test(bar.symbol) && bar.symbol.indexOf(' ') !== -1) continue;
-      rows.push(Object.assign(bar, { kind: 'equity' }));
-      added += 1;
-    }
-    if (!added) skipped.push({ group: 'NIFTY 50', reason: 'equity-stockIndices returned no usable rows' });
-  } catch (err) {
-    skipped.push({ group: 'NIFTY 50', reason: err.message });
-  }
+  /* The fifty constituents. One request when the bulk board answers; a ladder
+     of fallbacks when it does not, because a Confidence tab with no stocks in
+     it is useless and "nothing scored well" is the wrong thing to report when
+     the truth is "nothing was read". */
+  const equity = await equityBoard();
+  equity.rows.forEach((r) => rows.push(r));
+  equity.notes.forEach((n) => skipped.push(n));
 
   if (!rows.length) {
     throw new Error(
@@ -1022,6 +1124,63 @@ function mockUniverse(nowMs) {
     counts: { index: rows.filter((r) => r.kind === 'index').length,
               equity: rows.filter((r) => r.kind === 'equity').length },
     rows: rows, skipped: []
+  };
+}
+
+/**
+ * ATM option candles for a handful of symbols.
+ *
+ * Deliberately not the whole board: each symbol costs an option chain plus a
+ * tick series per leg, so fifty would be a hundred and fifty requests and a
+ * throttling. Ten is the most this accepts, which is what "top ten" needs.
+ */
+async function optionsBoard(symbols, nowMs) {
+  const wanted = (symbols || []).map((s) => cleanSymbol(s, '')).filter(Boolean).slice(0, 10);
+  if (!wanted.length) throw new Error('no symbols given — pass ?symbols=RELIANCE,TCS');
+
+  if (MOCK) {
+    return {
+      asOf: istClock(nowMs), source: 'mock', session: istDateKey(nowMs),
+      rows: wanted.map(function (s, i) {
+        const base = 100 + i * 13;
+        return {
+          symbol: s, kind: isIndex(s) ? 'index' : 'equity',
+          expiry: 'MOCK', atm: 1500 + i * 100, lotSize: isIndex(s) ? 75 : 500,
+          underlying: 1512 + i * 100,
+          ce: { o: base, h: round2(base * 1.18), l: round2(base * 0.97), c: round2(base * 1.16), ticks: 60 },
+          pe: { o: base * 0.9, h: round2(base * 0.95), l: round2(base * 0.78), c: round2(base * 0.8), ticks: 60 }
+        };
+      }),
+      skipped: []
+    };
+  }
+
+  const rows = [];
+  const skipped = [];
+  for (const symbol of wanted) {
+    try {
+      const p = await firstCandle(nowMs, symbol);
+      rows.push({
+        symbol: symbol, kind: p.kind, expiry: p.expiry, atm: p.atm,
+        lotSize: p.lotSize, underlying: p.underlying,
+        strikeStep: p.strikeStep, stale: p.stale, session: p.session,
+        ce: p.ce, pe: p.pe
+      });
+    } catch (err) {
+      skipped.push({ symbol: symbol, reason: String(err.message || err).split('\n')[0] });
+    }
+  }
+
+  if (!rows.length) {
+    throw new Error(
+      'no option candles could be read.\n  ' +
+      skipped.map((s) => s.symbol + ': ' + s.reason).join('\n  ')
+    );
+  }
+  return {
+    asOf: istClock(nowMs), source: 'nseindia.com',
+    session: (rows[0] && rows[0].session) || istDateKey(nowMs),
+    rows: rows, skipped: skipped
   };
 }
 
@@ -1655,6 +1814,15 @@ async function handle(req, res) {
     }
   }
 
+  if (url.pathname === '/options-board') {
+    try {
+      const raw = url.searchParams.get('symbols') || '';
+      return send(res, 200, await optionsBoard(raw.split(','), Date.now()));
+    } catch (err) {
+      return send(res, 502, { error: String(err.message || err), mode: MOCK ? 'mock' : 'live' });
+    }
+  }
+
   if (url.pathname === '/history') {
     try {
       const raw = url.searchParams.get('tfs');
@@ -1682,7 +1850,7 @@ async function handle(req, res) {
 
   /* Anything left is the app itself when --serve is on, a 404 otherwise. */
   if (SERVE_APP) return serveStatic(req, res, url);
-  return send(res, 404, { error: 'try /health, /first-candle, /scan, /history or /universe' });
+  return send(res, 404, { error: 'try /health, /first-candle, /scan, /history, /universe or /options-board' });
 }
 
 /* A helper that dies is worse than a helper that misbehaves: the app can retry
@@ -1932,7 +2100,7 @@ if (require.main === module) {
       console.log(`  symbol    ${SYMBOL} (default; ?symbol=RELIANCE etc. per request)`);
       console.log(`  candle    ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
-      console.log(`  endpoints /health  /first-candle  /scan  /history  /universe`);
+      console.log(`  endpoints /health  /first-candle  /scan  /history  /universe  /options-board`);
       if (SERVE_APP) {
         console.log(`  app       served from this same port — open http://${HOST}:${PORT}/`);
       } else {
@@ -1953,7 +2121,7 @@ module.exports = {
   detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
   history, dailyBars, hourlyBars, parseHistory, groupBars, weekKey, monthKey,
   isRunning, lookbackDays, historyUrl, historyUrls, TIMEFRAMES, probe, refererFor,
-  universe, marketRow,
+  universe, marketRow, equityBoard, quoteRow, pooled, NIFTY50, optionsBoard,
   formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
   isIndex, cleanSymbol, strikeStepFromChain, marketLot,
   legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS
