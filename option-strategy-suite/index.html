@@ -150,6 +150,7 @@
     <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
     <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
     <button class="tab" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" data-panel="scan"><span class="tab-step" data-i18n="sc.pill"></span><span data-i18n="tab.scan"></span></button>
+    <button class="tab" role="tab" id="tab-confidence" aria-controls="panel-confidence" aria-selected="false" data-panel="confidence"><span class="tab-step" data-i18n="cs.pill"></span><span data-i18n="tab.confidence"></span></button>
     <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
   </div>
 </nav>
@@ -636,6 +637,54 @@
     </div>
   </section>
 
+  <!-- =================== CONFIDENCE SCAN =================== -->
+  <section class="panel" id="panel-confidence" role="tabpanel" aria-labelledby="tab-confidence" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="cs.badge"></span>
+      <h2 data-i18n="cs.hero"></h2>
+      <p class="muted" data-i18n="cs.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="cs.setupTitle"></h2>
+        <p class="muted" data-i18n="cs.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc ohlc-3">
+          <label class="field">
+            <span><span data-i18n="cs.minConf"></span> <em data-i18n="cs.minConfHint"></em></span>
+            <input type="number" id="cs-min" step="5" min="0" max="100" value="80" />
+          </label>
+          <label class="field">
+            <span data-i18n="cs.universe"></span>
+            <select id="cs-universe">
+              <option value="all" data-i18n="cs.uAll"></option>
+              <option value="index" data-i18n="cs.uIndex"></option>
+              <option value="equity" data-i18n="cs.uEquity"></option>
+            </select>
+          </label>
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="cs-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+
+        <p class="af-status af-idle" id="cs-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-cs-run" data-i18n="cs.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-use" data-i18n="cs.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="cs.note"></p>
+      </div>
+    </div>
+
+    <div id="confidence-output" hidden>
+      <div class="card verdict-card an-verdict" id="cs-headline"></div>
+      <div class="card" id="cs-table"></div>
+    </div>
+  </section>
+
   <!-- =================== SOP GUIDE =================== -->
   <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
     <div class="card">
@@ -671,6 +720,7 @@
 <script src="assets/js/signal.js"></script>
 <script src="assets/js/scan.js"></script>
 <script src="assets/js/swing.js"></script>
+<script src="assets/js/confidence.js"></script>
 <script src="assets/js/alerts.js"></script>
 <script src="assets/js/app.js"></script>
 </body>

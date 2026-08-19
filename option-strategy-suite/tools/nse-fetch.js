@@ -254,6 +254,8 @@ function refererFor(url) {
     return symbol ? BASE + '/get-quotes/derivatives?symbol=' + symbol
                   : BASE + '/option-chain';
   }
+  if (u.includes('/api/equity-stockIndices')) return BASE + '/market-data/live-equity-market';
+  if (u.includes('/api/allIndices')) return BASE + '/market-data/live-market-indices';
   if (u.includes('/api/chart-databyindex')) return BASE + '/option-chain';
   return BASE + '/option-chain';
 }
@@ -896,6 +898,133 @@ async function probe() {
   console.log('specific to the historical APIs rather than to this machine or IP.');
 }
 
+/* ------------------------------------------------------------------ */
+/* universe — every index and NIFTY 50 stock in two requests.
+   Scanning 55 symbols through option chains would be 55+ chain fetches and a
+   tick series each; NSE would throttle it and it would take minutes. These two
+   endpoints return the whole live board at once, and they sit in the same
+   family as the ones already working here rather than the historical API.  */
+/* ------------------------------------------------------------------ */
+
+/** Pull O/H/L/C off a live-market row, whatever it calls them. */
+function marketRow(r, symbolKey) {
+  const num = (...keys) => firstNumber(r, keys);
+  const o = num('open', 'OPEN', 'openPrice');
+  const h = num('dayHigh', 'high', 'HIGH', 'intraDayHighLow_max');
+  const l = num('dayLow', 'low', 'LOW', 'intraDayHighLow_min');
+  const c = num('lastPrice', 'last', 'LAST', 'ltp', 'closePrice');
+  const symbol = String(r[symbolKey] || r.symbol || r.indexSymbol || r.index || '').trim();
+  if (!symbol) return null;
+  if (![o, h, l, c].every(Number.isFinite)) return null;
+  if (o <= 0 || c <= 0 || h < l) return null;
+  return {
+    symbol: symbol,
+    o: o, h: h, l: l, c: c,
+    prevClose: num('previousClose', 'previousClose', 'prevClose'),
+    pChange: num('pChange', 'percentChange', 'perChange365d')
+  };
+}
+
+async function universe(nowMs) {
+  if (MOCK) return mockUniverse(nowMs);
+
+  const rows = [];
+  const skipped = [];
+
+  /* the five F&O indices, from the all-indices board */
+  try {
+    const payload = await nseJson(BASE + '/api/allIndices');
+    const list = (payload && payload.data) || [];
+    const wanted = new Map();
+    INDEX_SYMBOLS.forEach((s) => wanted.set((INDEX_HISTORY_NAMES[s] || s).toUpperCase(), s));
+    for (const r of list) {
+      const name = String(r.index || r.indexSymbol || '').trim().toUpperCase();
+      if (!wanted.has(name)) continue;
+      const bar = marketRow(r, 'index');
+      if (bar) rows.push(Object.assign(bar, { symbol: wanted.get(name), kind: 'index' }));
+    }
+    if (!rows.length) skipped.push({ group: 'indices', reason: 'allIndices returned no usable rows' });
+  } catch (err) {
+    skipped.push({ group: 'indices', reason: err.message });
+  }
+
+  /* the fifty constituents, in one request */
+  try {
+    const payload = await nseJson(BASE + '/api/equity-stockIndices?index=' + encodeURIComponent('NIFTY 50'));
+    const list = (payload && payload.data) || [];
+    let added = 0;
+    for (const r of list) {
+      const bar = marketRow(r, 'symbol');
+      if (!bar) continue;
+      /* the board includes the index itself as its first row */
+      if (/^NIFTY/i.test(bar.symbol) && bar.symbol.indexOf(' ') !== -1) continue;
+      rows.push(Object.assign(bar, { kind: 'equity' }));
+      added += 1;
+    }
+    if (!added) skipped.push({ group: 'NIFTY 50', reason: 'equity-stockIndices returned no usable rows' });
+  } catch (err) {
+    skipped.push({ group: 'NIFTY 50', reason: err.message });
+  }
+
+  if (!rows.length) {
+    throw new Error(
+      'neither live-market endpoint returned usable rows.\n  ' +
+      skipped.map((s) => s.group + ': ' + s.reason).join('\n  ') +
+      '\nThese are the same endpoints the NSE website itself uses for its live' +
+      '\nmarket pages, so a failure here usually means the session or IP is' +
+      '\nblocked rather than the path being wrong. Try:  node tools/nse-fetch.js --probe'
+    );
+  }
+
+  return {
+    asOf: istClock(nowMs),
+    session: istDateKey(nowMs),
+    /* This is the day candle AS IT STANDS. During market hours it is still
+       forming — high, low and close will all move before the bell. */
+    live: true,
+    source: 'nseindia.com',
+    counts: {
+      index: rows.filter((r) => r.kind === 'index').length,
+      equity: rows.filter((r) => r.kind === 'equity').length
+    },
+    rows: rows,
+    skipped: skipped
+  };
+}
+
+function mockUniverse(nowMs) {
+  /* Spread of shapes so the ranking has something to rank: a couple of perfect
+     candles, some middling, some bearish. */
+  const names = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50',
+    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'BHARTIARTL', 'ITC',
+    'LT', 'SBIN', 'AXISBANK', 'MARUTI', 'TITAN', 'WIPRO', 'M&M', 'BAJFINANCE'];
+  const rows = names.map(function (s, i) {
+    const index = INDEX_SYMBOLS.indexOf(s) !== -1;
+    const base = index ? 24000 + i * 400 : 500 + i * 137;
+    const shape = i % 5;
+    let o, h, l, c;
+    /* A true 100% is a marubozu: opens at one extreme, closes at the other,
+       no wick either side. Anything less does not score 100, so the fixture
+       has to be exact for the 100% path to be exercised at all. */
+    if (shape === 0) { o = base; l = base; h = base * 1.02; c = base * 1.02; }                /* 100% long */
+    else if (shape === 1) { o = base * 1.02; h = base * 1.02; l = base * 0.98; c = base * 0.98; } /* 100% short */
+    else if (shape === 2) { o = base; h = base * 1.01; l = base * 0.995; c = base * 1.006; }
+    else if (shape === 3) { o = base * 1.005; h = base * 1.008; l = base * 0.99; c = base * 0.995; }
+    else { o = base; h = base * 1.004; l = base * 0.996; c = base * 1.0005; }
+    return {
+      symbol: s, kind: index ? 'index' : 'equity',
+      o: round2(o), h: round2(h), l: round2(l), c: round2(c),
+      prevClose: round2(base * 0.998), pChange: round2((c / (base * 0.998) - 1) * 100)
+    };
+  });
+  return {
+    asOf: istClock(nowMs), session: istDateKey(nowMs), live: true, source: 'mock',
+    counts: { index: rows.filter((r) => r.kind === 'index').length,
+              equity: rows.filter((r) => r.kind === 'equity').length },
+    rows: rows, skipped: []
+  };
+}
+
 const TIMEFRAMES = ['1h', '1d', '1w', '1M'];
 
 /* CALENDAR days of daily history each timeframe needs to yield `want`
@@ -1495,6 +1624,14 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === '/universe') {
+    try {
+      return send(res, 200, await universe(Date.now()));
+    } catch (err) {
+      return send(res, 502, { error: String(err.message || err), mode: MOCK ? 'mock' : 'live' });
+    }
+  }
+
   if (url.pathname === '/history') {
     try {
       const raw = url.searchParams.get('tfs');
@@ -1522,7 +1659,7 @@ const server = http.createServer(async (req, res) => {
 
   /* Anything left is the app itself when --serve is on, a 404 otherwise. */
   if (SERVE_APP) return serveStatic(req, res, url);
-  return send(res, 404, { error: 'try /health, /first-candle, /scan or /history' });
+  return send(res, 404, { error: 'try /health, /first-candle, /scan, /history or /universe' });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1749,7 +1886,7 @@ if (require.main === module) {
       console.log(`  symbol    ${SYMBOL} (default; ?symbol=RELIANCE etc. per request)`);
       console.log(`  candle    ${CANDLE_FROM}–${CANDLE_TO} IST`);
       console.log(`  listening http://${HOST}:${PORT}`);
-      console.log(`  endpoints /health  /first-candle  /scan  /history`);
+      console.log(`  endpoints /health  /first-candle  /scan  /history  /universe`);
       if (SERVE_APP) {
         console.log(`  app       served from this same port — open http://${HOST}:${PORT}/`);
       } else {
@@ -1770,6 +1907,7 @@ module.exports = {
   detectTickOffset, shiftTicks, istStamp, scan, windowFor, firstCandle,
   history, dailyBars, hourlyBars, parseHistory, groupBars, weekKey, monthKey,
   isRunning, lookbackDays, historyUrl, historyUrls, TIMEFRAMES, probe, refererFor,
+  universe, marketRow,
   formatExpiry, upcomingExpiries, upcomingMonthlies, expiryList, selfCheck, server,
   isIndex, cleanSymbol, strikeStepFromChain, marketLot,
   legacyChainUrl, v3ChainUrl, INDEX_SYMBOLS

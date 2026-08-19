@@ -19,6 +19,7 @@ remembered.
 | 5 (steps 14–16) | **Trade Signal** | The levels, standard indicator readings off the NIFTY chart, lots and account size | Take / caution / skip, win estimate, expected profit, expected value, breakeven win rate, sizing, and browser notifications |
 | 6 (steps 17–18) | **Scan — intraday** | An underlying (index or NIFTY 50 stock), timeframes, strikes either side of ATM, how many expiries | Every combination through the analyser model, timeframe agreement per strike, and the best qualifying row |
 | 6 (steps 17–18) | **Scan — swing** | The same underlying, and which of 1h / 1d / 1w / 1M to read | The last completed candle at each timeframe through the same model, long or short, and whether the timeframes agree |
+| — | **Confidence** | A minimum confidence, and whether to include indices, stocks or both | All 5 indices and 50 NIFTY 50 stocks read and ranked, the 100% ones called out, and the top row ready to carry into the Analyser |
 
 The tools hand off to each other:
 
@@ -304,6 +305,38 @@ sessions would be wrong without looking wrong.
 Timeframe agreement is per symbol rather than per strike: the latest closed candle on each, and whether they
 point the same way. An hourly signal fighting the weekly and monthly is the one worth being careful about.
 
+## Confidence scan — ranking the whole board
+
+Every other tab starts from a symbol you have already chosen. The **Confidence** tab starts from the other
+end: it runs the same candle reading across **all five F&O indices and all fifty NIFTY 50 stocks**, ranks them,
+and shows the ones clearing your threshold. Set a minimum confidence, optionally narrow to indices or stocks
+only, and the 100% rows are called out separately.
+
+It is fast because it does not go near the option chains. Two of NSE's own live-market endpoints — the
+all-indices board and the NIFTY 50 constituent list — return the entire 55-symbol board in **two requests**,
+where fetching 55 option chains would be minutes of work and a throttling risk.
+
+### What 100% means, and what it does not
+
+```
+confidence = 20 × direction + 40 × body ÷ range + 40 × close position
+```
+
+**100% is a marubozu** — a candle that opened at its low, closed at its high, and has no wick on either side.
+That is the whole of it. It describes **the shape of one candle**:
+
+- it is **not** a 100% chance of profit
+- it is **not** a probability of any kind
+- it says **nothing** about what happens next
+
+A 100% row is a clean-looking candle worth a second look. The app states this where the number appears rather
+than burying it, because the number invites exactly the wrong reading.
+
+Two further honesties the tab surfaces itself. The board is **today's candle as it stands** — during the
+session its high, low and close are all still moving, so every level moves with them and is final only after
+the close. And the levels are **share prices**, as on the swing scan: to trade one as an option you still pick
+a strike and read that contract's own premium, which is what *Take top to Analyser* sets up.
+
 ## Auto-fetching the first candle from NSE
 
 The Analyser tab can fill the CE/PE OHLC fields itself instead of you typing them at 09:21. Two things make
@@ -531,6 +564,7 @@ option-strategy-suite/
         ├── signal.js          tool 4 — confluence, win estimate, metrics
         ├── scan.js            tool 5 — multi-timeframe / strike / expiry scan
         ├── swing.js           tool 5b — 1h / 1d / 1w / 1M on the underlying
+        ├── confidence.js      tool 6 — the whole board, ranked
         ├── alerts.js          notifications + candle-close scheduler
         └── app.js             tabs, settings drawer, formula reference
 ```

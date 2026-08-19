@@ -4,7 +4,8 @@
   'use strict';
 
   APP.state = APP.state || {
-    analyser: null, t1: null, pullback: null, signal: null, scan: null, swing: null
+    analyser: null, t1: null, pullback: null, signal: null, scan: null,
+    swing: null, confidence: null
   };
 
   var U = APP.util;
@@ -31,7 +32,7 @@
   };
   APP.tabs = tabs;
 
-  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'scan', 'guide'];
+  var PANELS = ['analyser', 't1', 'pullback', 'signal', 'scan', 'confidence', 'guide'];
 
   function panelFromHash() {
     var hash = (window.location.hash || '').replace('#', '');
@@ -215,6 +216,22 @@
           'best row = highest confidence among rows whose verdict is YES'
       },
       {
+        title: 'g.f8', note: 'g.f8n',
+        code:
+          'the same candle reading across every F&O index and NIFTY 50 stock,\n' +
+          'ranked by confidence — two requests for the whole board\n' +
+          '\n' +
+          'confidence = 20 \u00d7 direction + 40 \u00d7 body \u00f7 range + 40 \u00d7 close position\n' +
+          '\n' +
+          '100% = opened at its low, closed at its high, no wick either side\n' +
+          '       (a marubozu). It measures ONE CANDLE\u2019S SHAPE.\n' +
+          '       It is NOT a 100% chance of profit and NOT a probability.\n' +
+          '\n' +
+          'the board is the day candle AS IT STANDS — during the session the\n' +
+          '  high, low and close are all still moving, so every level moves too\n' +
+          'levels are share prices; pick a strike to trade them as options'
+      },
+      {
         title: 'g.f7', note: 'g.f7n',
         code:
           'the same maths on the UNDERLYING\u2019s own candle, not an option premium\n' +
@@ -310,6 +327,7 @@
       APP.signal.reset();
       APP.scan.reset();
       APP.swing.reset();
+      APP.confidence.reset();
       APP.tabs.show('analyser');
     });
   }
@@ -327,6 +345,7 @@
     APP.signal.init();
     APP.scan.init();
     APP.swing.init();
+    APP.confidence.init();
     initScanMode();
     APP.alerts.init();
     APP.analyser.renderAtm();

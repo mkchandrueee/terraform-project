@@ -718,3 +718,30 @@ input[type=number] { -moz-appearance: textfield; }
 /* A helper error names every endpoint it tried, one per line. Collapsing that
    to a single run-on line is what made the last two failures undiagnosable. */
 .af-status.af-err { white-space: pre-line; }
+
+/* ---------- confidence scan ---------- */
+.perfect-strip {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 12px; padding: 10px 12px;
+  border: 1px solid rgba(55, 214, 160, .35); border-radius: var(--radius-sm);
+  background: rgba(55, 214, 160, .07);
+}
+.perfect-label { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--accent); }
+.perfect-chip {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+  border-radius: 6px; padding: 3px 9px;
+  border: 1px solid var(--line); background: var(--bg-elev-2);
+}
+.perfect-chip.is-long  { color: var(--call); border-color: rgba(55, 214, 160, .45); }
+.perfect-chip.is-short { color: var(--put);  border-color: rgba(255, 107, 129, .45); }
+
+/* The 100% number invites "certain". These notes say otherwise and must not
+   read as fine print. */
+.warn-note {
+  margin-top: 10px; padding-left: 10px;
+  border-left: 2px solid var(--warn); color: var(--text-dim);
+}
+.kind-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+}
