@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<!-- viewport-fit=cover lets the page paint behind the Dynamic Island and the
+     home indicator on an iPhone; the CSS pads content back out of them. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>NIFTY Option Strategy Suite — Analyser · T1 Helper · Pullback Entry</title>
+<meta name="description" content="A three-in-one execution tool for the NIFTY first-candle option strategy: Option Analyser (entry / T1 / stop loss), T1 Decision Helper (hold vs book) and Stoploss Pullback Entry (liquidity zones)." />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1720'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%2337d6a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<!-- Add to Home Screen on iOS. Safari ignores a data: URI here, so the touch
+     icon is a real file; these three metas are what make it open full-screen
+     without Safari's chrome. The manifest is for everything else. -->
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Option Suite" />
+<meta name="theme-color" content="#0f1720" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="#12202b"/><path d="M6 21l6-7 5 4 9-11" stroke="#37d6a0" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong data-i18n="app.name">NIFTY Option Strategy Suite</strong>
+        <small data-i18n="app.tagline">First-candle SOP · Analyser → T1 Helper → Pullback Entry</small>
+      </span>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn btn-ghost lang-toggle" id="btn-lang" data-i18n="app.langSwitch">தமிழ்</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings" aria-expanded="false" aria-controls="settings-drawer" data-i18n="app.settings">Formula settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-clear-all" data-i18n="app.clearAll">Clear all</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Formula settings drawer ============ -->
+<section id="settings-drawer" class="drawer" hidden>
+  <div class="wrap">
+    <h2 class="drawer-title" data-i18n="cfg.title">Formula settings</h2>
+    <p class="muted small" data-i18n="cfg.intro"></p>
+
+    <div class="settings-grid">
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g1">Option Analyser</legend>
+        <label class="field"><span><span data-i18n="cfg.entryPremiumPct"></span> <em data-i18n="cfg.entryPremiumPct.hint"></em></span><input type="number" id="cfg-entryPremiumPct" step="0.05" min="0" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.targetStepMult"></span> <em data-i18n="cfg.targetStepMult.hint"></em></span><input type="number" id="cfg-targetStepMult" step="0.05" min="0.05" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.minTargetStep"></span> <em data-i18n="cfg.minTargetStep.hint"></em></span><input type="number" id="cfg-minTargetStep" step="1" min="0" max="500" /></label>
+        <label class="field"><span data-i18n="cfg.t2Mult"></span><input type="number" id="cfg-t2Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span data-i18n="cfg.t3Mult"></span><input type="number" id="cfg-t3Mult" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.slRangeMult"></span> <em data-i18n="cfg.slRangeMult.hint"></em></span><input type="number" id="cfg-slRangeMult" step="0.05" min="0" max="5" /></label>
+        <label class="field"><span data-i18n="cfg.takeConfidence"></span><input type="number" id="cfg-takeConfidence" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.swingMinStepPct"></span> <em data-i18n="cfg.swingMinStepPct.hint"></em></span><input type="number" id="cfg-swingMinStepPct" step="0.05" min="0" max="10" /></label>
+        <label class="field"><span data-i18n="cfg.bookT1Pct"></span><input type="number" id="cfg-bookT1Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.bookT2Pct"></span><input type="number" id="cfg-bookT2Pct" step="5" min="0" max="100" /></label>
+        <label class="field"><span data-i18n="cfg.holdT3Pct"></span><input type="number" id="cfg-holdT3Pct" step="5" min="0" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g2">T1 Decision Helper</legend>
+        <label class="field">
+          <span><span data-i18n="cfg.bodyStrong"></span> <em data-i18n="cfg.bodyStrong.hint"></em></span>
+          <input type="number" id="cfg-bodyStrong" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.bodyModerate"></span> <em data-i18n="cfg.bodyModerate.hint"></em></span>
+          <input type="number" id="cfg-bodyModerate" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.minClosePos"></span> <em data-i18n="cfg.minClosePos.hint"></em></span>
+          <input type="number" id="cfg-minClosePos" step="0.05" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.holdThreshold">Hold-T2 momentum threshold</span>
+          <input type="number" id="cfg-holdThreshold" step="1" min="0" max="100" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.partialThreshold">Partial-book momentum threshold</span>
+          <input type="number" id="cfg-partialThreshold" step="1" min="0" max="100" />
+        </label>
+        <label class="field">
+          <span data-i18n="cfg.sideAwareDirection">Direction convention</span>
+          <select id="cfg-sideAwareDirection">
+            <option value="0" data-i18n="cfg.dir.premium"></option>
+            <option value="1" data-i18n="cfg.dir.inverted"></option>
+          </select>
+        </label>
+        <p class="muted small" style="margin-top:8px" data-i18n="cfg.dirNote"></p>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g4">Trade Signal — filters</legend>
+        <label class="field"><span><span data-i18n="cfg.rsiMin"></span></span><input type="number" id="cfg-rsiMin" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.rsiMax"></span></span><input type="number" id="cfg-rsiMax" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.volumeMin"></span></span><input type="number" id="cfg-volumeMin" step="0.05" min="0" max="10" /></label>
+        <label class="field"><span><span data-i18n="cfg.vixMax"></span></span><input type="number" id="cfg-vixMax" step="1" min="1" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.atrReachMax"></span></span><input type="number" id="cfg-atrReachMax" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.minRR"></span></span><input type="number" id="cfg-minRR" step="0.1" min="0.1" max="20" /></label>
+        <label class="field"><span><span data-i18n="cfg.takeThreshold"></span></span><input type="number" id="cfg-takeThreshold" step="1" min="0" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g5">Trade Signal — money</legend>
+        <label class="field"><span><span data-i18n="cfg.lotSize"></span></span><input type="number" id="cfg-lotSize" step="1" min="1" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.costPerLot"></span></span><input type="number" id="cfg-costPerLot" step="1" min="0" max="10000" /></label>
+        <label class="field"><span><span data-i18n="cfg.baseWinRate"></span> <em data-i18n="cfg.baseWinRate.hint"></em></span><input type="number" id="cfg-baseWinRate" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winSensitivity"></span> <em data-i18n="cfg.winSensitivity.hint"></em></span><input type="number" id="cfg-winSensitivity" step="0.05" min="0" max="3" /></label>
+        <label class="field"><span><span data-i18n="cfg.winFloor"></span></span><input type="number" id="cfg-winFloor" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.winCeiling"></span></span><input type="number" id="cfg-winCeiling" step="1" min="0" max="100" /></label>
+        <label class="field"><span><span data-i18n="cfg.riskPctOfAccount"></span></span><input type="number" id="cfg-riskPctOfAccount" step="0.25" min="0.1" max="100" /></label>
+      </fieldset>
+
+      <fieldset class="settings-group">
+        <legend data-i18n="cfg.g3">Stoploss Pullback Entry</legend>
+        <label class="field">
+          <span><span data-i18n="cfg.zone1Retrace"></span> <em data-i18n="cfg.zone1Retrace.hint"></em></span>
+          <input type="number" id="cfg-zone1Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.zone2Retrace"></span> <em data-i18n="cfg.zone2Retrace.hint"></em></span>
+          <input type="number" id="cfg-zone2Retrace" step="0.001" min="0" max="1" />
+        </label>
+        <label class="field">
+          <span><span data-i18n="cfg.pullbackTargetMult"></span> <em data-i18n="cfg.pullbackTargetMult.hint"></em></span>
+          <input type="number" id="cfg-pullbackTargetMult" step="0.05" min="0.1" max="10" />
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="row-actions">
+      <button type="button" class="btn btn-primary" id="btn-settings-save" data-i18n="cfg.save">Save settings</button>
+      <button type="button" class="btn btn-ghost" id="btn-settings-reset" data-i18n="cfg.restore">Restore defaults</button>
+      <span class="save-flash" id="settings-flash" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Tools">
+  <div class="wrap tabs-inner" role="tablist">
+    <button class="tab is-active" role="tab" id="tab-analyser" aria-controls="panel-analyser" aria-selected="true" data-panel="analyser"><span class="tab-step" data-i18n="tab.phase12"></span><span data-i18n="tab.analyser"></span></button>
+    <button class="tab" role="tab" id="tab-t1" aria-controls="panel-t1" aria-selected="false" data-panel="t1"><span class="tab-step" data-i18n="tab.phase3"></span><span data-i18n="tab.t1"></span></button>
+    <button class="tab" role="tab" id="tab-pullback" aria-controls="panel-pullback" aria-selected="false" data-panel="pullback"><span class="tab-step" data-i18n="tab.phase4"></span><span data-i18n="tab.pullback"></span></button>
+    <button class="tab" role="tab" id="tab-signal" aria-controls="panel-signal" aria-selected="false" data-panel="signal"><span class="tab-step" data-i18n="tab.phase5"></span><span data-i18n="tab.signal"></span></button>
+    <button class="tab" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" data-panel="scan"><span class="tab-step" data-i18n="sc.pill"></span><span data-i18n="tab.scan"></span></button>
+    <button class="tab" role="tab" id="tab-confidence" aria-controls="panel-confidence" aria-selected="false" data-panel="confidence"><span class="tab-step" data-i18n="cs.pill"></span><span data-i18n="tab.confidence"></span></button>
+    <button class="tab" role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" data-panel="guide"><span class="tab-step" data-i18n="tab.sop"></span><span data-i18n="tab.guide"></span></button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- =================== TOOL 1: OPTION ANALYSER =================== -->
+  <section class="panel is-active" id="panel-analyser" role="tabpanel" aria-labelledby="tab-analyser">
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="an.step1"></span> <span data-i18n="an.step1.title"></span></h2>
+        <p class="muted" data-i18n="an.step1.desc"></p>
+      </div>
+      <div class="card-body atm-row">
+        <label class="field">
+          <span data-i18n="an.openLabel"></span>
+          <input type="number" id="atm-open" inputmode="decimal" step="0.05" placeholder="23670" />
+        </label>
+        <div class="atm-result" id="atm-result" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="card af-card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="af.pill"></span> <span data-i18n="af.title"></span></h2>
+        <p class="muted" data-i18n="af.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="af-row">
+          <label class="field">
+            <span data-i18n="af.endpoint"></span>
+            <input type="text" id="af-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" />
+          </label>
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="af-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-af-now" data-i18n="af.fetchNow"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-arm" data-i18n="af.arm"></button>
+            <button type="button" class="btn btn-ghost" id="btn-af-disarm" data-i18n="af.disarm" hidden></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-af-health" data-i18n="af.check"></button>
+          </div>
+        </div>
+        <p class="af-status af-idle" id="af-status" role="status" aria-live="polite"></p>
+        <p class="muted small af-note" data-i18n-html="af.note"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="an.steps23"></span> <span data-i18n="an.steps23.title"></span></h2>
+        <p class="muted" data-i18n="an.steps23.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="an-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="an-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="an-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field is-fixed"><span><span data-i18n="f.close"></span> ★ <em data-i18n="an.closeFixed"></em></span><input type="number" id="an-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="an-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <label class="checkline"><input type="checkbox" id="an-closed" checked /> <span data-i18n="an.closedLabel"></span></label>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-analyse" data-i18n="an.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-analyser-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="analyser-output" hidden>
+      <div class="card verdict-card an-verdict" id="an-verdict"></div>
+
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="an.condTitle"></h3>
+        <p class="muted" data-i18n="an.condDesc"></p></div>
+        <div class="card-body"><ul class="checks" id="an-conditions"></ul></div>
+      </div>
+
+      <div class="result-grid" id="an-targets"></div>
+
+      <div class="card" id="an-rules"></div>
+
+      <div class="card note-card">
+        <h3><span class="step-pill" data-i18n="an.rule"></span> <span data-i18n="an.rule.title"></span></h3>
+        <p data-i18n-html="an.rule.body"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-sm" data-send-t1="call" data-i18n="an.sendT1Call"></button>
+          <button type="button" class="btn btn-sm" data-send-t1="put" data-i18n="an.sendT1Put"></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 2: T1 DECISION HELPER =================== -->
+  <section class="panel" id="panel-t1" role="tabpanel" aria-labelledby="tab-t1" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="t1.badge"></span>
+      <h2 data-i18n="t1.hero"></h2>
+      <p class="muted" data-i18n="t1.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="t1.steps67"></span> <span data-i18n="t1.steps67.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps67.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="t1.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="t1.putTrade"></button>
+        </div>
+
+        <div class="mapping-note">
+          <span class="map-item"><b data-i18n="t1.mapEntry"></b> ← <i data-i18n="t1.mapEntryFrom"></i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b data-i18n="t1.mapT1"></b> ← <i data-i18n="t1.mapT1From"></i></span>
+          <span class="map-arrow">·</span>
+          <span class="map-item"><b data-i18n="t1.mapT2"></b> ← <i data-i18n="t1.mapT2From"></i></span>
+        </div>
+
+        <div class="ohlc ohlc-3">
+          <label class="field"><span><span data-i18n="t1.entryLabel"></span> <em data-i18n="t1.entryHint"></em></span><input type="number" id="t1-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t1Label"></span> <em data-i18n="t1.t1Hint"></em></span><input type="number" id="t1-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span><span data-i18n="t1.t2Label"></span> <em data-i18n="t1.t2Hint"></em></span><input type="number" id="t1-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-levels-err" role="alert"></p>
+        <div class="ladder-reading" id="t1-reading" hidden></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="t1.steps89"></span> <span data-i18n="t1.steps89.title"></span></h2>
+        <p class="muted" data-i18n="t1.steps89.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span data-i18n="f.open"></span><input type="number" id="t1-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.high"></span><input type="number" id="t1-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.low"></span><input type="number" id="t1-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="f.close"></span><input type="number" id="t1-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="t1-candle-err" role="alert"></p>
+
+        <div class="candle-preview" id="t1-preview" hidden></div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-decide" data-i18n="t1.decide"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-t1-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="t1-output" hidden>
+      <div class="card verdict-card" id="t1-verdict"></div>
+      <div class="card" id="t1-signal"></div>
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="t1.checks"></h3>
+        <p class="muted" data-i18n="t1.checksDesc"></p></div>
+        <div class="card-body"><ul class="checks" id="t1-checks"></ul></div>
+      </div>
+      <div class="card" id="t1-gate"></div>
+      <div class="card" id="t1-plan"></div>
+    </div>
+  </section>
+
+  <!-- =================== TOOL 3: PULLBACK ENTRY =================== -->
+  <section class="panel" id="panel-pullback" role="tabpanel" aria-labelledby="tab-pullback" hidden>
+
+    <div class="card concept-card">
+      <h3><span data-i18n="pb.conceptTitle"></span></h3>
+      <ul class="concept-list">
+        <li class="is-bad"><b data-i18n="pb.conceptWrongLabel"></b> <span data-i18n="pb.conceptWrong"></span></li>
+        <li class="is-good"><b data-i18n="pb.conceptRightLabel"></b> <span data-i18n="pb.conceptRight"></span></li>
+        <li class="is-key"><b data-i18n="pb.conceptKeyLabel"></b> <span data-i18n="pb.conceptKey"></span></li>
+      </ul>
+    </div>
+
+    <div class="card warn-card">
+      <h3>⚠ <span data-i18n="pb.warnTitle"></span></h3>
+      <p data-i18n-html="pb.warnBody"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2><span class="step-pill" data-i18n="pb.steps"></span> <span data-i18n="pb.steps.title"></span></h2>
+        <p class="muted" data-i18n="pb.steps.desc"></p>
+      </div>
+      <div class="card-body">
+        <div class="candle-grid">
+          <fieldset class="candle-box side-call">
+            <legend><span class="dot dot-call"></span> <span data-i18n="f.call"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-ce-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-ce-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-ce-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-ce-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-ce-err" role="alert"></p>
+          </fieldset>
+
+          <fieldset class="candle-box side-put">
+            <legend><span class="dot dot-put"></span> <span data-i18n="f.put"></span></legend>
+            <div class="ohlc">
+              <label class="field"><span data-i18n="f.open"></span><input type="number" id="pb-pe-o" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.high"></span><input type="number" id="pb-pe-h" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.low"></span><input type="number" id="pb-pe-l" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+              <label class="field"><span data-i18n="f.close"></span><input type="number" id="pb-pe-c" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+            </div>
+            <p class="err" id="pb-pe-err" role="alert"></p>
+          </fieldset>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="btn-pullback" data-i18n="f.analyse"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-import" data-i18n="pb.import"></button>
+          <button type="button" class="btn btn-ghost" id="btn-pb-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pullback-output" hidden>
+      <div class="card verdict-card" id="pb-verdict"></div>
+      <div class="card" id="pb-levels"></div>
+      <div class="card" id="pb-detail"></div>
+      <div class="card" id="pb-rules"></div>
+      <div class="card" id="pb-compare"></div>
+    </div>
+  </section>
+
+
+  <!-- =================== TOOL 4: TRADE SIGNAL =================== -->
+  <section class="panel" id="panel-signal" role="tabpanel" aria-labelledby="tab-signal" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sg.badge"></span>
+      <h2 data-i18n="sg.hero"></h2>
+      <p class="muted" data-i18n="sg.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.setupTitle"></h2>
+        <p class="muted" data-i18n="sg.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="side-toggle" role="radiogroup" aria-label="Trade side">
+          <button type="button" class="side-btn is-active" role="radio" aria-checked="true" data-side="call" data-i18n="sg.callTrade"></button>
+          <button type="button" class="side-btn" role="radio" aria-checked="false" data-side="put" data-i18n="sg.putTrade"></button>
+        </div>
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.entry"></span><input type="number" id="sg-entry" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.sl"></span><input type="number" id="sg-sl" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t1"></span><input type="number" id="sg-t1" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+          <label class="field"><span data-i18n="sg.t2"></span><input type="number" id="sg-t2" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span><span data-i18n="sg.range"></span> <em data-i18n="sg.rangeHint"></em></span><input type="number" id="sg-range" inputmode="decimal" step="0.05" placeholder="0.00" /></label>
+        </div>
+        <p class="err" id="sg-err" role="alert"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-call" data-i18n="sg.importCall"></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-import-put" data-i18n="sg.importPut"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.marketTitle"></h2>
+        <p class="muted" data-i18n="sg.marketDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc">
+          <label class="field"><span data-i18n="sg.spot"></span><input type="number" id="sg-spot" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vwap"></span><input type="number" id="sg-vwap" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema20"></span><input type="number" id="sg-ema20" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.ema50"></span><input type="number" id="sg-ema50" inputmode="decimal" step="0.05" placeholder="—" /></label>
+        </div>
+        <div class="ohlc" style="margin-top:10px">
+          <label class="field"><span data-i18n="sg.rsi"></span><input type="number" id="sg-rsi" inputmode="decimal" step="0.1" placeholder="—" /></label>
+          <label class="field"><span><span data-i18n="sg.vol"></span> <em data-i18n="sg.volHint"></em></span><input type="number" id="sg-vol" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.vix"></span><input type="number" id="sg-vix" inputmode="decimal" step="0.05" placeholder="—" /></label>
+          <label class="field"><span data-i18n="sg.time"></span><input type="time" id="sg-time" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-sg-now" data-i18n="sg.now"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sg.posTitle"></h2>
+        <p class="muted" data-i18n="sg.posDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc ohlc-3">
+          <label class="field"><span data-i18n="sg.lots"></span><input type="number" id="sg-lots" inputmode="numeric" step="1" min="1" value="1" /></label>
+          <label class="field"><span><span data-i18n="sg.account"></span> <em data-i18n="sg.accountHint"></em></span><input type="number" id="sg-account" inputmode="decimal" step="1000" placeholder="—" /></label>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-signal" data-i18n="sg.generate"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-sample" data-i18n="f.sample"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sg-reset" data-i18n="f.reset"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="signal-output" hidden>
+      <div class="card verdict-card" id="sg-verdict"></div>
+      <div class="card" id="sg-tiles"></div>
+      <div class="card">
+        <div class="card-head"><h3 data-i18n="sg.checksTitle"></h3></div>
+        <div class="card-body">
+          <div class="signal" id="sg-conf-head" style="margin-bottom:16px"></div>
+          <ul class="checks" id="sg-checks"></ul>
+        </div>
+      </div>
+      <div class="card" id="sg-metrics"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="al.title"></h2>
+        <p class="muted" data-i18n="al.desc"></p>
+      </div>
+      <div class="card-body">
+        <p class="perm" id="al-permission"></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost" id="btn-al-enable" data-i18n="al.enable"></button>
+          <button type="button" class="btn btn-ghost" id="btn-al-notify" data-i18n="al.notifyNow"></button>
+        </div>
+        <label class="checkline"><input type="checkbox" id="al-auto" checked /> <span data-i18n="al.auto"></span></label>
+
+        <div class="reminder-row">
+          <label class="field"><span><span data-i18n="al.countLabel"></span> <em data-i18n="al.countHint"></em></span><input type="number" id="al-count" step="1" min="0" value="12" /></label>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary" id="btn-al-start" data-i18n="al.startReminders"></button>
+            <button type="button" class="btn btn-ghost" id="btn-al-stop" data-i18n="al.stopReminders" hidden></button>
+          </div>
+        </div>
+        <p class="muted small" id="al-next"></p>
+
+        <h3 class="log-title" data-i18n="al.logTitle"></h3>
+        <ul class="alert-log" id="al-log"></ul>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- =================== TOOL 5: SCAN =================== -->
+  <section class="panel" id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="sc.badge"></span>
+      <h2 data-i18n="sc.hero"></h2>
+      <p class="muted" data-i18n="sc.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="sc.modeTitle"></h2>
+        <p class="muted" data-i18n="sc.modeDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="mode-switch" role="tablist" aria-label="Scan mode">
+          <button type="button" class="mode-btn is-active" id="mode-intraday" role="tab" aria-selected="true">
+            <b data-i18n="sc.modeIntraday"></b><em data-i18n="sc.modeIntradayHint"></em>
+          </button>
+          <button type="button" class="mode-btn" id="mode-swing" role="tab" aria-selected="false">
+            <b data-i18n="sc.modeSwing"></b><em data-i18n="sc.modeSwingHint"></em>
+          </button>
+        </div>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field field-symbol">
+            <span><span data-i18n="sym.label"></span> <em data-i18n="sym.hint"></em></span>
+            <input type="text" id="sc-symbol" list="symbol-list" spellcheck="false"
+                   autocapitalize="characters" autocomplete="off" placeholder="NIFTY" value="NIFTY" />
+          </label>
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="sc-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+        <p class="muted small" id="sc-symbol-note" data-i18n="sym.note"></p>
+      </div>
+    </div>
+
+    <div class="card" id="swing-setup" hidden>
+      <div class="card-head">
+        <h2 data-i18n="sw.setupTitle"></h2>
+        <p class="muted" data-i18n="sw.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <fieldset class="tf-box">
+          <legend data-i18n="sw.timeframes"></legend>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1h" checked /> <span data-i18n="sw.tf1hLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1d" checked /> <span data-i18n="sw.tf1dLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1w" checked /> <span data-i18n="sw.tf1wLong"></span></label>
+          <label class="checkline"><input type="checkbox" id="sw-tf-1M" checked /> <span data-i18n="sw.tf1MLong"></span></label>
+        </fieldset>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field"><span><span data-i18n="sw.bars"></span> <em data-i18n="sw.barsHint"></em></span><input type="number" id="sw-bars" step="1" min="1" max="10" value="1" /></label>
+          <label class="field checkfield"><span data-i18n="sw.runningLabel"></span>
+            <label class="checkline"><input type="checkbox" id="sw-running" /> <span data-i18n="sw.runningHint"></span></label>
+          </label>
+        </div>
+
+        <p class="af-status af-idle" id="sw-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-sw-run" data-i18n="sw.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sw-use" data-i18n="sw.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sw-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="sw.note"></p>
+      </div>
+    </div>
+
+    <div id="swing-output" hidden>
+      <div class="card verdict-card an-verdict" id="sw-headline"></div>
+      <div class="card" id="sw-agreement"></div>
+      <div class="card" id="sw-table"></div>
+    </div>
+
+    <div class="card" id="intraday-setup">
+      <div class="card-head">
+        <h2 data-i18n="sc.setupTitle"></h2>
+        <p class="muted" data-i18n="sc.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <fieldset class="tf-box">
+          <legend data-i18n="sc.timeframes"></legend>
+          <label class="checkline"><input type="checkbox" id="sc-tf-5" checked /> <span>5 min <em data-i18n="sc.tf5"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-15" checked /> <span>15 min <em data-i18n="sc.tf15"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-30" checked /> <span>30 min <em data-i18n="sc.tf30"></em></span></label>
+          <label class="checkline"><input type="checkbox" id="sc-tf-60" checked /> <span>60 min <em data-i18n="sc.tf60"></em></span></label>
+        </fieldset>
+
+        <div class="ohlc ohlc-3" style="margin-top:14px">
+          <label class="field"><span><span data-i18n="sc.strikes"></span> <em data-i18n="sc.strikesHint"></em></span><input type="number" id="sc-strikes" step="1" min="0" max="4" value="1" /></label>
+          <label class="field"><span><span data-i18n="sc.expiries"></span> <em data-i18n="sc.expiriesHint"></em></span><input type="number" id="sc-expiries" step="1" min="1" max="3" value="1" /></label>
+        </div>
+
+        <p class="af-status af-idle" id="sc-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-sc-run" data-i18n="sc.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-use" data-i18n="sc.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-sc-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="sc.note"></p>
+      </div>
+    </div>
+
+    <div id="scan-output" hidden>
+      <div class="card verdict-card an-verdict" id="sc-headline"></div>
+      <div class="card" id="sc-agreement"></div>
+      <div class="card" id="sc-table"></div>
+    </div>
+  </section>
+
+  <!-- =================== CONFIDENCE SCAN =================== -->
+  <section class="panel" id="panel-confidence" role="tabpanel" aria-labelledby="tab-confidence" hidden>
+
+    <div class="card t1-hero">
+      <span class="hero-badge" data-i18n="cs.badge"></span>
+      <h2 data-i18n="cs.hero"></h2>
+      <p class="muted" data-i18n="cs.heroSub"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="cs.setupTitle"></h2>
+        <p class="muted" data-i18n="cs.setupDesc"></p>
+      </div>
+      <div class="card-body">
+        <div class="ohlc ohlc-3">
+          <label class="field">
+            <span><span data-i18n="cs.minConf"></span> <em data-i18n="cs.minConfHint"></em></span>
+            <input type="number" id="cs-min" step="5" min="0" max="100" value="80" />
+          </label>
+          <label class="field">
+            <span data-i18n="cs.universe"></span>
+            <select id="cs-universe">
+              <option value="all" data-i18n="cs.uAll"></option>
+              <option value="index" data-i18n="cs.uIndex"></option>
+              <option value="equity" data-i18n="cs.uEquity"></option>
+            </select>
+          </label>
+          <label class="field"><span data-i18n="af.endpoint"></span><input type="text" id="cs-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8123" /></label>
+        </div>
+
+        <p class="af-status af-idle" id="cs-status" role="status" aria-live="polite"></p>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary btn-decide" id="btn-cs-run" data-i18n="cs.run"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-options" data-i18n="cs.runOptions"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-use" data-i18n="cs.useBest"></button>
+          <button type="button" class="btn btn-ghost" id="btn-cs-reset" data-i18n="f.reset"></button>
+        </div>
+        <p class="muted small af-note" data-i18n="cs.note"></p>
+      </div>
+    </div>
+
+    <div id="confidence-output" hidden>
+      <div class="card verdict-card an-verdict" id="cs-headline"></div>
+      <div class="card" id="cs-top" hidden></div>
+      <div class="card" id="cs-table"></div>
+    </div>
+  </section>
+
+  <!-- =================== SOP GUIDE =================== -->
+  <section class="panel" id="panel-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2 data-i18n="g.title"></h2>
+        <p class="muted" data-i18n="g.desc"></p>
+      </div>
+      <div class="card-body guide" id="guide-body"></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Suggestions for both symbol fields; the fields stay free text so any NSE
+     F&O underlying works, listed here or not. Filled by assets/js/symbols.js. -->
+<datalist id="symbol-list"></datalist>
+
+<footer class="app-footer">
+  <div class="wrap">
+    <p><strong data-i18n="foot.warn"></strong> <span data-i18n="foot.body"></span></p>
+    <p class="muted small" data-i18n="foot.privacy"></p>
+  </div>
+</footer>
+
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/symbols.js"></script>
+<script src="assets/js/helper.js"></script>
+<script src="assets/js/analyser.js"></script>
+<script src="assets/js/autofetch.js"></script>
+<script src="assets/js/t1helper.js"></script>
+<script src="assets/js/pullback.js"></script>
+<script src="assets/js/signal.js"></script>
+<script src="assets/js/scan.js"></script>
+<script src="assets/js/swing.js"></script>
+<script src="assets/js/confidence.js"></script>
+<script src="assets/js/alerts.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
