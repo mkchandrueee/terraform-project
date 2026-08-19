@@ -234,6 +234,17 @@ curl "http://127.0.0.1:8123/history?symbol=WIPRO&tfs=1d&bars=1"
 Asking for fewer candles per timeframe, or dropping the monthly box, shortens the history needed and so the
 number of requests.
 
+**Swing scan fails with 503 on every historical endpoint**
+Not an outage. NSE's bot protection checks the `Referer` against the API and wants a session that has browsed
+the matching page; the helper now visits the quote page first and sends the right Referer, which is what this
+was. If it comes back, open
+
+```
+https://www.nseindia.com/get-quotes/equity?symbol=BAJAJFINSV
+```
+
+in a normal browser on the same machine, then retry — that re-establishes the protection cookies for your IP.
+
 **"Swing scan failed — no historical endpoint returned rows for ..."**
 NSE moves these paths and a retired one answers `200` with an empty list rather than a 404, so it looks
 identical to "this symbol has no data". The helper tries the current path, the older one, and two series

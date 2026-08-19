@@ -279,6 +279,14 @@ premium**, which means nothing on a share price — it would demand a ₹16 step
 all on a ₹3,000 one. Here the floor is a percentage of price instead, `swingMinStepPct`, default 0.25%. At
 that value the range term dominates in almost every real case, which is the intent: a floor, not a driver.
 
+**Each NSE API checks where you came from.** Their bot protection validates the `Referer` against the endpoint
+being called, and binds its cookies to the pages the session has actually browsed. An `/option-chain` Referer
+on a historical request is refused with **503** — which reads like an outage rather than a rejection, and is
+why the option chain could work while history failed on the same session. So the helper sends a Referer
+matching each API and visits that API's own page once before calling it: the quote page for equity history,
+the indices-historical page for an index, the derivatives quote page for lot size. Cookies are merged across
+those visits rather than replaced.
+
 **NSE moves these paths, and a retired one does not 404** — it answers `200` with an empty list, which reads
 exactly like "this symbol has no data". So history is tried against the current `securityArchives` path, the
 older `cm/equity` one, and two series variants for stocks that trade outside EQ, keeping whichever answers for

@@ -230,12 +230,39 @@ async function marketLot(symbol) {
 let cookieJar = '';
 let cookieSetAt = 0;
 
-function baseHeaders() {
+/**
+ * The page NSE expects you to have come from, per API.
+ *
+ * Their bot protection checks the Referer against the endpoint being called; a
+ * mismatch is refused with 503, not 403, which reads like the service being
+ * down. Sending /option-chain for everything is why the option chain worked
+ * while the historical endpoints did not — same session, wrong provenance.
+ */
+function refererFor(url) {
+  const u = String(url || '');
+  const symbol = (u.match(/[?&]symbol=([^&]*)/) || [])[1] || '';
+
+  if (u.includes('/api/historical/indicesHistory')) {
+    return BASE + '/reports-indices-historical-index-data';
+  }
+  if (u.includes('/api/historical/')) {
+    return symbol ? BASE + '/get-quotes/equity?symbol=' + symbol
+                  : BASE + '/report-detail/eq_security';
+  }
+  if (u.includes('/api/quote-derivative')) {
+    return symbol ? BASE + '/get-quotes/derivatives?symbol=' + symbol
+                  : BASE + '/option-chain';
+  }
+  if (u.includes('/api/chart-databyindex')) return BASE + '/option-chain';
+  return BASE + '/option-chain';
+}
+
+function baseHeaders(referer) {
   return {
     'User-Agent': UA,
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': BASE + '/option-chain',
+    'Referer': referer || BASE + '/option-chain',
     'Connection': 'keep-alive'
   };
 }
@@ -256,13 +283,39 @@ function readSetCookies(res) {
   return joined.split(/,\s*(?=[A-Za-z0-9!#$%&'*+._|~-]+=)/);
 }
 
+/* Merge rather than replace: visiting a second page adds cookies bound to that
+   path, and clobbering the jar would throw away the ones already earned. */
+function mergeCookies(raw) {
+  const jar = new Map();
+  cookieJar.split('; ').filter(Boolean).forEach((pair) => {
+    const eq = pair.indexOf('=');
+    if (eq > 0) jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+  });
+  raw.map((c) => c.split(';')[0]).filter(Boolean).forEach((pair) => {
+    const eq = pair.indexOf('=');
+    if (eq > 0) jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+  });
+  cookieJar = Array.from(jar.entries()).map(([k, v]) => k + '=' + v).join('; ');
+}
+
+/** GET an HTML page so its cookies land in the jar. */
+async function visitPage(pageUrl, referer) {
+  const res = await fetch(pageUrl, {
+    headers: Object.assign(baseHeaders(referer), {
+      Accept: 'text/html,application/xhtml+xml',
+      Cookie: cookieJar
+    })
+  });
+  mergeCookies(readSetCookies(res));
+  return res;
+}
+
+const warmed = new Set();
+
 async function primeSession(force) {
   if (!force && cookieJar && Date.now() - cookieSetAt < 5 * 60000) return;
-  const res = await fetch(BASE + '/option-chain', {
-    headers: Object.assign(baseHeaders(), { Accept: 'text/html,application/xhtml+xml' })
-  });
-  const raw = readSetCookies(res);
-  cookieJar = raw.map((c) => c.split(';')[0]).filter(Boolean).join('; ');
+  if (force) { cookieJar = ''; warmed.clear(); }
+  const res = await visitPage(BASE + '/option-chain', BASE + '/');
   cookieSetAt = Date.now();
   if (!cookieJar) {
     throw new Error(
@@ -272,17 +325,39 @@ async function primeSession(force) {
   }
 }
 
+/**
+ * Visit the page an API belongs to before calling it.
+ *
+ * NSE's protection binds its cookies to where you have actually browsed, so a
+ * session that has only ever seen /option-chain is not trusted on the
+ * historical endpoints however valid its cookies look. Done once per page.
+ */
+async function warmFor(url, force) {
+  const referer = refererFor(url);
+  if (referer === BASE + '/option-chain') return referer;   /* already primed */
+  if (!force && warmed.has(referer)) return referer;
+  try {
+    await visitPage(referer, BASE + '/');
+    warmed.add(referer);
+  } catch (e) { /* the API call may still work; do not fail here */ }
+  return referer;
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function nseJson(url, attempt = 0) {
   await primeSession(attempt > 0);
-  const res = await fetch(url, { headers: Object.assign(baseHeaders(), { Cookie: cookieJar }) });
+  const referer = await warmFor(url, attempt > 0);
+  const res = await fetch(url, {
+    headers: Object.assign(baseHeaders(referer), { Cookie: cookieJar })
+  });
   if ((res.status === 401 || res.status === 403) && attempt < 2) {
     return nseJson(url, attempt + 1);
   }
-  /* 429 and 5xx are NSE throttling or briefly falling over, not a wrong URL —
-     the historical endpoint does this readily. Back off and re-prime rather
-     than reporting a dead end the user cannot act on. */
+  /* 429 and 5xx are throttling, or the protection refusing a request whose
+     provenance it does not like — the historical endpoints answer 503 for a
+     session that has not browsed the matching page. Retrying re-primes and
+     re-warms, so the second attempt carries the cookies the first lacked. */
   if ((res.status === 429 || res.status >= 500) && attempt < 3) {
     await sleep(600 * Math.pow(2, attempt));
     return nseJson(url, attempt + 1);
@@ -632,13 +707,29 @@ async function dailyBars(symbol, days) {
 
   const bars = Array.from(byDay.values()).sort((a, b) => a.t - b.t);
   if (!bars.length) {
+    /* The failure mode is legible from what the attempts returned, so say which
+       one it is rather than listing every possibility every time. */
+    const all503 = tried.length && tried.every((t) => /NSE 5\d\d/.test(t));
+    const allEmpty = tried.length && tried.every((t) => /200 but no rows/.test(t));
+    let hint;
+    if (all503) {
+      hint = 'Every attempt was refused with 5xx. That is NSE\'s bot protection, not an\n' +
+             'outage: the historical endpoints reject a session that has not browsed the\n' +
+             'matching quote page. The helper now visits it first, so if you are still\n' +
+             'seeing this, the protection has tightened again. Opening\n' +
+             '  ' + BASE + '/get-quotes/equity?symbol=' + symbol + '\n' +
+             'in a normal browser on this machine, then retrying, is the usual workaround.';
+    } else if (allEmpty) {
+      hint = 'Every attempt answered 200 with no rows, which means NSE has retired these\n' +
+             'paths or ' + symbol + ' is not the NSE trading symbol. Check it on nseindia.com.';
+    } else {
+      hint = 'Mixed failures — read the list above; the endpoints disagree about why.';
+    }
     throw new Error(
       'no historical endpoint returned rows for ' + symbol +
       ' (' + (isIndex(symbol) ? 'index' : 'equity') + '). Tried:\n  ' +
-      tried.join('\n  ') +
-      '\nA 200 with no rows usually means NSE has retired that path, or the' +
-      '\nsymbol is not the NSE trading symbol. Check the symbol on nseindia.com,' +
-      '\nthen run:  node tools/nse-fetch.js --symbol ' + symbol + ' --dump history'
+      tried.join('\n  ') + '\n' + hint +
+      '\nFor the full picture:  node tools/nse-fetch.js --symbol ' + symbol + ' --dump history'
     );
   }
   /* Some windows may have failed while others answered — say so rather than
