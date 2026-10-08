@@ -1,0 +1,8 @@
+streamlit>=1.40
+pandas>=2.2
+sqlalchemy>=2.0
+openpyxl
+pyarrow
+psycopg2-binary   # PostgreSQL
+pymysql           # MySQL
+pyodbc            # SQL Server (needs ODBC Driver 18)
