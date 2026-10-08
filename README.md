@@ -2,7 +2,12 @@
 In this project we use terraform to automate aws and azure colud resources.
 
 ## DataRecon (data migration testing)
-Single-file Streamlit app: `pip install -r requirements.txt && streamlit run datarecon.py`.
-Source and target can each be a file (CSV/XLSX/Parquet) or a SQL query. Rows are matched by key
-(order-independent), reporting missing/extra rows, cell mismatches, duplicate keys and
-per-column null/distinct/sum profiles. Tests: `pytest test_datarecon.py`.
+Lightweight single-file Streamlit app: `pip install -r requirements.txt && streamlit run datarecon.py`.
+Source and target can each be a file (CSV/XLSX/Parquet) or a SQL query; rows are matched by key (order-independent).
+
+Validations: column/row counts (with abs/% tolerance and group-by breakdown), missing/extra rows, cell mismatches,
+duplicate keys and full rows, data types, nulls + blank/sentinel completeness score, aggregations on critical columns,
+value-distribution diffs, and file checksums. A "Why do rows differ?" section explains uniform causes exactly
+(whitespace, case, truncation, NULL columns, sign flip, constant ratio/offset, rounding, time shift, partial-load key blocks).
+Rule sets, connections and queries are saved locally; reports export to Excel, CSV zip and JSON, split into numbered parts
+rather than truncated. Tests: `pytest test_datarecon.py`.

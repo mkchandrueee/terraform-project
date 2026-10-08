@@ -47,3 +47,30 @@ def test_extra_validations():
     dup = pd.concat([src, src.head(1)])
     c = dict(zip(*[compare(dup, src)["checks"][k] for k in ("check", "status")]))
     assert c["Duplicate full rows"] == "FAIL"
+
+
+def test_enhancements():
+    src = pd.DataFrame({"id": range(1, 11), "amt": [i * 1.0 for i in range(1, 11)],
+                        "nm": ["Ab"] * 10, "grp": ["x"] * 5 + ["y"] * 5, "n": ["N/A"] + ["v"] * 9})
+    tgt = src[src.id <= 7].copy()                      # ids 8-10 missing: contiguous block
+    tgt["amt"] = tgt["amt"] * 100                      # exact 100x
+    tgt["nm"] = tgt["nm"].str.lower()                  # case only
+    r = compare(src, tgt, keys=["id"], group_by=["grp"], count_tol_pct=50,
+                file_hashes=("a" * 64, "b" * 64))
+    text = " | ".join(r["insights"].finding)
+    assert "100x" in text and "letter case" in text and "contiguous key block" in text
+    chk = dict(zip(r["checks"].check, r["checks"].status))
+    assert chk["Row count"] == "PASS" and chk["File checksum (SHA-256) identical"] == "WARN"
+    assert (r["groups"].difference.tolist().count(-3)) == 1
+    r2 = compare(src, src, keys=["id"], markers=["n/a"])
+    assert r2["passed"] and r2["columns"].set_index("column").loc["n", "source_markers"] == 1
+
+
+def test_exports_split_not_truncate(monkeypatch):
+    import datarecon
+    monkeypatch.setattr(datarecon, "EXPORT_ROW_CAP", 5)
+    src = pd.DataFrame({"id": range(12), "v": ["a"] * 12})
+    r = compare(src, src.assign(v="b"), keys=["id"])
+    import io, zipfile
+    names = zipfile.ZipFile(io.BytesIO(datarecon.build_exports(r)[1])).namelist()
+    assert {"mismatches_1.csv", "mismatches_2.csv", "mismatches_3.csv"} <= set(names)
