@@ -31,3 +31,19 @@ def test_identical_passes_and_row_mode():
     dup = pd.concat([src, src.head(1)])
     r = compare(src, dup)
     assert len(r["only_in_target"]) == 1
+
+
+def test_extra_validations():
+    src, tgt = frames()
+    r = compare(src, tgt, keys=["id"])
+    checks = dict(zip(r["checks"].check, r["checks"].status))
+    assert checks["Column count"] == "PASS"
+    assert checks["Aggregation differences"] == "FAIL"
+    dt = r["dtypes"].set_index("column")
+    assert dt.loc["amt", "source_type"] == "decimal" and dt.loc["id", "status"] == "PASS"
+    agg = r["aggregations"]
+    assert {"sum", "avg", "min", "max", "count", "distinct"} <= set(agg.metric)
+    assert compare(src, src, keys=["id"], agg_cols=["amt"])["passed"]
+    dup = pd.concat([src, src.head(1)])
+    c = dict(zip(*[compare(dup, src)["checks"][k] for k in ("check", "status")]))
+    assert c["Duplicate full rows"] == "FAIL"

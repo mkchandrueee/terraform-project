@@ -161,12 +161,65 @@ def numeric_sum(s):
     return float(num.sum()) if num.notna().all() else None
 
 
+INT_RE = r"^-?\d+$"
+DATE_RE = r"^\d{4}-\d{2}-\d{2}$"
+TS_RE = r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$"
+
+
+def infer_type(s):
+    """Value-based type so file and database sides are comparable."""
+    nn = s.dropna()
+    if nn.empty:
+        return "empty"
+    if nn.str.match(INT_RE).all():
+        return "integer"
+    if pd.to_numeric(nn.astype(object), errors="coerce").notna().all():
+        return "decimal"
+    if nn.str.match(DATE_RE).all():
+        return "date"
+    if nn.str.match(TS_RE).all():
+        return "timestamp"
+    if nn.str.lower().isin(["true", "false"]).all():
+        return "boolean"
+    return "text"
+
+
+def type_status(a, b):
+    if a == b or "empty" in (a, b):
+        return "PASS"
+    if {a, b} <= {"integer", "decimal"} or {a, b} <= {"date", "timestamp"}:
+        return "WARN"  # compatible but not identical
+    return "FAIL"
+
+
+def aggregate(s, kind):
+    """count / distinct / sum / avg / min / max for one column."""
+    nn = s.dropna()
+    out = {"count": len(nn), "distinct": int(nn.nunique())}
+    if kind in ("integer", "decimal"):
+        num = pd.to_numeric(nn.astype(object), errors="coerce")
+        out.update({"sum": num.sum(), "avg": num.mean(), "min": num.min(), "max": num.max()})
+    elif not nn.empty:
+        out.update({"min": nn.min(), "max": nn.max(), "max_length": int(nn.str.len().max())})
+    return out
+
+
+def agg_equal(a, b, tol):
+    if isinstance(a, str) or isinstance(b, str):
+        return a == b
+    if pd.isna(a) and pd.isna(b):
+        return True
+    return not pd.isna(a) and not pd.isna(b) and abs(float(a) - float(b)) <= tol
+
+
 def status(ok, warn=False):
     return "PASS" if ok else ("WARN" if warn else "FAIL")
 
 
 def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
-            ignore_case=False, tol=0.0, detail_cap=10_000):
+            ignore_case=False, tol=0.0, detail_cap=10_000, agg_cols=()):
+    raw_s = {str(c).strip().lower(): str(d) for c, d in src.dtypes.items()}
+    raw_t = {str(c).strip().lower(): str(d) for c, d in tgt.dtypes.items()}
     s = prep(src, trim, empty_is_null, ignore_case)
     t = prep(tgt, trim, empty_is_null, ignore_case)
     ignore = {c.strip().lower() for c in ignore}
@@ -247,6 +300,40 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         })
     profile = pd.DataFrame(profile)
 
+    dtypes = []
+    for col in common:
+        a, b = infer_type(s[col]), infer_type(t[col])
+        la = int(s[col].str.len().max()) if s[col].notna().any() else 0
+        lb = int(t[col].str.len().max()) if t[col].notna().any() else 0
+        dtypes.append({"column": col, "source_dtype": raw_s[col], "target_dtype": raw_t[col],
+                       "source_type": a, "target_type": b,
+                       "source_max_len": la, "target_max_len": lb,
+                       "status": type_status(a, b)})
+    dtypes = pd.DataFrame(dtypes)
+
+    agg_cols = [c.strip().lower() for c in agg_cols] or [
+        c for c in common if infer_type(s[c]) in ("integer", "decimal")
+        or infer_type(t[c]) in ("integer", "decimal")]
+    aggs = []
+    for col in agg_cols:
+        if col not in common:
+            continue
+        kind = "decimal" if "decimal" in (infer_type(s[col]), infer_type(t[col])) \
+            else infer_type(s[col]) if infer_type(s[col]) != "empty" else infer_type(t[col])
+        sa, ta = aggregate(s[col], kind), aggregate(t[col], kind)
+        for metric in dict.fromkeys(list(sa) + list(ta)):
+            va, vb = sa.get(metric), ta.get(metric)
+            va = float("nan") if va is None else va
+            vb = float("nan") if vb is None else vb
+            numeric = not isinstance(va, str) and not isinstance(vb, str)
+            aggs.append({"column": col, "metric": metric, "source": va, "target": vb,
+                         "difference": (vb - va) if numeric and not pd.isna(va) and not pd.isna(vb) else None,
+                         "status": status(agg_equal(va, vb, tol if metric in ("sum", "avg", "min", "max") else 0))})
+    aggs = pd.DataFrame(aggs, columns=["column", "metric", "source", "target", "difference", "status"])
+
+    row_dups = (int(s[common].duplicated(keep=False).sum()),
+                int(t[common].duplicated(keep=False).sum()))
+
     schema = pd.DataFrame(
         [{"column": c, "status": "On both sides"} for c in common]
         + [{"column": c, "status": "Only in source"} for c in only_s]
@@ -255,12 +342,17 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
 
     checks = pd.DataFrame([
         ("Schema: same columns", len(only_s), len(only_t), status(not only_s and not only_t)),
+        ("Column count", len(s_cols), len(t_cols), status(len(s_cols) == len(t_cols))),
         ("Row count", len(s), len(t), status(len(s) == len(t))),
         ("Rows only in source (missing in target)", len(only_in_src), "", status(len(only_in_src) == 0)),
         ("Rows only in target (unexpected)", "", len(only_in_tgt), status(len(only_in_tgt) == 0)),
         ("Matched rows fully equal", rows_ok, matched, status(rows_ok == matched)),
         ("Mismatched cells", n_cells, "", status(n_cells == 0)),
         ("Duplicate key rows", s_dups, t_dups, status(s_dups == 0 and t_dups == 0, warn=True)),
+        ("Duplicate full rows", row_dups[0], row_dups[1], status(row_dups[0] == row_dups[1])),
+        ("Data type differences (columns)", int((dtypes["status"] == "FAIL").sum()), int((dtypes["status"] == "WARN").sum()),
+         "FAIL" if (dtypes["status"] == "FAIL").any() else status(not (dtypes["status"] == "WARN").any(), warn=True)),
+        ("Aggregation differences", int((aggs["status"] == "FAIL").sum()), "", status(not (aggs["status"] == "FAIL").any())),
         ("Null-count differences (columns)", int((profile["source_nulls"] != profile["target_nulls"]).sum()), "", status((profile["source_nulls"] == profile["target_nulls"]).all())),
     ], columns=["check", "source", "target", "status"])
 
@@ -268,6 +360,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         "passed": bool((checks["status"] != "FAIL").all()),
         "mode": "whole-row (no key)" if row_mode else f"key: {', '.join(keys)}",
         "checks": checks, "columns": profile, "schema": schema,
+        "dtypes": dtypes, "aggregations": aggs,
         "only_in_source": only_in_src, "only_in_target": only_in_tgt,
         "mismatches": mismatches, "total_mismatch_cells": n_cells,
         "matched": matched, "source_rows": len(s), "target_rows": len(t),
@@ -277,7 +370,8 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
 def build_exports(result):
     sheets = {
         "Checks": result["checks"], "Columns": result["columns"],
-        "Schema": result["schema"], "Only in Source": result["only_in_source"],
+        "Schema": result["schema"], "Data Types": result["dtypes"],
+        "Aggregations": result["aggregations"], "Only in Source": result["only_in_source"],
         "Only in Target": result["only_in_target"], "Mismatches": result["mismatches"],
     }
     sheets = {k: v.head(EXPORT_ROW_CAP).astype(object) for k, v in sheets.items()}
@@ -419,6 +513,10 @@ def show_result(result, names):
     table("Checks", result["checks"])
     table("Column profile", result["columns"],
           "Null / distinct / numeric-sum totals and mismatches per column.")
+    table("Data types", result["dtypes"],
+          "Inferred from values (comparable across file and DB); WARN = compatible, e.g. integer vs decimal.")
+    table("Aggregations on critical columns", result["aggregations"],
+          "Count, distinct, sum, avg, min, max per column; tolerance applies to numeric metrics.")
     if (result["schema"]["status"] != "On both sides").any():
         table("Schema differences",
               result["schema"][result["schema"]["status"] != "On both sides"])
@@ -472,6 +570,7 @@ def main():
                           common, default=guess)
     ignore = st.multiselect("Ignore columns (audit timestamps, surrogate keys...)",
                             sorted(set(norm(src)) | set(norm(tgt))))
+    agg_cols = st.multiselect("Critical columns for aggregations (blank = all numeric columns)", common)
     o = st.columns(4)
     trim = o[0].checkbox("Trim whitespace", True)
     empty_null = o[1].checkbox("Treat empty text as NULL", True)
@@ -482,7 +581,8 @@ def main():
         try:
             with st.spinner("Comparing..."):
                 st.session_state["result"] = compare(
-                    src, tgt, keys, ignore, trim, empty_null, nocase, tol)
+                    src, tgt, keys, ignore, trim, empty_null, nocase, tol,
+                    agg_cols=agg_cols)
         except Exception as err:
             st.session_state.pop("result", None)
             st.error(f"Comparison failed: {err}")
