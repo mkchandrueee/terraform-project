@@ -354,12 +354,14 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
 
     diff_cells, diff_frames = {}, []
     row_diff = pd.Series(False, index=both.index)
+    diff_cols = pd.Series("", index=both.index)
     for col in values:
         a, b = both[col + "__s"], both[col + "__t"]
         bad_mask = ~values_equal(a, b, tol)
         diff_cells[col] = int(bad_mask.sum())
         if bad_mask.any():
             row_diff |= bad_mask
+            diff_cols = diff_cols.mask(bad_mask, diff_cols + col + ", ")
             room = detail_cap - sum(len(f) for f in diff_frames)
             if room > 0:
                 f = both.loc[bad_mask, keys].head(room).copy()
@@ -367,6 +369,18 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
                 diff_frames.append(f)
     mismatches = (pd.concat(diff_frames, ignore_index=True) if diff_frames
                   else pd.DataFrame(columns=keys + ["column", "source", "target"]))
+
+    # Full data result: every row, side by side, with a status (reference "Full Data Validation")
+    state = pd.Series("MATCHED", index=merged.index)
+    state[merged["_merge"] == "left_only"] = "MISSING_IN_TARGET"
+    state[merged["_merge"] == "right_only"] = "EXTRA_IN_TARGET"
+    state.loc[row_diff[row_diff].index] = "MISMATCH"
+    full = merged[keys].copy()
+    full["status"] = state
+    full["mismatched_columns"] = diff_cols.reindex(merged.index).fillna("").str.rstrip(", ")
+    for col in values:
+        full[col + "_source"], full[col + "_target"] = merged[col + "__s"], merged[col + "__t"]
+    full = full.sort_values("status", key=lambda x: x.eq("MATCHED"), kind="stable", ignore_index=True)
 
     matched = len(both)
     rows_ok = matched - int(row_diff.sum())
@@ -501,7 +515,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         "passed": bool((checks["status"] != "FAIL").all()),
         "mode": "whole-row (no key)" if row_mode else f"key: {', '.join(keys)}",
         "checks": checks, "columns": profile, "schema": schema,
-        "dtypes": dtypes, "aggregations": aggs, "insights": insights,
+        "dtypes": dtypes, "aggregations": aggs, "insights": insights, "full": full,
         "groups": groups, "distribution": distribution,
         "mismatches_capped": n_cells > len(mismatches),
         "only_in_source": only_in_src, "only_in_target": only_in_tgt,
@@ -517,7 +531,7 @@ def build_exports(result):
         "Data Types": result["dtypes"], "Aggregations": result["aggregations"],
         "Distribution": result["distribution"], "Group Counts": result["groups"],
         "Only in Source": result["only_in_source"], "Only in Target": result["only_in_target"],
-        "Mismatches": result["mismatches"],
+        "Mismatches": result["mismatches"], "Full Data": result["full"],
     }
     parts = {}  # large frames split into numbered parts so no row is ever dropped
     for name, frame in sheets.items():
@@ -687,6 +701,29 @@ def show_result(result, names):
     if len(result["distribution"]):
         table("Value distribution differences", result["distribution"],
               "Low-cardinality columns (<= 50 distinct): values whose counts differ.")
+    full = result["full"]
+    st.subheader(f"Full data comparison ({len(full):,} rows)")
+    counts = full["status"].value_counts()
+    cols = st.columns(4)
+    for c, name in zip(cols, ("MATCHED", "MISMATCH", "MISSING_IN_TARGET", "EXTRA_IN_TARGET")):
+        c.metric(name.replace("_", " ").title(), f"{int(counts.get(name, 0)):,}")
+    chosen = st.multiselect("Show statuses", list(counts.index), default=[x for x in counts.index if x != "MATCHED"]
+                            or list(counts.index), key="full_status")
+    view = full[full["status"].isin(chosen)]
+    if len(view) > DISPLAY_ROWS:
+        st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(view):,}; the Excel/CSV download has every row.")
+    view = view.head(DISPLAY_ROWS).astype("string").fillna("<NULL>")
+
+    def highlight(row):
+        bad = {c.strip() for c in row["mismatched_columns"].split(",") if c.strip()}
+        return ["background-color: #ffd6d6" if c.rsplit("_", 1)[0] in bad and c.endswith(("_source", "_target"))
+                else "background-color: #fff3c4" if row["status"] in ("MISSING_IN_TARGET", "EXTRA_IN_TARGET")
+                and c.endswith(("_source", "_target")) else "" for c in row.index]
+    try:  # cell highlighting needs jinja2; fall back to a plain grid
+        shown = view.style.apply(highlight, axis=1) if len(view.columns) < 60 else view
+    except (ImportError, AttributeError):
+        shown = view
+    st.dataframe(shown, width="stretch", hide_index=True)
     table("Value mismatches", result["mismatches"],
           f"{result['total_mismatch_cells']:,} mismatched cells in total."
           + (" Detail capped at 100,000 rows." if result["mismatches_capped"] else ""))

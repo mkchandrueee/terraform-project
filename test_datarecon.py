@@ -74,3 +74,12 @@ def test_exports_split_not_truncate(monkeypatch):
     import io, zipfile
     names = zipfile.ZipFile(io.BytesIO(datarecon.build_exports(r)[1])).namelist()
     assert {"mismatches_1.csv", "mismatches_2.csv", "mismatches_3.csv"} <= set(names)
+
+
+def test_full_data_result():
+    src, tgt = frames()
+    full = compare(src, tgt, keys=["id"])["full"].set_index("id")
+    assert full.status.to_dict() == {"1": "MISSING_IN_TARGET", "5": "EXTRA_IN_TARGET",
+                                     "2": "MISMATCH", "3": "MISMATCH", "4": "MATCHED"}
+    assert full.loc["3", "mismatched_columns"] == "name"
+    assert full.loc["3", "name_source"] == "c" and full.loc["3", "name_target"] == "X"
