@@ -78,8 +78,36 @@ def test_exports_split_not_truncate(monkeypatch):
 
 def test_full_data_result():
     src, tgt = frames()
-    full = compare(src, tgt, keys=["id"])["full"].set_index("id")
+    r = compare(src, tgt, keys=["id"])
+    assert "4" not in set(r["full"].id) and r["full_counts"]["MATCHED"] == 1  # matched rows opt-in
+    full = compare(src, tgt, keys=["id"], include_matched=True)["full"].set_index("id")
     assert full.status.to_dict() == {"1": "MISSING_IN_TARGET", "5": "EXTRA_IN_TARGET",
                                      "2": "MISMATCH", "3": "MISMATCH", "4": "MATCHED"}
+    assert compare(src, tgt, keys=["id"], fast=True)["full_counts"] == r["full_counts"]
     assert full.loc["3", "mismatched_columns"] == "name"
     assert full.loc["3", "name_source"] == "c" and full.loc["3", "name_target"] == "X"
+
+
+def test_matches_bruteforce_reference():
+    """Optimised engine == naive pairing by (key, occurrence), incl. duplicate and text keys."""
+    import numpy as np
+    from collections import defaultdict
+    rng = np.random.default_rng(7)
+    for int_keys in (True, False):
+        mk = (lambda n: [str(x) for x in rng.integers(0, 40, n)]) if int_keys else \
+             (lambda n: [f"k{x}" for x in rng.integers(0, 40, n)])
+        src = pd.DataFrame({"k": mk(60), "v": rng.integers(0, 3, 60).astype(str)})
+        tgt = pd.DataFrame({"k": mk(55), "v": rng.integers(0, 3, 55).astype(str)})
+
+        def pairs(df):
+            seen, out = defaultdict(int), {}
+            for k, v in zip(df.k, df.v):
+                out[(k, seen[k])] = v
+                seen[k] += 1
+            return out
+        a, b = pairs(src), pairs(tgt)
+        exp = {"MISSING_IN_TARGET": len(a.keys() - b.keys()), "EXTRA_IN_TARGET": len(b.keys() - a.keys()),
+               "MISMATCH": sum(a[x] != b[x] for x in a.keys() & b.keys()),
+               "MATCHED": sum(a[x] == b[x] for x in a.keys() & b.keys())}
+        for fast in (False, True):
+            assert compare(src, tgt, keys=["k"], fast=fast)["full_counts"] == exp

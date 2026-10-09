@@ -11,3 +11,7 @@ value-distribution diffs, and file checksums. A "Why do rows differ?" section ex
 (whitespace, case, truncation, NULL columns, sign flip, constant ratio/offset, rounding, time shift, partial-load key blocks).
 Rule sets, connections and queries are saved locally; reports export to Excel, CSV zip and JSON, split into numbered parts
 rather than truncated. Tests: `pytest test_datarecon.py`.
+
+**Large data (e.g. 9 lakh rows):** tick *Full data validation only* to skip profiling/type/aggregation/distribution work
+(~2x faster); matched rows are counted but not listed unless *Include matched rows* is ticked; reports are built only when
+you click a download. Prefer CSV/Parquet over XLSX for big files (Excel parsing is slow).

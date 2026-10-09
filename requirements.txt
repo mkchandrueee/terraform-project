@@ -1,8 +1,9 @@
-streamlit>=1.40
+streamlit>=1.50
 pandas>=2.2
 sqlalchemy>=2.0
 openpyxl
 jinja2
+xlsxwriter
 pyarrow
 psycopg2-binary   # PostgreSQL
 pymysql           # MySQL

@@ -13,6 +13,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import hashlib
 import json
 import re
+import time
 
 import numpy as np
 import pandas as pd
@@ -140,7 +141,8 @@ def prep(df, trim=True, empty_is_null=True, ignore_case=False):
         if ignore_case:
             s = s.str.lower()
         # 12.0 -> 12 so file/DB integer keys line up
-        s = s.str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True)
+        if s.str.contains(".0", regex=False).any():
+            s = s.str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True)
         df[col] = s
     return df
 
@@ -158,35 +160,29 @@ def values_equal(a, b, tol):
     return same
 
 
-def numeric_sum(s):
-    nn = s.dropna()
-    if nn.empty:
-        return None
-    num = pd.to_numeric(nn.astype(object), errors="coerce")
-    return float(num.sum()) if num.notna().all() else None
-
-
-INT_RE = r"^-?\d+$"
+INT_KEY_RE = r"^(0|-?[1-9]\d*)$"
 DATE_RE = r"^\d{4}-\d{2}-\d{2}$"
 TS_RE = r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$"
 
 
-def infer_type(s):
-    """Value-based type so file and database sides are comparable."""
+def analyse_column(s):
+    """(kind, numeric Series or None), parsed once per column and reused everywhere."""
     nn = s.dropna()
     if nn.empty:
-        return "empty"
-    if nn.str.match(INT_RE).all():
-        return "integer"
-    if pd.to_numeric(nn.astype(object), errors="coerce").notna().all():
-        return "decimal"
-    if nn.str.match(DATE_RE).all():
-        return "date"
-    if nn.str.match(TS_RE).all():
-        return "timestamp"
+        return "empty", None
+    try:  # strict cast fails fast on the first non-numeric value
+        num = nn.astype("float64")
+        if num.notna().all():
+            return ("integer" if (num == num.round()).all() else "decimal"), num
+    except (ValueError, TypeError):
+        pass
+    head = nn.head(200)
+    for kind, rx in (("date", DATE_RE), ("timestamp", TS_RE)):
+        if head.str.match(rx).all() and nn.str.match(rx).all():
+            return kind, None
     if nn.str.lower().isin(["true", "false"]).all():
-        return "boolean"
-    return "text"
+        return "boolean", None
+    return "text", None
 
 
 def type_status(a, b):
@@ -197,12 +193,11 @@ def type_status(a, b):
     return "FAIL"
 
 
-def aggregate(s, kind):
+def aggregate(s, kind, num):
     """count / distinct / sum / avg / min / max for one column."""
     nn = s.dropna()
     out = {"count": len(nn), "distinct": int(nn.nunique())}
-    if kind in ("integer", "decimal"):
-        num = pd.to_numeric(nn.astype(object), errors="coerce")
+    if kind in ("integer", "decimal") and num is not None:
         out.update({"sum": num.sum(), "avg": num.mean(), "min": num.min(), "max": num.max()})
     elif not nn.empty:
         out.update({"min": nn.min(), "max": nn.max(), "max_length": int(nn.str.len().max())})
@@ -305,8 +300,13 @@ def status(ok, warn=False):
 
 
 def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
-            ignore_case=False, tol=0.0, detail_cap=100_000, agg_cols=(), markers=(), count_tol_abs=0, count_tol_pct=0.0,
-            group_by=(), file_hashes=None):
+            ignore_case=False, tol=0.0, detail_cap=100_000, agg_cols=(), markers=(),
+            count_tol_abs=0, count_tol_pct=0.0, group_by=(), file_hashes=None,
+            fast=False, include_matched=False):
+    """Key-based comparison. fast=True runs only the full data validation
+    (counts, missing/extra rows, cell mismatches, explanations) and skips
+    profiling, data types, aggregations and distributions."""
+    started = time.perf_counter()
     raw_s = {str(c).strip().lower(): str(d) for c, d in src.dtypes.items()}
     raw_t = {str(c).strip().lower(): str(d) for c, d in tgt.dtypes.items()}
     s = prep(src, trim, empty_is_null, ignore_case)
@@ -328,92 +328,88 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
     row_mode = not keys  # no key: compare whole rows as a multiset
     keys = keys or common
     values = [c for c in common if c not in keys]
-    join = keys + ["__occ"]
 
-    def shape(df):
-        df = df[common].copy()
-        for k in keys:
-            df[k] = df[k].fillna("<NULL>")
-        df["__occ"] = df.groupby(keys, dropna=False).cumcount()
-        dups = int(df.duplicated(keys, keep=False).sum())
-        return df, dups
+    # ---- shape both sides: null-safe keys, integer keys (4x faster merge), duplicate handling
+    s2, t2 = s[common].copy(), t[common].copy()
+    int_keys = []
+    for k in keys:
+        s2[k], t2[k] = s2[k].fillna("<NULL>"), t2[k].fillna("<NULL>")
+        if s2[k].str.match(INT_KEY_RE).all() and t2[k].str.match(INT_KEY_RE).all():
+            try:
+                s2[k], t2[k] = s2[k].astype("int64"), t2[k].astype("int64")
+                int_keys.append(k)
+            except (ValueError, OverflowError):
+                pass
+    s_dups = int(s2.duplicated(keys, keep=False).sum())
+    t_dups = int(t2.duplicated(keys, keep=False).sum())
+    join = list(keys)
+    if s_dups or t_dups:  # pair duplicate keys by occurrence order
+        join.append("__occ")
+        s2["__occ"] = s2.groupby(keys, dropna=False).cumcount() if s_dups else 0
+        t2["__occ"] = t2.groupby(keys, dropna=False).cumcount() if t_dups else 0
+    merged = s2.merge(t2, on=join, how="outer", suffixes=("__s", "__t"), indicator=True)
+    del s2, t2
+    codes = merged["_merge"].cat.codes.to_numpy()  # 0 left_only, 1 right_only, 2 both
+    both_mask = codes == 2
 
-    s2, s_dups = shape(s)
-    t2, t_dups = shape(t)
-    merged = s2.merge(t2, on=join, how="outer", suffixes=("__s", "__t"),
-                      indicator=True)
+    def restore(df):  # integer keys back to text for display/export
+        for k in int_keys:
+            df[k] = df[k].astype("string")
+        return df
 
-    def side_rows(flag, suffix):
-        part = merged[merged["_merge"] == flag]
-        out = part[keys + [c + suffix for c in values]]
-        return out.rename(columns={c + suffix: c for c in values}).reset_index(drop=True)
+    def side_rows(code, suffix):
+        part = merged.iloc[np.flatnonzero(codes == code)][keys + [c + suffix for c in values]]
+        return restore(part.rename(columns={c + suffix: c for c in values}).reset_index(drop=True))
 
-    only_in_src = side_rows("left_only", "__s")
-    only_in_tgt = side_rows("right_only", "__t")
-    both = merged[merged["_merge"] == "both"]
+    only_in_src, only_in_tgt = side_rows(0, "__s"), side_rows(1, "__t")
 
-    diff_cells, diff_frames = {}, []
-    row_diff = pd.Series(False, index=both.index)
-    diff_cols = pd.Series("", index=both.index)
+    # ---- cell comparison (in place, no copy of the merged frame)
+    bad_by_col, diff_cells, diff_frames = {}, {}, []
+    row_diff = np.zeros(len(merged), dtype=bool)
     for col in values:
-        a, b = both[col + "__s"], both[col + "__t"]
-        bad_mask = ~values_equal(a, b, tol)
-        diff_cells[col] = int(bad_mask.sum())
-        if bad_mask.any():
-            row_diff |= bad_mask
-            diff_cols = diff_cols.mask(bad_mask, diff_cols + col + ", ")
+        a, b = merged[col + "__s"], merged[col + "__t"]
+        bad_arr = ~np.asarray(values_equal(a, b, tol), dtype=bool) & both_mask
+        n_bad = int(bad_arr.sum())
+        diff_cells[col] = n_bad
+        if n_bad:
+            bad_by_col[col] = bad_arr
+            row_diff |= bad_arr
             room = detail_cap - sum(len(f) for f in diff_frames)
             if room > 0:
-                f = both.loc[bad_mask, keys].head(room).copy()
-                f["column"], f["source"], f["target"] = col, a[bad_mask].head(room), b[bad_mask].head(room)
-                diff_frames.append(f)
+                rows = np.flatnonzero(bad_arr)[:room]
+                f = merged.iloc[rows][keys].reset_index(drop=True)
+                f["column"], f["source"] = col, a.iloc[rows].to_numpy()
+                f["target"] = b.iloc[rows].to_numpy()
+                diff_frames.append(restore(f))
     mismatches = (pd.concat(diff_frames, ignore_index=True) if diff_frames
                   else pd.DataFrame(columns=keys + ["column", "source", "target"]))
 
-    # Full data result: every row, side by side, with a status (reference "Full Data Validation")
-    state = pd.Series("MATCHED", index=merged.index)
-    state[merged["_merge"] == "left_only"] = "MISSING_IN_TARGET"
-    state[merged["_merge"] == "right_only"] = "EXTRA_IN_TARGET"
-    state.loc[row_diff[row_diff].index] = "MISMATCH"
-    full = merged[keys].copy()
-    full["status"] = state
-    full["mismatched_columns"] = diff_cols.reindex(merged.index).fillna("").str.rstrip(", ")
+    # ---- full data result: status per row, side by side (matched rows optional)
+    state = np.full(len(merged), "MATCHED", dtype=object)
+    state[codes == 0], state[codes == 1], state[row_diff] = "MISSING_IN_TARGET", "EXTRA_IN_TARGET", "MISMATCH"
+    sel = np.flatnonzero(np.ones(len(merged), bool) if include_matched else state != "MATCHED")
+    sel = sel[np.argsort(state[sel] == "MATCHED", kind="stable")]  # differences first
+    mrows = np.flatnonzero(row_diff)
+    mc = np.full(len(merged), "", dtype=object)
+    if len(mrows):
+        text_ = np.full(len(mrows), "", dtype=object)
+        for col, arr in bad_by_col.items():
+            text_ = text_ + np.where(arr[mrows], col + ", ", "")
+        mc[mrows] = [x[:-2] for x in text_]
+    full = merged.iloc[sel][keys].reset_index(drop=True)
+    full["status"], full["mismatched_columns"] = state[sel], mc[sel]
     for col in values:
-        full[col + "_source"], full[col + "_target"] = merged[col + "__s"], merged[col + "__t"]
-    full = full.sort_values("status", key=lambda x: x.eq("MATCHED"), kind="stable", ignore_index=True)
+        full[col + "_source"] = merged[col + "__s"].iloc[sel].to_numpy()
+        full[col + "_target"] = merged[col + "__t"].iloc[sel].to_numpy()
+    restore(full)
+    n_mismatch_rows = int(row_diff.sum())
+    full_counts = {"MATCHED": int(both_mask.sum()) - n_mismatch_rows, "MISMATCH": n_mismatch_rows,
+                   "MISSING_IN_TARGET": int((codes == 0).sum()), "EXTRA_IN_TARGET": int((codes == 1).sum())}
+    del merged
 
-    matched = len(both)
-    rows_ok = matched - int(row_diff.sum())
+    matched = int(both_mask.sum())
+    rows_ok = matched - n_mismatch_rows
     n_cells = sum(diff_cells.values())
-
-    marks = {m.strip().lower() for m in markers if m.strip()}
-
-    def sentinels(col):
-        return int(col.dropna().str.lower().isin(marks).sum()) if marks else 0
-
-    profile = []
-    for col in common:
-        ss, tt = s[col], t[col]
-        sent_s, sent_t = sentinels(ss), sentinels(tt)
-        comp_s = round((len(s) - ss.isna().sum() - sent_s) / max(len(s), 1) * 100, 4)
-        comp_t = round((len(t) - tt.isna().sum() - sent_t) / max(len(t), 1) * 100, 4)
-        sum_s, sum_t = numeric_sum(ss), numeric_sum(tt)
-        mism = diff_cells.get(col, 0)
-        sums_ok = sum_s is None or sum_t is None or abs(sum_s - sum_t) <= tol * max(len(s), 1) + 1e-9
-        profile.append({
-            "column": col,
-            "role": "key" if col in keys and not row_mode else "compared",
-            "source_nulls": int(ss.isna().sum()), "target_nulls": int(tt.isna().sum()),
-            "source_markers": sent_s, "target_markers": sent_t,
-            "source_complete_%": comp_s, "target_complete_%": comp_t,
-            "source_distinct": int(ss.nunique()), "target_distinct": int(tt.nunique()),
-            "source_sum": sum_s, "target_sum": sum_t,
-            "mismatched_cells": mism,
-            "status": status(mism == 0 and sums_ok
-                             and ss.isna().sum() == tt.isna().sum() and sent_s == sent_t),
-        })
-    profile = pd.DataFrame(profile)
-
     insights = build_insights(mismatches, only_in_src, only_in_tgt, keys, row_mode)
 
     def within_count_tol(a, b):
@@ -421,6 +417,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         return d <= count_tol_abs or (max(a, b) > 0 and d / max(a, b) * 100 <= count_tol_pct)
 
     group_by = [g.strip().lower() for g in group_by if g.strip().lower() in common]
+    groups = pd.DataFrame()
     if group_by:
         gs = s.groupby(group_by, dropna=False).size().rename("source_rows")
         gt = t.groupby(group_by, dropna=False).size().rename("target_rows")
@@ -429,62 +426,13 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         groups["status"] = [status(within_count_tol(a, b)) for a, b in
                             zip(groups["source_rows"], groups["target_rows"])]
         groups = groups.sort_values("status", ascending=False, ignore_index=True)
-    else:
-        groups = pd.DataFrame()
-
-    dist = []
-    for col in values:
-        vs, vt = s[col].fillna("<NULL>").value_counts(), t[col].fillna("<NULL>").value_counts()
-        if len(vs) > 50 or len(vt) > 50:
-            continue
-        both_counts = pd.concat([vs.rename("source"), vt.rename("target")], axis=1).fillna(0).astype(int)
-        both_counts = both_counts[both_counts["source"] != both_counts["target"]]
-        for val, r in both_counts.iterrows():
-            dist.append({"column": col, "value": val, "source": r["source"], "target": r["target"],
-                         "difference": r["target"] - r["source"]})
-    distribution = pd.DataFrame(dist, columns=["column", "value", "source", "target", "difference"])
-
-    dtypes = []
-    for col in common:
-        a, b = infer_type(s[col]), infer_type(t[col])
-        la = int(s[col].str.len().max()) if s[col].notna().any() else 0
-        lb = int(t[col].str.len().max()) if t[col].notna().any() else 0
-        dtypes.append({"column": col, "source_dtype": raw_s[col], "target_dtype": raw_t[col],
-                       "source_type": a, "target_type": b,
-                       "source_max_len": la, "target_max_len": lb,
-                       "status": type_status(a, b)})
-    dtypes = pd.DataFrame(dtypes)
-
-    agg_cols = [c.strip().lower() for c in agg_cols] or [
-        c for c in common if infer_type(s[c]) in ("integer", "decimal")
-        or infer_type(t[c]) in ("integer", "decimal")]
-    aggs = []
-    for col in agg_cols:
-        if col not in common:
-            continue
-        kind = "decimal" if "decimal" in (infer_type(s[col]), infer_type(t[col])) \
-            else infer_type(s[col]) if infer_type(s[col]) != "empty" else infer_type(t[col])
-        sa, ta = aggregate(s[col], kind), aggregate(t[col], kind)
-        for metric in dict.fromkeys(list(sa) + list(ta)):
-            va, vb = sa.get(metric), ta.get(metric)
-            va = float("nan") if va is None else va
-            vb = float("nan") if vb is None else vb
-            numeric = not isinstance(va, str) and not isinstance(vb, str)
-            aggs.append({"column": col, "metric": metric, "source": va, "target": vb,
-                         "difference": (vb - va) if numeric and not pd.isna(va) and not pd.isna(vb) else None,
-                         "status": status(agg_equal(va, vb, tol if metric in ("sum", "avg", "min", "max") else 0))})
-    aggs = pd.DataFrame(aggs, columns=["column", "metric", "source", "target", "difference", "status"])
-
-    row_dups = (int(s[common].duplicated(keep=False).sum()),
-                int(t[common].duplicated(keep=False).sum()))
 
     schema = pd.DataFrame(
         [{"column": c, "status": "On both sides"} for c in common]
         + [{"column": c, "status": "Only in source"} for c in only_s]
         + [{"column": c, "status": "Only in target"} for c in only_t]
     )
-
-    checks = pd.DataFrame([
+    rows = [
         ("Schema: same columns", len(only_s), len(only_t), status(not only_s and not only_t)),
         ("Column count", len(s_cols), len(t_cols), status(len(s_cols) == len(t_cols))),
         ("Row count", len(s), len(t), status(within_count_tol(len(s), len(t)))),
@@ -493,29 +441,113 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         ("Matched rows fully equal", rows_ok, matched, status(rows_ok == matched)),
         ("Mismatched cells", n_cells, "", status(n_cells == 0)),
         ("Duplicate key rows", s_dups, t_dups, status(s_dups == 0 and t_dups == 0, warn=True)),
-        ("Duplicate full rows", row_dups[0], row_dups[1], status(row_dups[0] == row_dups[1])),
-        ("Data type differences (columns)", int((dtypes["status"] == "FAIL").sum()), int((dtypes["status"] == "WARN").sum()),
-         "FAIL" if (dtypes["status"] == "FAIL").any() else status(not (dtypes["status"] == "WARN").any(), warn=True)),
-        ("Completeness score % (avg non-null, non-marker)", round(profile["source_complete_%"].mean(), 4),
-         round(profile["target_complete_%"].mean(), 4),
-         status(profile["source_complete_%"].mean() == profile["target_complete_%"].mean())),
-        ("Value distribution differences (low-cardinality columns)", distribution["column"].nunique(), "",
-         status(distribution.empty, warn=True)),
-        ("Aggregation differences", int((aggs["status"] == "FAIL").sum()), "", status(not (aggs["status"] == "FAIL").any())),
-        ("Null-count differences (columns)", int((profile["source_nulls"] != profile["target_nulls"]).sum()), "", status((profile["source_nulls"] == profile["target_nulls"]).all())),
-    ], columns=["check", "source", "target", "status"])
+    ]
     if group_by:
-        checks.loc[len(checks)] = ("Row count by group (groups failing)", int((groups["status"] == "FAIL").sum()),
-                                   "", status(not (groups["status"] == "FAIL").any()))
+        rows.append(("Row count by group (groups failing)", int((groups["status"] == "FAIL").sum()),
+                     "", status(not (groups["status"] == "FAIL").any())))
     if file_hashes:
-        checks.loc[len(checks)] = ("File checksum (SHA-256) identical", file_hashes[0][:12], file_hashes[1][:12],
-                                   "PASS" if file_hashes[0] == file_hashes[1] else "WARN")
+        rows.append(("File checksum (SHA-256) identical", file_hashes[0][:12], file_hashes[1][:12],
+                     "PASS" if file_hashes[0] == file_hashes[1] else "WARN"))
+
+    profile = dtypes = aggs = distribution = pd.DataFrame()
+    if not fast:
+        # parse every column once; type inference, sums and aggregates all reuse it
+        info_s = {c: analyse_column(s[c]) for c in common}
+        info_t = {c: analyse_column(t[c]) for c in common}
+        marks = {m.strip().lower() for m in markers if m.strip()}
+
+        def sentinels(col):
+            return int(col.dropna().str.lower().isin(marks).sum()) if marks else 0
+
+        prof = []
+        for col in common:
+            ss, tt = s[col], t[col]
+            n_s, n_t = int(ss.isna().sum()), int(tt.isna().sum())
+            sent_s, sent_t = sentinels(ss), sentinels(tt)
+            num_s, num_t = info_s[col][1], info_t[col][1]
+            sum_s = float(num_s.sum()) if num_s is not None else None
+            sum_t = float(num_t.sum()) if num_t is not None else None
+            mism = diff_cells.get(col, 0)
+            sums_ok = sum_s is None or sum_t is None or abs(sum_s - sum_t) <= tol * max(len(s), 1) + 1e-9
+            prof.append({
+                "column": col, "role": "key" if col in keys and not row_mode else "compared",
+                "source_nulls": n_s, "target_nulls": n_t,
+                "source_markers": sent_s, "target_markers": sent_t,
+                "source_complete_%": round((len(s) - n_s - sent_s) / max(len(s), 1) * 100, 4),
+                "target_complete_%": round((len(t) - n_t - sent_t) / max(len(t), 1) * 100, 4),
+                "source_distinct": int(ss.nunique()), "target_distinct": int(tt.nunique()),
+                "source_sum": sum_s, "target_sum": sum_t, "mismatched_cells": mism,
+                "status": status(mism == 0 and sums_ok and n_s == n_t and sent_s == sent_t),
+            })
+        profile = pd.DataFrame(prof)
+
+        dist = []
+        for row in prof:
+            col = row["column"]
+            if col in keys or row["source_distinct"] > 50 or row["target_distinct"] > 50:
+                continue
+            vs, vt = s[col].fillna("<NULL>").value_counts(), t[col].fillna("<NULL>").value_counts()
+            cnt = pd.concat([vs.rename("source"), vt.rename("target")], axis=1).fillna(0).astype(int)
+            for val, r in cnt[cnt["source"] != cnt["target"]].iterrows():
+                dist.append({"column": col, "value": val, "source": r["source"],
+                             "target": r["target"], "difference": r["target"] - r["source"]})
+        distribution = pd.DataFrame(dist, columns=["column", "value", "source", "target", "difference"])
+
+        dt = []
+        for col in common:
+            a, b = info_s[col][0], info_t[col][0]
+            dt.append({"column": col, "source_dtype": raw_s[col], "target_dtype": raw_t[col],
+                       "source_type": a, "target_type": b,
+                       "source_max_len": int(s[col].str.len().max()) if s[col].notna().any() else 0,
+                       "target_max_len": int(t[col].str.len().max()) if t[col].notna().any() else 0,
+                       "status": type_status(a, b)})
+        dtypes = pd.DataFrame(dt)
+
+        numeric_kinds = ("integer", "decimal")
+        wanted = [c.strip().lower() for c in agg_cols] or [
+            c for c in common if info_s[c][0] in numeric_kinds or info_t[c][0] in numeric_kinds]
+        ag = []
+        for col in wanted:
+            if col not in common:
+                continue
+            (ka, na_), (kb, nb_) = info_s[col], info_t[col]
+            kind = "decimal" if "decimal" in (ka, kb) else ka if ka != "empty" else kb
+            sa, ta = aggregate(s[col], kind, na_), aggregate(t[col], kind, nb_)
+            for metric in dict.fromkeys(list(sa) + list(ta)):
+                va, vb = sa.get(metric), ta.get(metric)
+                va = float("nan") if va is None else va
+                vb = float("nan") if vb is None else vb
+                numeric = not isinstance(va, str) and not isinstance(vb, str)
+                ag.append({"column": col, "metric": metric, "source": va, "target": vb,
+                           "difference": (vb - va) if numeric and not pd.isna(va) and not pd.isna(vb) else None,
+                           "status": status(agg_equal(va, vb, tol if metric in ("sum", "avg", "min", "max") else 0))})
+        aggs = pd.DataFrame(ag, columns=["column", "metric", "source", "target", "difference", "status"])
+
+        row_dups = (int(s[common].duplicated(keep=False).sum()), int(t[common].duplicated(keep=False).sum()))
+        rows += [
+            ("Duplicate full rows", row_dups[0], row_dups[1], status(row_dups[0] == row_dups[1])),
+            ("Data type differences (columns)", int((dtypes["status"] == "FAIL").sum()),
+             int((dtypes["status"] == "WARN").sum()),
+             "FAIL" if (dtypes["status"] == "FAIL").any() else status(not (dtypes["status"] == "WARN").any(), warn=True)),
+            ("Completeness score % (avg non-null, non-marker)", round(profile["source_complete_%"].mean(), 4),
+             round(profile["target_complete_%"].mean(), 4),
+             status(profile["source_complete_%"].mean() == profile["target_complete_%"].mean())),
+            ("Value distribution differences (low-cardinality columns)", distribution["column"].nunique(), "",
+             status(distribution.empty, warn=True)),
+            ("Aggregation differences", int((aggs["status"] == "FAIL").sum()), "", status(not (aggs["status"] == "FAIL").any())),
+            ("Null-count differences (columns)", int((profile["source_nulls"] != profile["target_nulls"]).sum()), "",
+             status((profile["source_nulls"] == profile["target_nulls"]).all())),
+        ]
+    checks = pd.DataFrame(rows, columns=["check", "source", "target", "status"])
 
     return {
         "passed": bool((checks["status"] != "FAIL").all()),
-        "mode": "whole-row (no key)" if row_mode else f"key: {', '.join(keys)}",
+        "mode": ("whole-row (no key)" if row_mode else f"key: {', '.join(keys)}")
+                + (" | full data validation only" if fast else ""),
+        "fast": fast, "seconds": round(time.perf_counter() - started, 1),
         "checks": checks, "columns": profile, "schema": schema,
         "dtypes": dtypes, "aggregations": aggs, "insights": insights, "full": full,
+        "full_counts": full_counts, "include_matched": include_matched,
         "groups": groups, "distribution": distribution,
         "mismatches_capped": n_cells > len(mismatches),
         "only_in_source": only_in_src, "only_in_target": only_in_tgt,
@@ -524,7 +556,8 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
     }
 
 
-def build_exports(result):
+def export_parts(result):
+    """Result frames as named parts; frames over EXPORT_ROW_CAP split, never truncate."""
     sheets = {
         "Checks": result["checks"], "Insights": result["insights"],
         "Columns": result["columns"], "Schema": result["schema"],
@@ -533,27 +566,49 @@ def build_exports(result):
         "Only in Source": result["only_in_source"], "Only in Target": result["only_in_target"],
         "Mismatches": result["mismatches"], "Full Data": result["full"],
     }
-    parts = {}  # large frames split into numbered parts so no row is ever dropped
+    parts = {}
     for name, frame in sheets.items():
-        if frame.empty and name in ("Group Counts", "Distribution"):
+        if frame.empty and name != "Checks":
             continue
-        frame = frame.astype(object)
         n = max(1, -(-len(frame) // EXPORT_ROW_CAP))
         for i in range(n):
             parts[name if n == 1 else f"{name} {i + 1}"] = frame.iloc[i * EXPORT_ROW_CAP:(i + 1) * EXPORT_ROW_CAP]
-    xlsx = BytesIO()
-    with pd.ExcelWriter(xlsx, engine="openpyxl") as writer:
-        for name, frame in parts.items():
-            frame.to_excel(writer, sheet_name=name[:31], index=False)
-    zbuf = BytesIO()
-    with ZipFile(zbuf, "w", ZIP_DEFLATED) as zf:
-        for name, frame in parts.items():
+    return parts
+
+
+def build_xlsx(result):
+    try:  # xlsxwriter is several times faster than openpyxl on large sheets
+        import xlsxwriter  # noqa: F401
+        engine, options = "xlsxwriter", {"engine_kwargs": {"options": {"strings_to_urls": False}}}
+    except ImportError:
+        engine, options = "openpyxl", {}
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine=engine, **options) as writer:
+        for name, frame in export_parts(result).items():
+            frame.astype(object).where(frame.notna(), None).to_excel(
+                writer, sheet_name=name[:31], index=False)
+    return out.getvalue()
+
+
+def build_csv_zip(result):
+    out = BytesIO()
+    with ZipFile(out, "w", ZIP_DEFLATED) as zf:
+        for name, frame in export_parts(result).items():
             zf.writestr(f"{name.lower().replace(' ', '_')}.csv",
                         frame.to_csv(index=False).encode("utf-8-sig"))
+    return out.getvalue()
+
+
+def build_json(result):
     summary = {k: result[k].astype(object).where(result[k].notna(), None).to_dict("records")
                for k in ("checks", "insights", "columns", "dtypes", "aggregations")}
-    summary.update(passed=result["passed"], mode=result["mode"])
-    return xlsx.getvalue(), zbuf.getvalue(), json.dumps(summary, indent=2, default=str).encode()
+    summary.update(passed=result["passed"], mode=result["mode"], seconds=result["seconds"],
+                   full_counts=result["full_counts"])
+    return json.dumps(summary, indent=2, default=str).encode()
+
+
+def build_exports(result):
+    return build_xlsx(result), build_csv_zip(result), build_json(result)
 
 
 # --------------------------------------------------------------------------
@@ -666,13 +721,15 @@ def show_result(result, names):
     m[3].metric("Extra in target", f"{len(result['only_in_target']):,}")
     m[4].metric("Mismatched cells", f"{result['total_mismatch_cells']:,}")
 
-    xlsx, zipped, js = build_exports(result)
+    st.caption(f"Compared in {result['seconds']}s. Reports are built when you click a download button.")
+    if len(result["full"]) > 200_000:
+        st.caption("Large result: the CSV zip is much faster to build than the Excel report.")
     d1, d2, d3 = st.columns(3)
-    d1.download_button("Download Excel report", xlsx, "datarecon_report.xlsx",
+    d1.download_button("Download Excel report", lambda: build_xlsx(result), "datarecon_report.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    d2.download_button("Download CSV reports (zip)", zipped, "datarecon_reports.zip",
+    d2.download_button("Download CSV reports (zip)", lambda: build_csv_zip(result), "datarecon_reports.zip",
                        "application/zip")
-    d3.download_button("Download JSON summary", js, "datarecon_summary.json", "application/json")
+    d3.download_button("Download JSON summary", lambda: build_json(result), "datarecon_summary.json", "application/json")
 
     def table(title, frame, note=""):
         st.subheader(f"{title} ({len(frame):,})")
@@ -687,12 +744,16 @@ def show_result(result, names):
         st.subheader("Why do rows differ?")
         for f in result["insights"].itertuples():
             st.markdown(f"- **{f.column}** ({f.rows:,} rows): {f.finding}")
-    table("Column profile", result["columns"],
-          "Null / distinct / numeric-sum totals and mismatches per column.")
-    table("Data types", result["dtypes"],
-          "Inferred from values (comparable across file and DB); WARN = compatible, e.g. integer vs decimal.")
-    table("Aggregations on critical columns", result["aggregations"],
-          "Count, distinct, sum, avg, min, max per column; tolerance applies to numeric metrics.")
+    if result["fast"]:
+        st.info("Full data validation only: profiling, data types, aggregations and distributions were skipped.")
+    if not result["columns"].empty:
+        table("Column profile", result["columns"],
+              "Null / distinct / numeric-sum totals and mismatches per column.")
+    if not result["fast"]:
+        table("Data types", result["dtypes"],
+              "Inferred from values (comparable across file and DB); WARN = compatible, e.g. integer vs decimal.")
+        table("Aggregations on critical columns", result["aggregations"],
+              "Count, distinct, sum, avg, min, max per column; tolerance applies to numeric metrics.")
     if (result["schema"]["status"] != "On both sides").any():
         table("Schema differences",
               result["schema"][result["schema"]["status"] != "On both sides"])
@@ -703,12 +764,14 @@ def show_result(result, names):
               "Low-cardinality columns (<= 50 distinct): values whose counts differ.")
     full = result["full"]
     st.subheader(f"Full data comparison ({len(full):,} rows)")
-    counts = full["status"].value_counts()
+    counts = pd.Series(result["full_counts"])
     cols = st.columns(4)
     for c, name in zip(cols, ("MATCHED", "MISMATCH", "MISSING_IN_TARGET", "EXTRA_IN_TARGET")):
         c.metric(name.replace("_", " ").title(), f"{int(counts.get(name, 0)):,}")
-    chosen = st.multiselect("Show statuses", list(counts.index), default=[x for x in counts.index if x != "MATCHED"]
-                            or list(counts.index), key="full_status")
+    if not result["include_matched"]:
+        st.caption("Matched rows are not listed (counted only). Tick 'Include matched rows' in the rules to list them.")
+    shown_status = sorted(full["status"].unique())
+    chosen = st.multiselect("Show statuses", shown_status, default=shown_status, key="full_status")
     view = full[full["status"].isin(chosen)]
     if len(view) > DISPLAY_ROWS:
         st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(view):,}; the Excel/CSV download has every row.")
@@ -774,7 +837,7 @@ def main():
     every = sorted(set(norm(src)) | set(norm(tgt)))
     defaults = {"r_keys": [c for c in common if c in ("id", "pk")][:1], "r_ignore": [],
                 "r_agg": [], "r_group": [], "r_trim": True, "r_empty": True, "r_case": False,
-                "r_tol": 0.0, "r_markers": DEFAULT_MARKERS, "r_cnt_abs": 0, "r_cnt_pct": 0.0}
+                "r_tol": 0.0, "r_fast": False, "r_matched": False, "r_markers": DEFAULT_MARKERS, "r_cnt_abs": 0, "r_cnt_pct": 0.0}
     rules = config["rules"]
     pick = st.selectbox("Saved rule set", [""] + sorted(rules), format_func=lambda n: n or "-- none --")
     if st.session_state.get("r_loaded") != pick or "r_trim" not in st.session_state:
@@ -784,6 +847,11 @@ def main():
             st.session_state[k] = v
         st.session_state["r_loaded"] = pick
 
+    m = st.columns(2)
+    fast = m[0].checkbox("Full data validation only (fast: skips profiling, data types, aggregations, distributions)",
+                         key="r_fast")
+    inc_matched = m[1].checkbox("Include matched rows in the full-data result (slower, large exports)",
+                                key="r_matched")
     keys = st.multiselect("Key column(s) - blank compares whole rows as a set", common, key="r_keys")
     ignore = st.multiselect("Ignore columns (audit timestamps, surrogate keys...)", every, key="r_ignore")
     agg_cols = st.multiselect("Critical columns for aggregations (blank = all numeric columns)",
@@ -812,7 +880,8 @@ def main():
                 st.session_state["result"] = compare(
                     src, tgt, keys, ignore, trim, empty_null, nocase, tol,
                     agg_cols=agg_cols, markers=markers.split(","), count_tol_abs=cnt_abs,
-                    count_tol_pct=cnt_pct, group_by=group_by, file_hashes=hashes)
+                    count_tol_pct=cnt_pct, group_by=group_by, file_hashes=hashes,
+                    fast=fast, include_matched=inc_matched)
         except Exception as err:
             st.session_state.pop("result", None)
             st.error(f"Comparison failed: {err}")
