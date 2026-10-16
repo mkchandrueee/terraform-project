@@ -111,3 +111,51 @@ def test_matches_bruteforce_reference():
                "MATCHED": sum(a[x] == b[x] for x in a.keys() & b.keys())}
         for fast in (False, True):
             assert compare(src, tgt, keys=["k"], fast=fast)["full_counts"] == exp
+
+
+def test_duplicates_listed():
+    src = pd.DataFrame({"id": ["1", "2", "2", "3", "3", "3"], "v": list("abcdef")})
+    tgt = pd.DataFrame({"id": ["1", "2", "3"], "v": list("abd")})
+    r = compare(src, tgt, keys=["id"])
+    d = r["dup_source"]
+    assert list(d.id) == ["2", "2", "3", "3", "3"]
+    assert list(d.duplicate_count) == [2, 2, 3, 3, 3] and list(d.occurrence) == [1, 2, 1, 2, 3]
+    assert r["dup_target"].empty
+    assert "Duplicates Source" in __import__("datarecon").export_parts(r)
+
+
+def test_null_handling_and_details():
+    src = pd.DataFrame({"id": ["1", "2", "3", "4"], "a": ["NULL", "x", None, "N/A"], "b": ["", "y", "z", "q"]})
+    tgt = pd.DataFrame({"id": ["1", "2", "3", "4"], "a": [None, "x", "val", None], "b": [None, "y", None, "q"]})
+    r = compare(src, tgt, keys=["id"], null_tokens=["null", "n/a"])
+    assert r["total_mismatch_cells"] == 2          # row3 a (NULL->value) and row3 b (value->NULL)
+    issues = dict(zip(r["mismatches"].column, r["mismatches"].issue))
+    assert issues == {"a": "NULL -> value", "b": "value -> NULL"}
+    n = r["nulls"].set_index("column")
+    assert n.loc["a", "source_null_token"] == 2 and n.loc["a", "source_real_null"] == 1
+    assert n.loc["b", "source_blank"] == 1 and n.loc["a", "source_NULL->target_value"] == 1
+    # without tokens the literal strings differ from real NULLs
+    assert compare(src, tgt, keys=["id"])["total_mismatch_cells"] > 2
+
+
+def test_excel_highlight_rules():
+    import io, openpyxl, datarecon
+    src, tgt = frames()
+    r = compare(src, tgt, keys=["id"])
+    wb = openpyxl.load_workbook(io.BytesIO(datarecon.build_xlsx(r)))
+    for sheet in ("Full Data", "Mismatches", "Checks"):
+        assert len(wb[sheet].conditional_formatting) > 0, sheet
+    formulas = [f for cf in wb["Full Data"].conditional_formatting for rule in cf.rules for f in rule.formula]
+    assert any("SEARCH" in f and "mismatched" not in f for f in formulas)
+
+
+def test_password_encryption_roundtrip(tmp_path, monkeypatch):
+    import datarecon
+    monkeypatch.setattr(datarecon, "KEY_FILE", tmp_path / "k.key")
+    token = datarecon.encrypt_password("s3cret!")
+    assert token and "s3cret" not in token
+    assert datarecon.decrypt_password(token) == "s3cret!"
+    assert oct((tmp_path / "k.key").stat().st_mode & 0o777) == "0o600"
+    (tmp_path / "k.key").unlink()                      # key lost -> safely empty, no crash
+    monkeypatch.setattr(datarecon, "KEY_FILE", tmp_path / "other.key")
+    assert datarecon.decrypt_password(token) == ""

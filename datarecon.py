@@ -12,6 +12,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 import hashlib
 import json
+import os
 import re
 import time
 
@@ -22,10 +23,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 PROFILE_FILE = Path.home() / ".datarecon_profiles.json"
+KEY_FILE = Path.home() / ".datarecon.key"
 NEW = "-- New --"
 EXPORT_ROW_CAP = 100_000  # rows per sheet/CSV part; larger frames split, never truncate
 DISPLAY_ROWS = 1_000
 DEFAULT_MARKERS = "N/A, NA, NULL, None, -, -999, 1900-01-01"
+DEFAULT_NULL_TOKENS = "NULL, None, NaN, N/A, #N/A"
 SAFE_INT = 2**53
 DB_DEFAULTS = {"PostgreSQL": 5432, "SQL Server": 1433, "MySQL": 3306, "SQLite": 0}
 
@@ -49,6 +52,42 @@ def save_config(config):
     PROFILE_FILE.write_text(
         json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    try:  # may hold encrypted passwords: owner-only
+        os.chmod(PROFILE_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def _fernet():
+    """Fernet cipher keyed by a generated, owner-only key file (None if `cryptography` is missing)."""
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        return None
+    if KEY_FILE.exists():
+        key = KEY_FILE.read_bytes()
+    else:
+        key = Fernet.generate_key()
+        KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(key)
+    return Fernet(key)
+
+
+def encrypt_password(password):
+    cipher = _fernet()
+    return cipher.encrypt(password.encode()).decode() if cipher and password else None
+
+
+def decrypt_password(token):
+    cipher = _fernet()
+    if not cipher or not token:
+        return ""
+    try:
+        return cipher.decrypt(token.encode()).decode()
+    except Exception:  # wrong/missing key file
+        return ""
 
 
 # --------------------------------------------------------------------------
@@ -120,30 +159,50 @@ def run_query(conn, password, sql, max_rows=0):
 # --------------------------------------------------------------------------
 # Comparison engine (vectorised, key based)
 # --------------------------------------------------------------------------
-def prep(df, trim=True, empty_is_null=True, ignore_case=False):
-    """Normalise names (trim + lowercase) and every value to nullable text."""
-    df = df.copy()
+def prep(df, trim=True, empty_is_null=True, ignore_case=False, null_tokens=()):
+    """Normalise names (trim + lowercase) and every value to nullable text.
+
+    Blank text and `null_tokens` (e.g. 'NULL', 'N/A') become real NULLs so a file's
+    literal "NULL" equals a database NULL. What was converted is recorded per column
+    in df.attrs['null_stats'] = {column: (real_null, blank, token)}.
+    """
+    df = df.reset_index(drop=True)
     df.columns = [str(c).strip().lower() for c in df.columns]
     if df.columns.duplicated().any():
         dup = sorted(set(df.columns[df.columns.duplicated()]))
         raise ValueError(f"Duplicate column names (case-insensitive): {dup}")
+    tokens = {str(x).strip().lower() for x in null_tokens if str(x).strip()}
+    stats = {}
     for col in df.columns:
         s = df[col]
+        can_hold_tokens = not (pd.api.types.is_numeric_dtype(s) or pd.api.types.is_datetime64_any_dtype(s))
         if pd.api.types.is_datetime64_any_dtype(s):
             fmt = "%Y-%m-%d" if (s.dropna().dt.normalize() == s.dropna()).all() \
                 else "%Y-%m-%d %H:%M:%S"
             s = s.dt.strftime(fmt)
         s = s.astype("string")
+        real_null = int(s.isna().sum())
         if trim:
             s = s.str.strip()
+        blanks = tokens_n = 0
         if empty_is_null:
-            s = s.mask(s == "")
+            blank = (s == "").fillna(False).to_numpy(dtype=bool)
+            blanks = int(blank.sum())
+            if blanks:
+                s = s.mask(blank)
+        if tokens and can_hold_tokens:
+            tok = s.str.lower().isin(tokens).fillna(False).to_numpy(dtype=bool)
+            tokens_n = int(tok.sum())
+            if tokens_n:
+                s = s.mask(tok)
         if ignore_case:
             s = s.str.lower()
         # 12.0 -> 12 so file/DB integer keys line up
         if s.str.contains(".0", regex=False).any():
             s = s.str.replace(r"^(-?\d+)\.0+$", r"\1", regex=True)
         df[col] = s
+        stats[col] = (real_null, blanks, tokens_n)
+    df.attrs["null_stats"] = stats
     return df
 
 
@@ -302,15 +361,15 @@ def status(ok, warn=False):
 def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
             ignore_case=False, tol=0.0, detail_cap=100_000, agg_cols=(), markers=(),
             count_tol_abs=0, count_tol_pct=0.0, group_by=(), file_hashes=None,
-            fast=False, include_matched=False):
+            fast=False, include_matched=False, null_tokens=()):
     """Key-based comparison. fast=True runs only the full data validation
     (counts, missing/extra rows, cell mismatches, explanations) and skips
     profiling, data types, aggregations and distributions."""
     started = time.perf_counter()
     raw_s = {str(c).strip().lower(): str(d) for c, d in src.dtypes.items()}
     raw_t = {str(c).strip().lower(): str(d) for c, d in tgt.dtypes.items()}
-    s = prep(src, trim, empty_is_null, ignore_case)
-    t = prep(tgt, trim, empty_is_null, ignore_case)
+    s = prep(src, trim, empty_is_null, ignore_case, null_tokens)
+    t = prep(tgt, trim, empty_is_null, ignore_case, null_tokens)
     ignore = {c.strip().lower() for c in ignore}
     keys = [k.strip().lower() for k in keys]
 
@@ -340,8 +399,21 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
                 int_keys.append(k)
             except (ValueError, OverflowError):
                 pass
-    s_dups = int(s2.duplicated(keys, keep=False).sum())
-    t_dups = int(t2.duplicated(keys, keep=False).sum())
+    s_mask, t_mask = s2.duplicated(keys, keep=False), t2.duplicated(keys, keep=False)
+    s_dups, t_dups = int(s_mask.sum()), int(t_mask.sum())
+
+    def dup_listing(prepped, shaped, mask):
+        """Every row sharing a key with another row, with group size and occurrence #."""
+        if not mask.any():
+            return pd.DataFrame()
+        sub = shaped.loc[mask]
+        out = prepped.loc[mask, common].copy()
+        out["duplicate_count"] = sub.assign(_n=1).groupby(keys, dropna=False)["_n"].transform("sum")
+        out["occurrence"] = sub.groupby(keys, dropna=False).cumcount() + 1
+        out = out.loc[sub.sort_values(keys, kind="stable").index]
+        return out[["duplicate_count", "occurrence"] + common].head(detail_cap).reset_index(drop=True)
+
+    dup_source, dup_target = dup_listing(s, s2, s_mask), dup_listing(t, t2, t_mask)
     join = list(keys)
     if s_dups or t_dups:  # pair duplicate keys by occurrence order
         join.append("__occ")
@@ -365,9 +437,13 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
 
     # ---- cell comparison (in place, no copy of the merged frame)
     bad_by_col, diff_cells, diff_frames = {}, {}, []
+    null_to_value, value_to_null = {}, {}
     row_diff = np.zeros(len(merged), dtype=bool)
     for col in values:
         a, b = merged[col + "__s"], merged[col + "__t"]
+        na_a, na_b = a.isna().to_numpy(dtype=bool), b.isna().to_numpy(dtype=bool)
+        null_to_value[col] = int((na_a & ~na_b & both_mask).sum())
+        value_to_null[col] = int((~na_a & na_b & both_mask).sum())
         bad_arr = ~np.asarray(values_equal(a, b, tol), dtype=bool) & both_mask
         n_bad = int(bad_arr.sum())
         diff_cells[col] = n_bad
@@ -378,11 +454,13 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
             if room > 0:
                 rows = np.flatnonzero(bad_arr)[:room]
                 f = merged.iloc[rows][keys].reset_index(drop=True)
-                f["column"], f["source"] = col, a.iloc[rows].to_numpy()
-                f["target"] = b.iloc[rows].to_numpy()
+                sv, tv = a.iloc[rows].to_numpy(), b.iloc[rows].to_numpy()
+                f["column"], f["source"], f["target"] = col, sv, tv
+                f["issue"] = np.where(pd.isna(sv), "NULL -> value",
+                                      np.where(pd.isna(tv), "value -> NULL", "value differs"))
                 diff_frames.append(restore(f))
     mismatches = (pd.concat(diff_frames, ignore_index=True) if diff_frames
-                  else pd.DataFrame(columns=keys + ["column", "source", "target"]))
+                  else pd.DataFrame(columns=keys + ["column", "source", "target", "issue"]))
 
     # ---- full data result: status per row, side by side (matched rows optional)
     state = np.full(len(merged), "MATCHED", dtype=object)
@@ -441,6 +519,9 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         ("Matched rows fully equal", rows_ok, matched, status(rows_ok == matched)),
         ("Mismatched cells", n_cells, "", status(n_cells == 0)),
         ("Duplicate key rows", s_dups, t_dups, status(s_dups == 0 and t_dups == 0, warn=True)),
+        ("NULL vs value cells (source NULL -> target value | source value -> target NULL)",
+         sum(null_to_value.values()), sum(value_to_null.values()),
+         status(not sum(null_to_value.values()) and not sum(value_to_null.values()))),
     ]
     if group_by:
         rows.append(("Row count by group (groups failing)", int((groups["status"] == "FAIL").sum()),
@@ -449,7 +530,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         rows.append(("File checksum (SHA-256) identical", file_hashes[0][:12], file_hashes[1][:12],
                      "PASS" if file_hashes[0] == file_hashes[1] else "WARN"))
 
-    profile = dtypes = aggs = distribution = pd.DataFrame()
+    profile = dtypes = aggs = distribution = nulls = pd.DataFrame()
     if not fast:
         # parse every column once; type inference, sums and aggregates all reuse it
         info_s = {c: analyse_column(s[c]) for c in common}
@@ -459,7 +540,8 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         def sentinels(col):
             return int(col.dropna().str.lower().isin(marks).sum()) if marks else 0
 
-        prof = []
+        prof, null_rows = [], []
+        ns, nt = s.attrs.get("null_stats", {}), t.attrs.get("null_stats", {})
         for col in common:
             ss, tt = s[col], t[col]
             n_s, n_t = int(ss.isna().sum()), int(tt.isna().sum())
@@ -468,6 +550,16 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
             sum_s = float(num_s.sum()) if num_s is not None else None
             sum_t = float(num_t.sum()) if num_t is not None else None
             mism = diff_cells.get(col, 0)
+            (rs, bs, ts_), (rt, bt, tt_) = ns.get(col, (n_s, 0, 0)), nt.get(col, (n_t, 0, 0))
+            null_rows.append({
+                "column": col, "source_nulls": n_s, "source_real_null": rs, "source_blank": bs,
+                "source_null_token": ts_, "source_null_%": round(n_s / max(len(s), 1) * 100, 4),
+                "target_nulls": n_t, "target_real_null": rt, "target_blank": bt,
+                "target_null_token": tt_, "target_null_%": round(n_t / max(len(t), 1) * 100, 4),
+                "source_NULL->target_value": null_to_value.get(col, 0),
+                "source_value->target_NULL": value_to_null.get(col, 0),
+                "status": status(n_s == n_t and not null_to_value.get(col, 0) and not value_to_null.get(col, 0)),
+            })
             sums_ok = sum_s is None or sum_t is None or abs(sum_s - sum_t) <= tol * max(len(s), 1) + 1e-9
             prof.append({
                 "column": col, "role": "key" if col in keys and not row_mode else "compared",
@@ -480,6 +572,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
                 "status": status(mism == 0 and sums_ok and n_s == n_t and sent_s == sent_t),
             })
         profile = pd.DataFrame(prof)
+        nulls = pd.DataFrame(null_rows)
 
         dist = []
         for row in prof:
@@ -548,7 +641,9 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         "checks": checks, "columns": profile, "schema": schema,
         "dtypes": dtypes, "aggregations": aggs, "insights": insights, "full": full,
         "full_counts": full_counts, "include_matched": include_matched,
-        "groups": groups, "distribution": distribution,
+        "groups": groups, "distribution": distribution, "nulls": nulls,
+        "dup_source": dup_source, "dup_target": dup_target,
+        "null_tokens": sorted({str(x).strip() for x in null_tokens if str(x).strip()}),
         "mismatches_capped": n_cells > len(mismatches),
         "only_in_source": only_in_src, "only_in_target": only_in_tgt,
         "mismatches": mismatches, "total_mismatch_cells": n_cells,
@@ -564,6 +659,8 @@ def export_parts(result):
         "Data Types": result["dtypes"], "Aggregations": result["aggregations"],
         "Distribution": result["distribution"], "Group Counts": result["groups"],
         "Only in Source": result["only_in_source"], "Only in Target": result["only_in_target"],
+        "Duplicates Source": result["dup_source"], "Duplicates Target": result["dup_target"],
+        "Null Details": result["nulls"],
         "Mismatches": result["mismatches"], "Full Data": result["full"],
     }
     parts = {}
@@ -576,8 +673,47 @@ def export_parts(result):
     return parts
 
 
+def _highlight_sheet(writer, sheet, base, frame):
+    """Excel conditional-format rules (cheap on huge sheets): mismatches red, missing/extra yellow, duplicates orange."""
+    from xlsxwriter.utility import xl_col_to_name
+    book, ws = writer.book, writer.sheets[sheet]
+    red = book.add_format({"bg_color": "#FFC7CE", "font_color": "#9C0006"})
+    yellow = book.add_format({"bg_color": "#FFEB9C", "font_color": "#7F6000"})
+    orange = book.add_format({"bg_color": "#F8CBAD", "font_color": "#843C0C"})
+    cols, last = list(frame.columns), max(len(frame), 1)
+    ws.freeze_panes(1, 0)
+    ws.set_column(0, max(len(cols) - 1, 0), 18)
+    if len(frame) == 0:
+        return
+
+    def rule(c1, c2, formula, fmt):
+        ws.conditional_format(1, c1, last, c2, {"type": "formula", "criteria": formula, "format": fmt})
+
+    if base == "Full Data" and "mismatched_columns" in cols:
+        mc, st_ = xl_col_to_name(cols.index("mismatched_columns")), xl_col_to_name(cols.index("status"))
+        for name in cols:
+            if name.endswith("_source") and name[:-7] + "_target" in cols:
+                i, base_col = cols.index(name), name[:-7].replace('"', '""')
+                rule(i, i + 1, f'=ISNUMBER(SEARCH(", {base_col},",", "&${mc}2&","))', red)
+                rule(i, i + 1, f'=OR(${st_}2="MISSING_IN_TARGET",${st_}2="EXTRA_IN_TARGET")', yellow)
+        rule(cols.index("status"), cols.index("mismatched_columns"), f'=${st_}2="MISMATCH"', red)
+        rule(cols.index("status"), cols.index("status"), f'=OR(${st_}2="MISSING_IN_TARGET",${st_}2="EXTRA_IN_TARGET")', yellow)
+    elif base == "Mismatches" and "source" in cols:
+        rule(cols.index("source"), cols.index("target"), "=TRUE", red)
+        rule(cols.index("column"), cols.index("column"), "=TRUE", red)
+    elif base.startswith("Duplicates") and "duplicate_count" in cols:
+        rule(0, 1, "=TRUE", orange)
+    elif base == "Checks":
+        for word, fmt in (("FAIL", red), ("WARN", yellow)):
+            rule(cols.index("status"), cols.index("status"), f'=${xl_col_to_name(cols.index("status"))}2="{word}"', fmt)
+    elif base in ("Null Details", "Columns", "Data Types", "Aggregations") and "status" in cols:
+        col = xl_col_to_name(cols.index("status"))
+        rule(cols.index("status"), cols.index("status"), f'=${col}2="FAIL"', red)
+        rule(cols.index("status"), cols.index("status"), f'=${col}2="WARN"', yellow)
+
+
 def build_xlsx(result):
-    try:  # xlsxwriter is several times faster than openpyxl on large sheets
+    try:  # xlsxwriter is several times faster than openpyxl and supports highlighting
         import xlsxwriter  # noqa: F401
         engine, options = "xlsxwriter", {"engine_kwargs": {"options": {"strings_to_urls": False}}}
     except ImportError:
@@ -585,8 +721,10 @@ def build_xlsx(result):
     out = BytesIO()
     with pd.ExcelWriter(out, engine=engine, **options) as writer:
         for name, frame in export_parts(result).items():
-            frame.astype(object).where(frame.notna(), None).to_excel(
-                writer, sheet_name=name[:31], index=False)
+            sheet = name[:31]
+            frame.astype(object).where(frame.notna(), None).to_excel(writer, sheet_name=sheet, index=False)
+            if engine == "xlsxwriter":
+                _highlight_sheet(writer, sheet, re.sub(r" \d+$", "", name), frame)
     return out.getvalue()
 
 
@@ -618,8 +756,18 @@ def pwd_key(name):
     return f"pwd::{name}"
 
 
+def get_password(config, name):
+    """Session password, else the encrypted one saved with the connection."""
+    key = pwd_key(name)
+    if not st.session_state.get(key):
+        pw = decrypt_password(config["connections"].get(name, {}).get("password_enc"))
+        if pw:
+            st.session_state[key] = pw
+    return st.session_state.get(key, "")
+
+
 def connections_panel(config):
-    with st.expander("Database connections (saved locally, passwords kept in memory only)"):
+    with st.expander("Database connections (saved locally; saved passwords are encrypted)"):
         conns = config["connections"]
         pick = st.selectbox("Load connection", [NEW] + sorted(conns), key="cx_pick")
         if st.session_state.get("cx_loaded") != pick:
@@ -629,7 +777,8 @@ def connections_panel(config):
                                        database="", username="").items():
                 key_map = {"type": "database_type"}
                 st.session_state[f"cx_{field}"] = saved.get(key_map.get(field, field), default)
-            st.session_state["cx_password"] = st.session_state.get(pwd_key(pick), "")
+            st.session_state["cx_password"] = get_password(config, pick) if pick != NEW else ""
+            st.session_state["cx_remember"] = pick == NEW or "password_enc" in saved
             st.session_state["cx_loaded"] = pick
         c1, c2, c3 = st.columns(3)
         name = c1.text_input("Name", key="cx_name")
@@ -642,15 +791,22 @@ def connections_panel(config):
         password = c7.text_input("Password", type="password", key="cx_password")
         conn = dict(database_type=kind, host=host.strip(), port=int(port),
                     database=database.strip(), username=user.strip())
+        remember = st.checkbox("Remember password (encrypted on this machine)", key="cx_remember")
         b1, b2, b3 = st.columns(3)
-        if b1.button("Save connection") :
+        if b1.button("Save connection"):
             if not name.strip() or not database.strip():
                 st.error("Name and database are required.")
             else:
+                if remember and password:
+                    token = encrypt_password(password)
+                    if token:
+                        conn["password_enc"] = token
+                    else:
+                        st.warning("Install 'cryptography' to save passwords; kept for this session only.")
                 conns[name.strip()] = conn
                 save_config(config)
                 st.session_state[pwd_key(name.strip())] = password
-                st.success(f"Saved '{name.strip()}'.")
+                st.success(f"Saved '{name.strip()}'" + (" with encrypted password." if "password_enc" in conn else "."))
         if b2.button("Test connection"):
             try:
                 engine = make_engine(conn, password)
@@ -705,7 +861,7 @@ def side_input(label, prefix, config):
     def load():
         if not cname:
             raise ValueError(f"{label}: select a connection.")
-        frame = run_query(conns[cname], st.session_state.get(pwd_key(cname), ""),
+        frame = run_query(conns[cname], get_password(config, cname),
                           sql, int(max_rows))
         return frame, f"{cname} query", None
     return load
@@ -731,13 +887,21 @@ def show_result(result, names):
                        "application/zip")
     d3.download_button("Download JSON summary", lambda: build_json(result), "datarecon_summary.json", "application/json")
 
-    def table(title, frame, note=""):
+    def paint(columns, color):
+        return lambda row: [f"background-color: {color}" if c in columns else "" for c in row.index]
+
+    def table(title, frame, note="", style=None):
         st.subheader(f"{title} ({len(frame):,})")
         if note:
             st.caption(note)
         if len(frame) > DISPLAY_ROWS:
             st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(frame):,}; downloads contain every row.")
-        st.dataframe(frame.head(DISPLAY_ROWS).astype("string"), width="stretch", hide_index=True)
+        view = frame.head(DISPLAY_ROWS).astype("string").fillna("<NULL>")
+        try:  # highlighting needs jinja2; fall back to a plain grid
+            shown = view.style.apply(style, axis=1) if style and len(view) else view
+        except (ImportError, AttributeError):
+            shown = view
+        st.dataframe(shown, width="stretch", hide_index=True)
 
     table("Checks", result["checks"])
     if len(result["insights"]):
@@ -749,6 +913,11 @@ def show_result(result, names):
     if not result["columns"].empty:
         table("Column profile", result["columns"],
               "Null / distinct / numeric-sum totals and mismatches per column.")
+    if not result["nulls"].empty:
+        tokens = ", ".join(result["null_tokens"]) or "none"
+        table("Null / NA details", result["nulls"],
+              f"Real NULL, blank text and NULL-equivalent tokens ({tokens}) are all treated as NULL when comparing. "
+              "NULL->value / value->NULL count matched rows where only one side is NULL.")
     if not result["fast"]:
         table("Data types", result["dtypes"],
               "Inferred from values (comparable across file and DB); WARN = compatible, e.g. integer vs decimal.")
@@ -787,9 +956,14 @@ def show_result(result, names):
     except (ImportError, AttributeError):
         shown = view
     st.dataframe(shown, width="stretch", hide_index=True)
+    for label, key in (("Duplicate records in source", "dup_source"), ("Duplicate records in target", "dup_target")):
+        if len(result[key]):
+            table(label, result[key], "Every row whose key appears more than once, with group size and occurrence #.",
+                  paint({"duplicate_count", "occurrence"}, "#f8cbad"))
     table("Value mismatches", result["mismatches"],
-          f"{result['total_mismatch_cells']:,} mismatched cells in total."
-          + (" Detail capped at 100,000 rows." if result["mismatches_capped"] else ""))
+          f"{result['total_mismatch_cells']:,} mismatched cells in total. 'issue' tells NULL vs value apart from value differences."
+          + (" Detail capped at 100,000 rows." if result["mismatches_capped"] else ""),
+          paint({"column", "source", "target", "issue"}, "#ffd6d6"))
     table("Rows only in source", result["only_in_source"])
     table("Rows only in target", result["only_in_target"])
 
@@ -837,7 +1011,7 @@ def main():
     every = sorted(set(norm(src)) | set(norm(tgt)))
     defaults = {"r_keys": [c for c in common if c in ("id", "pk")][:1], "r_ignore": [],
                 "r_agg": [], "r_group": [], "r_trim": True, "r_empty": True, "r_case": False,
-                "r_tol": 0.0, "r_fast": False, "r_matched": False, "r_markers": DEFAULT_MARKERS, "r_cnt_abs": 0, "r_cnt_pct": 0.0}
+                "r_tol": 0.0, "r_fast": False, "r_matched": False, "r_nulltok": DEFAULT_NULL_TOKENS, "r_markers": DEFAULT_MARKERS, "r_cnt_abs": 0, "r_cnt_pct": 0.0}
     rules = config["rules"]
     pick = st.selectbox("Saved rule set", [""] + sorted(rules), format_func=lambda n: n or "-- none --")
     if st.session_state.get("r_loaded") != pick or "r_trim" not in st.session_state:
@@ -867,6 +1041,9 @@ def main():
     cnt_abs = c[1].number_input("Row-count tolerance (rows)", 0, key="r_cnt_abs")
     cnt_pct = c[2].number_input("Row-count tolerance (%)", 0.0, format="%g", key="r_cnt_pct")
 
+    nulltok = st.text_input("Treat these values as NULL when comparing (comma-separated, case-insensitive; blank = off)",
+                            key="r_nulltok")
+
     r1, r2 = st.columns([3, 1])
     save_as = r1.text_input("Save these rules as", label_visibility="collapsed", placeholder="Save rules as…")
     if r2.button("Save rules") and save_as.strip():
@@ -881,7 +1058,8 @@ def main():
                     src, tgt, keys, ignore, trim, empty_null, nocase, tol,
                     agg_cols=agg_cols, markers=markers.split(","), count_tol_abs=cnt_abs,
                     count_tol_pct=cnt_pct, group_by=group_by, file_hashes=hashes,
-                    fast=fast, include_matched=inc_matched)
+                    fast=fast, include_matched=inc_matched,
+                    null_tokens=nulltok.split(","))
         except Exception as err:
             st.session_state.pop("result", None)
             st.error(f"Comparison failed: {err}")

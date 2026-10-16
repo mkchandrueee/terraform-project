@@ -5,6 +5,7 @@ openpyxl
 jinja2
 xlsxwriter
 pyarrow
+cryptography      # encrypted saved passwords
 psycopg2-binary   # PostgreSQL
 pymysql           # MySQL
 pyodbc            # SQL Server (needs ODBC Driver 18)
