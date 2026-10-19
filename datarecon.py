@@ -30,6 +30,40 @@ DISPLAY_ROWS = 1_000
 DEFAULT_MARKERS = "N/A, NA, NULL, None, -, -999, 1900-01-01"
 DEFAULT_NULL_TOKENS = "NULL, None, NaN, N/A, #N/A"
 SAFE_INT = 2**53
+
+
+def _st_version():
+    try:
+        return tuple(int(x) for x in re.findall(r"\d+", st.__version__)[:2])
+    except Exception:
+        return (0, 0)
+
+
+# width="stretch" and deferred (callable) downloads need a recent Streamlit; older ones get a fallback.
+MODERN_ST = _st_version() >= (1, 50)
+
+
+def show_df(target, frame, **kwargs):
+    """st.dataframe at full width on any Streamlit version."""
+    kwargs.update({"width": "stretch"} if MODERN_ST else {"use_container_width": True})
+    return target.dataframe(frame, hide_index=True, **kwargs)
+
+
+def download(target, label, builder, file_name, mime, key):
+    """Download button that builds its file only when needed.
+
+    Modern Streamlit builds on click (callable data). Older versions get a two-step
+    'Prepare' button so the file is still not rebuilt on every rerun.
+    """
+    if MODERN_ST:
+        return target.download_button(label, builder, file_name, mime, key=key)
+    cache = st.session_state.setdefault("_ready_downloads", {})
+    if key in cache:
+        target.download_button(f"{label} (ready)", cache[key], file_name, mime, key=key)
+    elif target.button(f"Prepare: {label}", key=f"prep_{key}"):
+        with st.spinner("Building report..."):
+            cache[key] = builder()
+        st.rerun()
 DB_DEFAULTS = {"PostgreSQL": 5432, "SQL Server": 1433, "MySQL": 3306, "SQLite": 0}
 
 
@@ -881,11 +915,16 @@ def show_result(result, names):
     if len(result["full"]) > 200_000:
         st.caption("Large result: the CSV zip is much faster to build than the Excel report.")
     d1, d2, d3 = st.columns(3)
-    d1.download_button("Download Excel report", lambda: build_xlsx(result), "datarecon_report.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    d2.download_button("Download CSV reports (zip)", lambda: build_csv_zip(result), "datarecon_reports.zip",
-                       "application/zip")
-    d3.download_button("Download JSON summary", lambda: build_json(result), "datarecon_summary.json", "application/json")
+    run_id = id(result)  # new result -> new buttons; old prepared files are dropped
+    if st.session_state.get("_dl_run") != run_id:
+        st.session_state["_ready_downloads"] = {}
+        st.session_state["_dl_run"] = run_id
+    download(d1, "Download Excel report", lambda: build_xlsx(result), "datarecon_report.xlsx",
+             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "dl_xlsx")
+    download(d2, "Download CSV reports (zip)", lambda: build_csv_zip(result), "datarecon_reports.zip",
+             "application/zip", "dl_zip")
+    download(d3, "Download JSON summary", lambda: build_json(result), "datarecon_summary.json",
+             "application/json", "dl_json")
 
     def paint(columns, color):
         return lambda row: [f"background-color: {color}" if c in columns else "" for c in row.index]
@@ -901,7 +940,7 @@ def show_result(result, names):
             shown = view.style.apply(style, axis=1) if style and len(view) else view
         except (ImportError, AttributeError):
             shown = view
-        st.dataframe(shown, width="stretch", hide_index=True)
+        show_df(st, shown)
 
     table("Checks", result["checks"])
     if len(result["insights"]):
@@ -955,7 +994,7 @@ def show_result(result, names):
         shown = view.style.apply(highlight, axis=1) if len(view.columns) < 60 else view
     except (ImportError, AttributeError):
         shown = view
-    st.dataframe(shown, width="stretch", hide_index=True)
+    show_df(st, shown)
     for label, key in (("Duplicate records in source", "dup_source"), ("Duplicate records in target", "dup_target")):
         if len(result[key]):
             table(label, result[key], "Every row whose key appears more than once, with group size and occurrence #.",
@@ -1002,8 +1041,7 @@ def main():
     p1, p2 = st.columns(2)
     for col, frame, name in ((p1, src, names[0]), (p2, tgt, names[1])):
         col.caption(f"{name}: {len(frame):,} rows x {len(frame.columns)} columns")
-        col.dataframe(frame.head(10).astype("string"), width="stretch",
-                      hide_index=True)
+        show_df(col, frame.head(10).astype("string"))
 
     st.header("2 - Rules")
     norm = lambda df: [str(c).strip().lower() for c in df.columns]
