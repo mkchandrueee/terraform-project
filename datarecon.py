@@ -7,14 +7,18 @@ migration does not matter. Reports missing rows, extra rows, cell-level
 mismatches, duplicate keys, and per-column null / distinct / sum profiles.
 """
 
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
+import getpass
 import hashlib
+import html
 import json
 import os
 import re
 import time
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -395,7 +399,7 @@ def status(ok, warn=False):
 def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
             ignore_case=False, tol=0.0, detail_cap=100_000, agg_cols=(), markers=(),
             count_tol_abs=0, count_tol_pct=0.0, group_by=(), file_hashes=None,
-            fast=False, include_matched=False, null_tokens=()):
+            fast=False, include_matched=False, null_tokens=(), evidence=None):
     """Key-based comparison. fast=True runs only the full data validation
     (counts, missing/extra rows, cell mismatches, explanations) and skips
     profiling, data types, aggregations and distributions."""
@@ -510,6 +514,8 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         mc[mrows] = [x[:-2] for x in text_]
     full = merged.iloc[sel][keys].reset_index(drop=True)
     full["status"], full["mismatched_columns"] = state[sel], mc[sel]
+    if "__occ" in join:  # duplicate keys: say which occurrence each row is
+        full.insert(len(keys), "occurrence", merged["__occ"].iloc[sel].to_numpy() + 1)
     for col in values:
         full[col + "_source"] = merged[col + "__s"].iloc[sel].to_numpy()
         full[col + "_target"] = merged[col + "__t"].iloc[sel].to_numpy()
@@ -642,13 +648,14 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
             sa, ta = aggregate(s[col], kind, na_), aggregate(t[col], kind, nb_)
             for metric in dict.fromkeys(list(sa) + list(ta)):
                 va, vb = sa.get(metric), ta.get(metric)
-                va = float("nan") if va is None else va
-                vb = float("nan") if vb is None else vb
+                va = float("nan") if va is None else (int(va) if metric in ("count", "distinct", "max_length") else va)
+                vb = float("nan") if vb is None else (int(vb) if metric in ("count", "distinct", "max_length") else vb)
                 numeric = not isinstance(va, str) and not isinstance(vb, str)
                 ag.append({"column": col, "metric": metric, "source": va, "target": vb,
                            "difference": (vb - va) if numeric and not pd.isna(va) and not pd.isna(vb) else None,
                            "status": status(agg_equal(va, vb, tol if metric in ("sum", "avg", "min", "max") else 0))})
-        aggs = pd.DataFrame(ag, columns=["column", "metric", "source", "target", "difference", "status"])
+        aggs = pd.DataFrame(ag, columns=["column", "metric", "source", "target", "difference", "status"],
+                            dtype=object)  # object keeps counts whole (7, not 7.0)
 
         row_dups = (int(s[common].duplicated(keep=False).sum()), int(t[common].duplicated(keep=False).sum()))
         rows += [
@@ -672,6 +679,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         "mode": ("whole-row (no key)" if row_mode else f"key: {', '.join(keys)}")
                 + (" | full data validation only" if fast else ""),
         "fast": fast, "seconds": round(time.perf_counter() - started, 1),
+        "evidence": evidence or new_evidence(),
         "checks": checks, "columns": profile, "schema": schema,
         "dtypes": dtypes, "aggregations": aggs, "insights": insights, "full": full,
         "full_counts": full_counts, "include_matched": include_matched,
@@ -688,6 +696,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
 def export_parts(result):
     """Result frames as named parts; frames over EXPORT_ROW_CAP split, never truncate."""
     sheets = {
+        "Run Info": evidence_frame(result),
         "Checks": result["checks"], "Insights": result["insights"],
         "Columns": result["columns"], "Schema": result["schema"],
         "Data Types": result["dtypes"], "Aggregations": result["aggregations"],
@@ -717,6 +726,12 @@ def _highlight_sheet(writer, sheet, base, frame):
     cols, last = list(frame.columns), max(len(frame), 1)
     ws.freeze_panes(1, 0)
     ws.set_column(0, max(len(cols) - 1, 0), 18)
+    if base == "Run Info":  # SQL text needs a wide, wrapped cell
+        wrap = book.add_format({"text_wrap": True, "valign": "top"})
+        ws.set_column(0, 0, 14)
+        ws.set_column(1, 1, 26, wrap)
+        ws.set_column(2, 2, 120, wrap)
+        return
     if len(frame) == 0:
         return
 
@@ -775,12 +790,195 @@ def build_json(result):
     summary = {k: result[k].astype(object).where(result[k].notna(), None).to_dict("records")
                for k in ("checks", "insights", "columns", "dtypes", "aggregations")}
     summary.update(passed=result["passed"], mode=result["mode"], seconds=result["seconds"],
-                   full_counts=result["full_counts"])
+                   full_counts=result["full_counts"], evidence=result.get("evidence"))
     return json.dumps(summary, indent=2, default=str).encode()
 
 
 def build_exports(result):
     return build_xlsx(result), build_csv_zip(result), build_json(result)
+
+
+# --------------------------------------------------------------------------
+# Evidence: run information + self-contained HTML report that mirrors the UI
+# --------------------------------------------------------------------------
+APP_VERSION = "1.0"
+HTML_ROWS = 1_000
+_INFO_LABELS = {
+    "input_type": "Input type", "name": "Name", "connection": "Connection", "database_type": "Database type",
+    "host": "Host", "port": "Port", "database": "Database", "username": "Username",
+    "file_size_bytes": "File size (bytes)", "sha256": "File SHA-256", "delimiter": "CSV delimiter",
+    "max_rows": "Max rows (0 = all)", "rows": "Rows loaded", "columns": "Columns loaded",
+    "loaded_at": "Loaded at (UTC)", "sql": "SQL", "sql_sha256": "SQL SHA-256",
+}
+
+
+def _no_secrets(info):
+    return {k: v for k, v in (info or {}).items() if "pass" not in k.lower() and "secret" not in k.lower()}
+
+
+def new_evidence(source=None, target=None, rules=None):
+    """Who/when/what produced a result. Never contains passwords."""
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = "unknown"
+    return {
+        "run_id": uuid.uuid4().hex[:12].upper(),
+        "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generated_local": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "run_by": user, "tool_version": APP_VERSION, "pandas": pd.__version__, "streamlit": st.__version__,
+        "source": _no_secrets(source), "target": _no_secrets(target), "rules": rules or {},
+    }
+
+
+def evidence_frame(result):
+    """Run information as section / item / value rows (source and target SQL included)."""
+    ev = result.get("evidence") or {}
+    rows = [
+        ("Run", "Run ID", ev.get("run_id", "")), ("Run", "Generated (UTC)", ev.get("generated_utc", "")),
+        ("Run", "Generated (local)", ev.get("generated_local", "")), ("Run", "Run by (OS user)", ev.get("run_by", "")),
+        ("Run", "DataRecon version", ev.get("tool_version", "")),
+        ("Run", "Library versions", f"pandas {ev.get('pandas', '')}, streamlit {ev.get('streamlit', '')}"),
+        ("Run", "Verdict", "PASS" if result["passed"] else "FAIL"), ("Run", "Mode", result["mode"]),
+        ("Run", "Compare duration (s)", result["seconds"]),
+    ]
+    for section in ("source", "target"):
+        info = ev.get(section) or {}
+        for key, label in _INFO_LABELS.items():
+            if key in info and info[key] not in (None, ""):
+                rows.append((section.title(), label, str(info[key])))
+    for key, value in (ev.get("rules") or {}).items():
+        rows.append(("Rules", key, ", ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value)))
+    return pd.DataFrame(rows, columns=["section", "item", "value"])
+
+
+_CSS = """
+body{font:14px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px auto;max-width:1400px;padding:0 16px;color:#1f2430}
+h1{margin:0 0 4px}h2{margin:28px 0 8px;border-bottom:2px solid #e3e6ee;padding-bottom:4px}
+.muted{color:#6b7280;font-size:12px}.banner{padding:12px 16px;border-radius:8px;font-weight:600;margin:12px 0}
+.pass{background:#d8f3dc;color:#14532d}.fail{background:#ffd6d6;color:#7f1d1d}
+.tiles{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}.tile{background:#f3f4f8;border-radius:8px;padding:8px 14px;min-width:150px}
+.tile b{display:block;font-size:20px}
+.scroll{overflow-x:auto;margin:6px 0}table{border-collapse:collapse;font-size:12.5px;min-width:50%}
+th{background:#eef0f6;text-align:left;position:sticky;top:0}th,td{border:1px solid #dfe2ea;padding:4px 8px;vertical-align:top}
+td.bad{background:#ffd6d6;color:#7f1d1d}td.warn{background:#fff3c4;color:#7a5b00}td.dup{background:#f8cbad;color:#843c0c}
+td.ok{background:#d8f3dc;color:#14532d}.null{color:#9aa0ad;font-style:italic}
+pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}footer{margin-top:32px;font-size:12px;color:#6b7280;word-break:break-all}
+button{padding:6px 12px;border-radius:6px;border:1px solid #c7ccd8;background:#fff;cursor:pointer}
+@media print{button{display:none}body{margin:0;max-width:none}.scroll{overflow:visible}}
+"""
+_STATUS_CLASS = {"PASS": "ok", "FAIL": "bad", "WARN": "warn", "MISMATCH": "bad",
+                 "MISSING_IN_TARGET": "warn", "EXTRA_IN_TARGET": "warn"}
+
+
+def _cell(value):
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return '<span class="null">NULL</span>'
+    return html.escape(str(value))
+
+
+def _table(frame, cell_class=None, cap=HTML_ROWS):
+    if frame is None or frame.empty:
+        return '<p class="muted">None.</p>'
+    view, cols = frame.head(cap), list(frame.columns)
+    head = "".join(f"<th>{html.escape(str(c))}</th>" for c in cols)
+    body = []
+    for rec in view.itertuples(index=False, name=None):
+        row = dict(zip(cols, rec))
+        cells = []
+        for c in cols:
+            cls = (cell_class(row, c) if cell_class else "") or (
+                _STATUS_CLASS.get(str(row[c]), "") if c == "status" or str(c).endswith("_status") else "")
+            cells.append(f'<td class="{cls}">{_cell(row[c])}</td>')
+        body.append("<tr>" + "".join(cells) + "</tr>")
+    note = (f'<p class="muted">Showing first {cap:,} of {len(frame):,} rows; the Excel/CSV reports contain every row.</p>'
+            if len(frame) > cap else "")
+    return f'<div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>{note}'
+
+
+def build_html(result):
+    """Self-contained evidence report with the same sections and highlighting as the Streamlit page."""
+    ev = result.get("evidence") or {}
+    esc = html.escape
+    parts = []
+
+    def section(title, body, note=""):
+        parts.append(f"<h2>{esc(title)}</h2>" + (f'<p class="muted">{esc(note)}</p>' if note else "") + body)
+
+    verdict = "PASS" if result["passed"] else "FAIL"
+    parts.append(
+        f"<h1>DataRecon - Evidence Report</h1>"
+        f'<div class="muted">Run {esc(ev.get("run_id", ""))} | {esc(ev.get("generated_utc", ""))} | '
+        f'{esc(ev.get("generated_local", ""))} | run by {esc(ev.get("run_by", ""))} | v{esc(ev.get("tool_version", ""))}'
+        f' <button onclick="window.print()">Print / Save as PDF</button></div>'
+        f'<div class="banner {"pass" if result["passed"] else "fail"}">{verdict} - {esc(result["mode"])}</div>')
+    tiles = [(f"{esc(str((ev.get('source') or {}).get('name', 'Source')))} rows", result["source_rows"]),
+             (f"{esc(str((ev.get('target') or {}).get('name', 'Target')))} rows", result["target_rows"]),
+             ("Missing in target", len(result["only_in_source"])), ("Extra in target", len(result["only_in_target"])),
+             ("Mismatched cells", result["total_mismatch_cells"])]
+    parts.append('<div class="tiles">' + "".join(f'<div class="tile">{k}<b>{v:,}</b></div>' for k, v in tiles) + "</div>")
+
+    sides = ""
+    for name in ("source", "target"):
+        info = ev.get(name) or {}
+        body = (f"<pre>{esc(info['sql'])}</pre>" if info.get("sql")
+                else f'<p class="muted">{esc(str(info.get("input_type", "File")))}: {esc(str(info.get("name", "")))}</p>')
+        sides += f"<div><b>{name.title()}</b> - {esc(str(info.get('input_type', '')))} - {esc(str(info.get('name', '')))}{body}</div>"
+    section("Run information", f'<div class="cols">{sides}</div>'
+            + _table(evidence_frame(result).query("item != 'SQL'")), "Source and target queries exactly as executed.")
+
+    section("Checks", _table(result["checks"]))
+    if len(result["insights"]):
+        section("Why do rows differ?", "<ul>" + "".join(
+            f"<li><b>{esc(str(r.column))}</b> ({r.rows:,} rows): {esc(r.finding)}</li>"
+            for r in result["insights"].itertuples()) + "</ul>")
+    if not result["columns"].empty:
+        section("Column profile", _table(result["columns"]))
+    if not result["nulls"].empty:
+        tokens = ", ".join(result["null_tokens"]) or "none"
+        section("Null / NA details", _table(result["nulls"]),
+                f"Real NULL, blank text and NULL-equivalent tokens ({tokens}) are treated as NULL when comparing.")
+    if not result["fast"]:
+        section("Data types", _table(result["dtypes"]))
+        section("Aggregations on critical columns", _table(result["aggregations"]))
+    diffs = result["schema"][result["schema"]["status"] != "On both sides"]
+    if len(diffs):
+        section("Schema differences", _table(diffs))
+    if len(result["groups"]):
+        section("Row counts by group", _table(result["groups"]))
+    if len(result["distribution"]):
+        section("Value distribution differences", _table(result["distribution"]))
+    for label, key in (("Duplicate records in source", "dup_source"), ("Duplicate records in target", "dup_target")):
+        if len(result[key]):
+            section(label, _table(result[key], lambda r, c: "dup" if c in ("duplicate_count", "occurrence") else ""),
+                    "Every row whose key appears more than once.")
+
+    def full_class(row, c):
+        if c == "status":
+            return _STATUS_CLASS.get(row["status"], "")
+        if c.endswith(("_source", "_target")):
+            if row["status"] in ("MISSING_IN_TARGET", "EXTRA_IN_TARGET"):
+                return "warn"
+            bad = {x.strip() for x in str(row["mismatched_columns"]).split(",") if x.strip()}
+            return "bad" if c.rsplit("_", 1)[0] in bad else ""
+        return ""
+    counts = result["full_counts"]
+    section(f"Full data comparison ({len(result['full']):,} rows listed)",
+            '<div class="tiles">' + "".join(f'<div class="tile">{k.replace("_", " ").title()}<b>{v:,}</b></div>'
+                                           for k, v in counts.items()) + "</div>" + _table(result["full"], full_class),
+            "Differing cells red, missing/extra rows yellow." + ("" if result["include_matched"] else " Matched rows are counted, not listed."))
+    section("Value mismatches", _table(result["mismatches"], lambda r, c: "bad" if c in ("column", "source", "target", "issue") else ""),
+            f"{result['total_mismatch_cells']:,} mismatched cells in total.")
+    section("Rows only in source", _table(result["only_in_source"]))
+    section("Rows only in target", _table(result["only_in_target"]))
+
+    body = "\n".join(parts)
+    fingerprint = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    footer = (f'<footer>Report content SHA-256: {fingerprint}<br>Generated by DataRecon v{esc(ev.get("tool_version", ""))}. '
+              f'Re-hash the body to detect changes; the Excel/CSV reports carry the full data.</footer>')
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DataRecon evidence {esc(ev.get("run_id", ""))}</title>'
+            f"<style>{_CSS}</style></head><body>{body}{footer}</body></html>").encode("utf-8")
 
 
 # --------------------------------------------------------------------------
@@ -870,7 +1068,11 @@ def side_input(label, prefix, config):
         def load():
             if not up:
                 raise ValueError(f"{label}: choose a file.")
-            return read_file(up, sep or ","), up.name, hashlib.sha256(up.getvalue()).hexdigest()
+            frame, digest = read_file(up, sep or ","), hashlib.sha256(up.getvalue()).hexdigest()
+            info = {"input_type": "File", "name": up.name, "file_size_bytes": up.size, "sha256": digest,
+                    "delimiter": sep or ",", "rows": len(frame), "columns": len(frame.columns),
+                    "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
+            return frame, up.name, digest, info
         return load
 
     conns, queries = config["connections"], config["queries"]
@@ -897,7 +1099,14 @@ def side_input(label, prefix, config):
             raise ValueError(f"{label}: select a connection.")
         frame = run_query(conns[cname], get_password(config, cname),
                           sql, int(max_rows))
-        return frame, f"{cname} query", None
+        conn = conns[cname]
+        info = {"input_type": "Database query", "name": f"{cname} query", "connection": cname,
+                "database_type": conn["database_type"], "host": conn.get("host", ""), "port": conn.get("port", ""),
+                "database": conn["database"], "username": conn.get("username", ""),
+                "sql": sql.strip(), "sql_sha256": hashlib.sha256(sql.strip().encode("utf-8")).hexdigest(),
+                "max_rows": int(max_rows), "rows": len(frame), "columns": len(frame.columns),
+                "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
+        return frame, f"{cname} query", None, info
     return load
 
 
@@ -912,19 +1121,31 @@ def show_result(result, names):
     m[4].metric("Mismatched cells", f"{result['total_mismatch_cells']:,}")
 
     st.caption(f"Compared in {result['seconds']}s. Reports are built when you click a download button.")
+    ev = result.get("evidence") or {}
+    with st.expander(f"Run information - run {ev.get('run_id', '')} (included in every report)", expanded=True):
+        for side in ("source", "target"):
+            info = ev.get(side) or {}
+            st.markdown(f"**{side.title()}** - {info.get('input_type', '')} - {info.get('name', '')}")
+            if info.get("sql"):
+                st.code(info["sql"], language="sql")
+        run_info = evidence_frame(result)
+        show_df(st, run_info[run_info["item"] != "SQL"].astype("string"))
     if len(result["full"]) > 200_000:
         st.caption("Large result: the CSV zip is much faster to build than the Excel report.")
-    d1, d2, d3 = st.columns(3)
+    d1, d2, d3, d4 = st.columns(4)
+    rid = ev.get("run_id", "run")
     run_id = id(result)  # new result -> new buttons; old prepared files are dropped
     if st.session_state.get("_dl_run") != run_id:
         st.session_state["_ready_downloads"] = {}
         st.session_state["_dl_run"] = run_id
-    download(d1, "Download Excel report", lambda: build_xlsx(result), "datarecon_report.xlsx",
+    download(d1, "Download Excel report", lambda: build_xlsx(result), f"datarecon_report_{rid}.xlsx",
              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "dl_xlsx")
-    download(d2, "Download CSV reports (zip)", lambda: build_csv_zip(result), "datarecon_reports.zip",
+    download(d2, "Download CSV reports (zip)", lambda: build_csv_zip(result), f"datarecon_reports_{rid}.zip",
              "application/zip", "dl_zip")
-    download(d3, "Download JSON summary", lambda: build_json(result), "datarecon_summary.json",
+    download(d3, "Download JSON summary", lambda: build_json(result), f"datarecon_summary_{rid}.json",
              "application/json", "dl_json")
+    download(d4, "Download evidence report (HTML)", lambda: build_html(result),
+             f"datarecon_evidence_{rid}.html", "text/html", "dl_html")
 
     def paint(columns, color):
         return lambda row: [f"background-color: {color}" if c in columns else "" for c in row.index]
@@ -1025,10 +1246,10 @@ def main():
         st.session_state.pop("result", None)
         try:
             with st.spinner("Loading..."):
-                src, sname, shash = load_src()
-                tgt, tname, thash = load_tgt()
+                src, sname, shash, sinfo = load_src()
+                tgt, tname, thash, tinfo = load_tgt()
             hashes = (shash, thash) if shash and thash else None
-            st.session_state["data"] = (src, tgt, (sname, tname), hashes)
+            st.session_state["data"] = (src, tgt, (sname, tname), hashes, (sinfo, tinfo))
         except Exception as err:
             st.session_state.pop("data", None)
             st.error(f"Could not load data: {err}")
@@ -1037,7 +1258,7 @@ def main():
     if not data:
         st.info("Choose a source and a target, then press Load data.")
         return
-    src, tgt, names, hashes = data
+    src, tgt, names, hashes, infos = data
     p1, p2 = st.columns(2)
     for col, frame, name in ((p1, src, names[0]), (p2, tgt, names[1])):
         col.caption(f"{name}: {len(frame):,} rows x {len(frame.columns)} columns")
@@ -1097,7 +1318,15 @@ def main():
                     agg_cols=agg_cols, markers=markers.split(","), count_tol_abs=cnt_abs,
                     count_tol_pct=cnt_pct, group_by=group_by, file_hashes=hashes,
                     fast=fast, include_matched=inc_matched,
-                    null_tokens=nulltok.split(","))
+                    null_tokens=nulltok.split(","),
+                    evidence=new_evidence(infos[0], infos[1], {
+                        "keys": keys or "(whole row)", "ignored columns": ignore or "(none)",
+                        "aggregation columns": agg_cols or "(all numeric)", "group by": group_by or "(none)",
+                        "trim whitespace": trim, "empty text is NULL": empty_null, "ignore value case": nocase,
+                        "numeric tolerance": tol, "values treated as NULL": nulltok or "(off)",
+                        "missing-value markers": markers, "row-count tolerance (rows)": cnt_abs,
+                        "row-count tolerance (%)": cnt_pct, "full data validation only": fast,
+                        "matched rows listed": inc_matched}))
         except Exception as err:
             st.session_state.pop("result", None)
             st.error(f"Comparison failed: {err}")

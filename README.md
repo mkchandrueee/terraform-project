@@ -29,3 +29,13 @@ you click a download. Prefer CSV/Parquet over XLSX for big files (Excel parsing 
 - Passwords: tick *Remember password* when saving a connection. They are stored Fernet-encrypted in
   `~/.datarecon_profiles.json` with the key in `~/.datarecon.key` (both owner-only, 0600). This protects against casual
   reading/sharing of the profile file, not against someone who can read both files; use read-only DB accounts.
+
+**Evidence**
+- Every result carries run information: run ID, UTC/local time, OS user, tool/library versions, verdict, the rules used,
+  and for each side the input (file name + SHA-256, or connection/host/database/user), the **exact SQL executed** (+ its
+  SHA-256), rows/columns loaded. No passwords are ever included.
+- It appears in the app ("Run information"), as the first *Run Info* sheet of the Excel report, `run_info.csv` in the CSV
+  zip, and under `evidence` in the JSON summary.
+- *Download evidence report (HTML)* produces a single self-contained page mirroring the app's results (same sections and
+  highlighting, source/target SQL, a content SHA-256 in the footer). Open it in a browser and use *Print / Save as PDF*
+  for a PDF copy. Tables are capped at 1,000 rows there; Excel/CSV hold every row.

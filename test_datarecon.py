@@ -159,3 +159,67 @@ def test_password_encryption_roundtrip(tmp_path, monkeypatch):
     (tmp_path / "k.key").unlink()                      # key lost -> safely empty, no crash
     monkeypatch.setattr(datarecon, "KEY_FILE", tmp_path / "other.key")
     assert datarecon.decrypt_password(token) == ""
+
+
+def _evidence():
+    import datarecon
+    src_info = {"input_type": "Database query", "name": "legacy query", "connection": "legacy", "database_type": "PostgreSQL",
+                "host": "h1", "database": "old", "username": "etl", "sql": "SELECT * FROM old.customers ORDER BY id",
+                "rows": 4, "columns": 4}
+    tgt_info = {"input_type": "Database query", "name": "new query", "connection": "new", "database_type": "SQL Server",
+                "host": "h2", "database": "new", "username": "etl2", "sql": "SELECT * FROM dbo.customers ORDER BY id"}
+    return datarecon.new_evidence(src_info, tgt_info, {"keys": ["id"], "numeric tolerance": 0.0})
+
+
+def test_sql_and_run_info_in_every_report():
+    import io, json, zipfile, openpyxl, datarecon
+    src, tgt = frames()
+    r = compare(src, tgt, keys=["id"], evidence=_evidence())
+    wb = openpyxl.load_workbook(io.BytesIO(datarecon.build_xlsx(r)))
+    assert wb.sheetnames[0] == "Run Info"
+    cells = " ".join(str(c.value) for row in wb["Run Info"].iter_rows() for c in row)
+    assert "SELECT * FROM old.customers ORDER BY id" in cells and "SELECT * FROM dbo.customers ORDER BY id" in cells
+    z = zipfile.ZipFile(io.BytesIO(datarecon.build_csv_zip(r)))
+    assert "SELECT * FROM dbo.customers" in z.read("run_info.csv").decode("utf-8-sig")
+    js = json.loads(datarecon.build_json(r))
+    assert js["evidence"]["source"]["sql"].startswith("SELECT * FROM old") and js["evidence"]["target"]["host"] == "h2"
+
+
+def test_html_evidence_report():
+    import datarecon, hashlib, re
+    src = pd.DataFrame({"id": ["1", "2", "2", "3"], "name": ["a", "<script>alert(1)</script>", "b", "c"]})
+    tgt = pd.DataFrame({"id": ["1", "2", "3"], "name": ["a", "x", None]})
+    r = compare(src, tgt, keys=["id"], evidence=_evidence())
+    doc = datarecon.build_html(r).decode()
+    assert "SELECT * FROM old.customers ORDER BY id" in doc and "SELECT * FROM dbo.customers ORDER BY id" in doc
+    assert "<script>alert(1)" not in doc and "&lt;script&gt;" in doc            # values are escaped
+    assert 'class="bad"' in doc and 'class="dup"' in doc and 'class="null"' in doc
+    assert r["evidence"]["run_id"] in doc
+    body = doc.split("<body>")[1].split("<footer>")[0]
+    assert hashlib.sha256(body.encode()).hexdigest() in doc                      # content fingerprint
+
+
+def _zip_text(blob):
+    import io, zipfile
+    z = zipfile.ZipFile(io.BytesIO(blob))
+    return " ".join(z.read(n).decode("utf-8-sig") for n in z.namelist())
+
+
+def test_no_password_in_evidence():
+    import datarecon
+    ev = datarecon.new_evidence({"name": "s", "password_enc": "SECRET-TOKEN", "db_password": "SECRET-TOKEN"},
+                                {"name": "t"}, {})
+    r = compare(*frames(), keys=["id"], evidence=ev)
+    for blob in (datarecon.evidence_frame(r).to_string(), datarecon.build_html(r).decode(),
+                 datarecon.build_json(r).decode(), _zip_text(datarecon.build_csv_zip(r))):
+        assert "SECRET-TOKEN" not in blob
+
+
+def test_full_result_shows_occurrence_for_duplicate_keys_and_int_counts():
+    src = pd.DataFrame({"id": ["1", "2", "2"], "v": ["a", "b", "b"]})
+    tgt = pd.DataFrame({"id": ["1", "2"], "v": ["a", "b"]})
+    r = compare(src, tgt, keys=["id"])
+    row = r["full"].iloc[0]
+    assert row["status"] == "MISSING_IN_TARGET" and row["id"] == "2" and row["occurrence"] == 2
+    counts = r["aggregations"].query("metric == 'count'")
+    assert all(isinstance(v, int) for v in counts["source"])
