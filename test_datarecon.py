@@ -223,3 +223,17 @@ def test_full_result_shows_occurrence_for_duplicate_keys_and_int_counts():
     assert row["status"] == "MISSING_IN_TARGET" and row["id"] == "2" and row["occurrence"] == 2
     counts = r["aggregations"].query("metric == 'count'")
     assert all(isinstance(v, int) for v in counts["source"])
+
+
+def test_lost_leading_zeros_are_mismatches_but_decimal_formatting_is_not():
+    src = pd.DataFrame({"id": ["1", "2", "3", "4"], "zip": ["02134", "10001", "00501", "7"], "amt": ["10.50", "1", "2", "3"]})
+    tgt = pd.DataFrame({"id": ["1", "2", "3", "4"], "zip": ["2134", "10001", "501", "7"], "amt": ["10.5", "1.0", "2", "3"]})
+    r = compare(src, tgt, keys=["id"])
+    assert sorted(zip(r["mismatches"].id, r["mismatches"].column)) == [("1", "zip"), ("3", "zip")]
+
+
+def test_leading_zero_explanation_is_not_called_rounding():
+    src = pd.DataFrame({"id": list("abcd"), "zip": ["02134", "00501", "07001", "10001"]})
+    tgt = pd.DataFrame({"id": list("abcd"), "zip": ["2134", "501", "7001", "10001"]})
+    text = " ".join(compare(src, tgt, keys=["id"])["insights"].finding)
+    assert "Leading zeros lost" in text and "rounded" not in text

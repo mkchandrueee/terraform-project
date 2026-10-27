@@ -26,8 +26,9 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-PROFILE_FILE = Path.home() / ".datarecon_profiles.json"
-KEY_FILE = Path.home() / ".datarecon.key"
+# DATARECON_PROFILE / DATARECON_KEY relocate the saved profile and key (e.g. an isolated demo profile)
+PROFILE_FILE = Path(os.environ.get("DATARECON_PROFILE") or Path.home() / ".datarecon_profiles.json")
+KEY_FILE = Path(os.environ.get("DATARECON_KEY") or Path.home() / ".datarecon.key")
 NEW = "-- New --"
 EXPORT_ROW_CAP = 100_000  # rows per sheet/CSV part; larger frames split, never truncate
 DISPLAY_ROWS = 1_000
@@ -253,6 +254,10 @@ def values_equal(a, b, tol):
         na = pd.to_numeric(a[todo].astype(object), errors="coerce")
         nb = pd.to_numeric(b[todo].astype(object), errors="coerce")
         ok = (na.abs() < SAFE_INT) & (nb.abs() < SAFE_INT) & ((na - nb).abs() <= tol)
+        # '02134' vs '2134' is a lost leading zero (zip/account no.), not a formatting difference
+        lead_a = a[todo].str.match(r"^-?0\d").fillna(False).to_numpy(dtype=bool)
+        lead_b = b[todo].str.match(r"^-?0\d").fillna(False).to_numpy(dtype=bool)
+        ok = ok & pd.Series(lead_a == lead_b, index=ok.index)
         same.loc[ok[ok].index] = True
     return same
 
@@ -332,8 +337,10 @@ def explain_column(col, a, b):
             return "Differ only by whitespace - enable 'Trim whitespace'"
         if (a.str.lower() == b.str.lower()).all():
             return "Differ only by letter case - enable 'Ignore value case'"
+        if (a.str.lstrip("0") == b).all():
+            return f"Leading zeros lost in target (e.g. '{a.iloc[0]}' became '{b.iloc[0]}') - code/ID/zip stored as a number?"
         if (a.str.len() > b.str.len()).all() and all(x.startswith(y) for x, y in zip(a, b)):
-            return f"Target truncated: values cut to at most {int(b.str.len().max())} characters"
+            return f"Target truncated: values cut to at most {int(b.str.len().max())} character(s)"
         nums = _num_pair(a, b)
         if nums:
             na, nb = nums
