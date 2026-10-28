@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChartScope Options</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>ChartScope</h1>
+  <nav><a href="/">Charts</a><a href="/options" aria-current="page">Options</a></nav>
+  <form id="controls">
+    <label>Index
+      <select id="und"><option>NIFTY</option><option>BANKNIFTY</option><option>SENSEX</option></select>
+    </label>
+    <label>Capital <input id="capital" type="number" value="300000" min="1000" step="10000"></label>
+    <label>Risk % <input id="risk" type="number" value="1" min="0.1" max="5" step="0.1"></label>
+    <button type="submit">Refresh</button>
+    <label class="check"><input id="live" type="checkbox" checked> Live (15s)</label>
+    <label class="check"><input id="notify" type="checkbox"> Alerts</label>
+  </form>
+  <div id="status" role="status"></div>
+</header>
+
+<main>
+  <section id="chart-col">
+    <div id="banner"></div>
+    <div id="chart"></div>
+    <div id="legend"></div>
+  </section>
+  <aside>
+    <section class="card" id="market"></section>
+    <section class="card" id="calls"></section>
+  </aside>
+</main>
+
+<section id="lower">
+  <div class="card"><h2>Alerts</h2><div id="events"></div></div>
+  <div class="card">
+    <h2>Does this strategy work? Replay of past sessions</h2>
+    <p class="muted">Re-runs the same rules on the last ~45 sessions of 5-minute data. Net of estimated costs.</p>
+    <button id="runbt" type="button">Run replay</button>
+    <div id="bt"></div>
+  </div>
+</section>
+
+<footer>Educational tool. Option premiums here are model estimates unless the source says "nse". Buying options can lose 100% of the premium. Not investment advice.</footer>
+<script src="/static/lightweight-charts.js"></script>
+<script src="/static/options.js"></script>
+</body>
+</html>

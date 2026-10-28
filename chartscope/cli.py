@@ -40,7 +40,53 @@ def _print_report(r: dict) -> None:
     print("\nEducational analysis only, not investment advice.")
 
 
+def _options_cli(argv: list[str]) -> int:
+    import time
+
+    from .options import engine, market
+    from .options.monitor import Store
+
+    ap = argparse.ArgumentParser(prog="chartscope options")
+    ap.add_argument("underlying", choices=["NIFTY", "BANKNIFTY", "SENSEX"])
+    ap.add_argument("--capital", type=float, default=300_000)
+    ap.add_argument("--risk-pct", type=float, default=1.0)
+    ap.add_argument("--watch", type=int, metavar="SECONDS", help="keep polling and print new alerts")
+    ap.add_argument("--backtest", type=int, metavar="DAYS", help="replay the last N sessions instead")
+    a = ap.parse_args(argv)
+    if a.backtest:
+        r = engine.backtest(a.underlying, a.backtest, a.capital, a.risk_pct)
+        s = r["summary"]
+        print(f"{a.underlying} replay {r['from']} → {r['to']}: {s.get('n', 0)} trades")
+        if s.get("n"):
+            print(f"  win {s['win_rate']:.0%}  avg {s['avg_r']:+.2f}R  PF {s['profit_factor']}  net ₹{s['total_pnl']:,.0f} (gross ₹{s['gross_pnl']:,.0f} - costs ₹{s['costs']:,.0f})  maxDD ₹{s['max_drawdown']:,.0f}")
+            for k, v in sorted(r["by_setup"].items(), key=lambda kv: -kv[1]["n"]):
+                print(f"  {k:32} n={v['n']:3}  win {v['win_rate']:.0%}  avg {v['avg_r']:+.2f}R")
+        print("  " + r["caveat"])
+        return 0
+    store, seen = Store(), set()
+    while True:
+        r = engine.refresh(a.underlying, store, a.capital, a.risk_pct)
+        c = r["context"]
+        print(f"\n[{r['clock']['now'][11:19]}] {a.underlying} {c['spot']}  {'LIVE' if r['clock']['market_open'] else 'CLOSED'}  VWAP {c['vwap']}  OR {c['or_low']}-{c['or_high']}  trend {c['trend']}/{c['daily_bias']}  src={r['chain_source']}")
+        for x in (r["calls"] if r["clock"]["market_open"] else r["preview"]):
+            k = x["call"]
+            print(f"  {x['status']:<8} BUY {k['symbol']}  at ₹{k['entry_premium']}  SL ₹{k['stop_premium']}  T ₹{k['target_premiums'][0]} / ₹{k['target_premiums'][1]}  lots {k['lots']}  ({k['setup']}, {k['confidence']}%)")
+        for e in r["events"]:
+            key = e["ts"] + e["msg"] + e["id"]
+            if key not in seen:
+                seen.add(key)
+                print(f"  >> {e['ts'][11:16]} {e['msg']}")
+        if not a.watch:
+            return 0
+        time.sleep(a.watch)
+
+
 def main(argv: list[str] | None = None) -> int:
+    import sys as _s
+
+    args = list(_s.argv[1:] if argv is None else argv)
+    if args and args[0] == "options":
+        return _options_cli(args[1:])
     ap = argparse.ArgumentParser(prog="chartscope")
     ap.add_argument("symbol", help="NSE ticker (RELIANCE), index (NIFTY, BANKNIFTY), Yahoo symbol, DEMO, or 'serve'")
     ap.add_argument("-i", "--interval", default="15m", choices=data.INTERVALS)
