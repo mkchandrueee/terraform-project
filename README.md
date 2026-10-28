@@ -52,24 +52,45 @@ python -m chartscope options NIFTY --watch 15       # terminal monitor: prints n
 python -m chartscope options NIFTY --backtest 45    # replay the last 45 sessions with the same rules
 ```
 
-**What you get:** option-buying calls (CE for bullish setups, PE for bearish; risk is limited to the premium) with the
-strike, **buy premium, stop-loss premium, two target premiums**, lots sized to your risk %, and an exit plan. Setups: opening-range
-breakout, VWAP trend pullback, support bounce / resistance rejection, 5m chart-pattern triggers and retests; counter-trend
-calls against a strong daily/5m bias are suppressed. Rules: entries 09:30-14:45 IST, max 3 calls a day, no stacking the same
-direction, stop for the day at -2R, 60-minute time stop, square-off 15:15.
+**What you get:** option-buying calls (CE for bullish, PE for bearish; risk is limited to the premium) with the strike,
+**buy premium, stop-loss premium, two target premiums**, lots sized to your risk %, and an exit plan.
+
+**How the setups were chosen (signal study).** `chartscope/options/study.py` replays every raw idea on 13 NSE instruments
+(3 indices + 10 large caps, ~26k ideas, Aug-Oct 2026) with the live trade-management rules and scores it in R, split into a
+development half and a later holdout half. Ideas taken from the referenced projects were added and tested the same way: liquidity
+sweeps, RSI divergence, value-area (market-profile) rejection/acceptance, flags with an R²-quality trendline fit, initial-balance breakouts.
+
+- Reversal setups (RSI divergence, liquidity sweep, value-area rejection, support bounce / resistance rejection) beat other ideas on the
+  same instrument and day by ~+0.08R in **both** halves (t ≈ 6-8); breakout/continuation setups (ORB, IB breakout, VWAP pullback,
+  pattern triggers/retests, flags) lagged by ~-0.08R. Only reversal setups are enabled, ranked by their measured excess.
+- Over 10 years of daily data, the daily trend did **not** predict the next session's intraday direction (NIFTY -0.035%/day in the trend
+  direction, 48% hit rate), so trend alignment is shown but no longer filters or boosts calls.
+- Walk-forward evidence gate: a setup/side is called only if it averaged > +0.05R over the previous 20 sessions on that index (≥ 30 signals).
+  Uses only past data, so replay and live behave the same. The app shows the table.
+- Entries 09:30-12:00 (afternoon signals were weaker in both halves); calls are skipped when estimated costs exceed 15% of the planned loss.
+
+**Honest result.** In absolute terms, after costs, no setup family showed a positive drift-neutral edge: the best gross edges were
+~0 to +0.07R, while buying ATM options costs ~0.10-0.18R per trade. Replay of the shipped rules on the last 40 sessions
+(Aug 31-Oct 28, all three indices, 1% risk on ₹3L): 76 trades, -0.02R per trade, net -₹4.8k (gross +₹9.9k, costs ₹14.7k), versus
+-₹18.1k over 202 trades for the first version. Nearly all trades were PE (shorts) because the gate followed a falling market; expect the
+mix to change when the market does. This is decision support to paper-trade, not a validated edge. More history (5-minute data from
+Yahoo only covers ~60 days) or richer data (live option-chain OI/IV, futures volume) is needed to go further.
 
 **Live monitoring:** every poll (15s in the UI) walks each call through `WAITING → ACTIVE → T1 (half booked, stop to cost) →
 TARGET / STOPPED / TIME_EXIT / SQUAREOFF` against 1-minute bars, with an alert log and optional browser notifications.
-Inside one bar the stop is assumed to hit before the target. When the market is closed you get a pre-market plan (previous-day
-high/low breaks priced at the next session) and a replay of what the rules did last session.
+Inside one bar the stop is assumed to hit before the target. Max 3 calls a day, stop for the day at -2R, 60-minute time stop,
+square-off 15:15. When the market is closed you get a pre-market plan (fade the previous day's high/low on rejection) and a
+replay of the last session. The first request for an index builds its 20-session evidence (~90s), then it is cached per day.
 
 **Where the premiums come from:** the NSE public option chain is tried first (cookie-based, often blocked on cloud/VPN networks and
 untested against the live site from the build sandbox); otherwise premiums are **Black-Scholes estimates from India VIX**, labelled
 "Model (VIX)". Always check the real quote before placing an order. Lot sizes and expiry weekdays are defaults in
 `chartscope/options/contracts.py` (override lots with `CHARTSCOPE_LOT_NIFTY=...`); verify them against the current exchange circular.
 
-**Does it make money? Not demonstrated.** Replay of 45 sessions (Aug 24 - Oct 28 2026, 5m data, costs of ~₹140-270 per trade
-included, 1% risk on ₹3L): NIFTY 72 trades, avg -0.13R, net ₹-16k; BANKNIFTY 69 trades, avg -0.03R, net ₹-4k; SENSEX 61 trades,
-avg 0.00R, net +₹2k. Gross is slightly positive, costs consume it, the sample is small and from one falling market, and the
-confidence score did not reliably separate winners from losers. Treat the calls as decision support to be paper-traded first,
-not as a validated edge. The replay is in the app so you can check any change you make to the rules the same way.
+Re-run the study yourself:
+
+```python
+from chartscope.options import study
+df = study.collect("^NSEI", days=60)         # raw ideas + outcomes in R
+print(study.summarize(df, ["family", "side"]))
+```

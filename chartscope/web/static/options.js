@@ -89,7 +89,7 @@ function drawCalls(r) {
     open.forEach((x) => box.append(callCard(x)));
     if (done.length) { box.append(el("h3", {}, "Closed today")); done.forEach((x) => box.append(callCard(x))); }
   } else {
-    if (!r.preview.length) box.append(el("p", { class: "muted" }, "No clean setup from the last session. Wait for the opening range after 09:30."));
+    if (!r.preview.length) box.append(el("p", { class: "muted" }, "No conditional setup passes the cost and reward:risk checks. Watch for reversal setups from 09:30 to 12:00."));
     r.preview.forEach((x) => box.append(callCard(x, true)));
     box.append(el("p", { class: "muted" }, "Conditional levels only: re-check at the open, since gaps change everything."));
     if (r.calls.length) { box.append(el("h3", {}, "Last session: what these rules would have done (replay)")); r.calls.forEach((x) => box.append(callCard(x))); }
@@ -108,6 +108,18 @@ function drawEvents(r) {
   }
 }
 
+const FAMILY_LABEL = { divergence: "RSI divergence", sweep: "Liquidity sweep", va_reject: "Value-area rejection", level_bounce: "Support bounce", level_reject: "Resistance rejection" };
+function drawEvidence(r) {
+  const box = $("evidence"); box.replaceChildren();
+  box.append(el("h2", {}, "Setup evidence (last 20 sessions)"));
+  box.append(el("p", { class: "muted" }, "A setup is called only if, on this index over the previous 20 sessions, it had at least 30 signals averaging above +0.05R (before option costs). Recent results, not a guarantee."));
+  if (!r.gate || !r.gate.length) { box.append(el("p", { class: "muted" }, "Evidence is still being computed (about 90 seconds per index on first run). No calls until it is ready.")); return; }
+  const t = el("table", {}, el("thead", {}, el("tr", {}, ...["Setup", "Side", "Signals", "Avg R", "Live?"].map((x) => el("th", {}, x)))), el("tbody", {}));
+  r.gate.forEach((g) => t.tBodies[0].append(el("tr", {}, el("td", {}, FAMILY_LABEL[g.family] || g.family), el("td", {}, g.side === "LONG" ? "CE" : "PE"), el("td", {}, g.n),
+    el("td", { class: g.mean_r >= 0 ? "up" : "down" }, (g.mean_r >= 0 ? "+" : "") + g.mean_r.toFixed(2)), el("td", { class: g.ok ? "up" : "muted" }, g.ok ? "yes" : "no"))));
+  box.append(el("div", { class: "table-wrap" }, t));
+}
+
 async function run() {
   const my = ++seq;
   const q = new URLSearchParams({ underlying: $("und").value, capital: $("capital").value, risk_pct: $("risk").value });
@@ -116,7 +128,7 @@ async function run() {
     const res = await fetch("/api/options/live?" + q); const body = await res.json();
     if (my !== seq) return;
     if (!res.ok) throw new Error(Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail || res.statusText);
-    drawChart(body); drawMarket(body); drawCalls(body); drawEvents(body); first = false; loaded = true;
+    drawChart(body); drawMarket(body); drawCalls(body); drawEvidence(body); drawEvents(body); first = false; loaded = true;
     $("status").textContent = `${body.underlying} · ${body.clock.market_open ? "LIVE" : "closed"} · updated ${new Date().toLocaleTimeString()}`;
   } catch (e) { if (my === seq) { $("status").className = "err"; $("status").textContent = String(e.message || e); } }
 }

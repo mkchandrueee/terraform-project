@@ -32,6 +32,7 @@
   <aside>
     <section class="card" id="market"></section>
     <section class="card" id="calls"></section>
+    <section class="card" id="evidence"></section>
   </aside>
 </main>
 
@@ -39,7 +40,7 @@
   <div class="card"><h2>Alerts</h2><div id="events"></div></div>
   <div class="card">
     <h2>Does this strategy work? Replay of past sessions</h2>
-    <p class="muted">Re-runs the same rules on the last ~45 sessions of 5-minute data. Net of estimated costs.</p>
+    <p class="muted">Re-runs the same rules, including the walk-forward evidence gate, on the last ~40 sessions of 5-minute data. Net of estimated costs.</p>
     <button id="runbt" type="button">Run replay</button>
     <div id="bt"></div>
   </div>

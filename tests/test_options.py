@@ -7,6 +7,7 @@ import pytest
 from chartscope.options import bs, chain as chainmod, contracts, engine, market
 from chartscope.options.intraday import Idea, build_context
 from chartscope.options.monitor import Store, new_live_call, trade_cost, update
+from chartscope.options import pricing
 from chartscope.options.pricing import make_option_call
 
 
@@ -74,6 +75,14 @@ def _breakout_data():
 
 
 def test_live_loop_simulation(monkeypatch, tmp_path):
+    # exercises the live state machine end to end, so enable every family and bypass the evidence gate
+    from chartscope.options import intraday
+
+    monkeypatch.setattr(intraday, "ENABLED", None)
+    monkeypatch.setattr(engine.gate, "allowed", lambda hist, day: None)
+    monkeypatch.setattr(engine, "_gate_hist", lambda u, df5: None)
+    monkeypatch.setattr(pricing, "MAX_COST_TO_RISK", 1.0)
+    monkeypatch.setattr(engine, "ENTRY_UNTIL", __import__("datetime").time(14, 45))
     df5, daily = _breakout_data()
     state = {"df": df5}
     monkeypatch.setattr(market, "index_bars", lambda u, iv: daily if iv == "1d" else state["df"])
@@ -100,6 +109,23 @@ def test_live_loop_simulation(monkeypatch, tmp_path):
     assert len({c.call["id"] for c in calls}) == len(calls)  # one call per setup+side
     store2 = Store(str(tmp_path / "calls.json"))  # persisted and reloadable
     assert len(store2.day_calls("NIFTY", "2026-10-28")) == len(calls)
+
+
+@pytest.fixture(autouse=True)
+def _no_cost_gate_for_state_tests(request, monkeypatch):
+    # state-machine tests use small fixed trades; the cost policy has its own test
+    if request.node.name.startswith(("test_monitor", "test_expiry_of")):
+        monkeypatch.setattr(pricing, "MAX_COST_TO_RISK", 1.0)
+
+
+def test_cost_gate_rejects_tiny_risk():
+    df5, daily = _breakout_data()
+    ctx = build_context(df5, "neutral", 15.0)
+    ch = chainmod.model_chain("NIFTY", 22000.0, 15.0, datetime(2026, 10, 28, 10, 0))
+    now = datetime(2026, 10, 28, 10, 0)
+    tiny = make_option_call(_idea(22000, 21992, 22020, 22040, "market"), ctx, ch, 300_000, 1.0, now, 15.0)
+    wide = make_option_call(_idea(22000, 21940, 22090, 22160, "market"), ctx, ch, 300_000, 1.0, now, 15.0)
+    assert tiny is None and wide is not None
 
 
 def _idea(entry, stop, t1, t2, mode="stop", side="LONG"):
@@ -161,12 +187,13 @@ def test_replay_runs_and_summarises(monkeypatch):
     df5, daily = _breakout_data()
     monkeypatch.setattr(market, "index_bars", lambda u, iv: daily if iv == "1d" else df5)
     monkeypatch.setattr(engine, "_vix_by_date", lambda: {})
-    r = engine.backtest("NIFTY", days=1)
+    r = engine.backtest("NIFTY", days=1, use_gate=False)
     assert r["days"] == 1 and "summary" in r and "caveat" in r
     assert all("cost" in t for t in r["trades"])
 
 
 def test_options_api(monkeypatch):
+    monkeypatch.setattr(engine, "_gate_hist", lambda u, df5: None)
     from fastapi.testclient import TestClient
 
     from chartscope.web.app import app
@@ -180,3 +207,34 @@ def test_options_api(monkeypatch):
     assert r.status_code == 200 and {"context", "calls", "preview", "events", "candles"} <= set(r.json())
     assert c.get("/api/options/live", params={"underlying": "FOO"}).status_code == 400
     assert c.get("/options").status_code == 200
+
+
+def test_gate_uses_only_prior_sessions():
+    from chartscope.options import gate
+
+    rows = []
+    for d, r in ((date(2026, 10, 1), 1.0), (date(2026, 10, 2), 1.0), (date(2026, 10, 3), -5.0)):
+        rows += [{"date": d, "family": "sweep", "side": "SHORT", "r": r}] * 20
+    hist = pd.DataFrame(rows)
+    on_3rd = gate.allowed(hist, date(2026, 10, 3))  # sees Oct 1-2 only: 40 samples at +1R
+    assert on_3rd[("sweep", "SHORT")]["ok"] and on_3rd[("sweep", "SHORT")]["n"] == 40
+    on_4th = gate.allowed(hist, date(2026, 10, 4))  # now includes the -5R day
+    assert not on_4th[("sweep", "SHORT")]["ok"]
+    assert gate.allowed(pd.DataFrame(), date(2026, 10, 4)) == {}
+
+
+def test_only_reversal_families_enabled_by_default():
+    from chartscope.options import intraday
+
+    assert intraday.ENABLED == intraday.REVERSAL
+    assert not ({"orb", "ib", "vwap_pullback", "pattern_trigger", "pattern_retest", "flag"} & intraday.ENABLED)
+
+
+def test_premarket_plan_fades_previous_day_extremes():
+    df5, daily = _breakout_data()
+    from chartscope.options.intraday import premarket_ideas
+
+    ctx = build_context(df5, "neutral", 15.0)
+    ideas = {i.side: i for i in premarket_ideas(ctx)}
+    assert ideas["SHORT"].entry < ctx.prev_high < ideas["SHORT"].stop
+    assert ideas["LONG"].stop < ctx.prev_low < ideas["LONG"].entry

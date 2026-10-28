@@ -2,22 +2,42 @@
 
 from __future__ import annotations
 
+import threading
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-import threading
-import time
-
 from .. import data
 from ..analyze import analyze
 from ..options import contracts, engine
 from ..options.monitor import Store
 
+
 STATIC = Path(__file__).parent / "static"
-app = FastAPI(title="ChartScope", version="0.1.0")
+
+
+def _warm_gate() -> None:
+    """Build each index's walk-forward evidence in the background (about 90s per index on first run)."""
+    from ..options import market as mkt
+
+    for u in contracts.SPECS:
+        try:
+            engine._gate_hist(u, mkt.index_bars(u, "5m"), compute=True)
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    threading.Thread(target=_warm_gate, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="ChartScope", version="0.1.0", lifespan=_lifespan)
 
 
 @app.get("/api/analyze")
@@ -62,7 +82,7 @@ def api_options_live(underlying: str = "NIFTY", capital: float = Query(300_000, 
 
 
 @app.get("/api/options/backtest")
-def api_options_backtest(underlying: str = "NIFTY", days: int = Query(45, ge=5, le=60), capital: float = Query(300_000, gt=0, le=1e9),
+def api_options_backtest(underlying: str = "NIFTY", days: int = Query(40, ge=5, le=40), capital: float = Query(300_000, gt=0, le=1e9),
                          risk_pct: float = Query(1.0, gt=0, le=5)):
     u = _und(underlying)
     key = (u, days, capital, risk_pct)

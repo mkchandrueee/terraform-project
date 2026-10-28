@@ -64,6 +64,7 @@ def _options_cli(argv: list[str]) -> int:
         print("  " + r["caveat"])
         return 0
     store, seen = Store(), set()
+    engine._gate_hist(a.underlying, market.index_bars(a.underlying, "5m"), compute=True)  # build evidence first (~90s once a day)
     while True:
         r = engine.refresh(a.underlying, store, a.capital, a.risk_pct)
         c = r["context"]

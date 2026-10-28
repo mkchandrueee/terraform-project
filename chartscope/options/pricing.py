@@ -13,6 +13,7 @@ from .intraday import DayContext, Idea
 # Minutes of theta assumed to have elapsed when each level is reached (conservative: later = cheaper).
 STOP_MIN, T1_MIN, T2_MIN = 25, 25, 50
 MAX_STOP_LOSS_PCT = 0.45
+MAX_COST_TO_RISK = 0.15  # skip calls whose round-trip costs would eat >15% of the planned loss
 ENTRY_WAIT_MIN = {"market": 0, "limit": 10, "stop": 10}
 
 
@@ -95,6 +96,11 @@ def make_option_call(idea: Idea, ctx: DayContext, chain: Chain, capital: float, 
         warns.append(f"Risk budget {risk_amt:.0f} is below one lot's risk ({risk * lot:.0f}); sizing shown for 1 lot.")
         lots = 1 if capital >= entry * lot else 0
     if lots == 0:
+        return None
+    from .monitor import trade_cost
+
+    est_cost = trade_cost(entry * lot * lots, t1 * lot * lots, 3)
+    if est_cost > MAX_COST_TO_RISK * risk * lot * lots:
         return None
     d = bs.delta(idea.entry, K, mins_now, sigma, kind)
     if (chain.expiry - now.date()).days == 0:

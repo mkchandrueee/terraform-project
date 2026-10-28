@@ -10,13 +10,15 @@ import pandas as pd
 
 from . import chain as chainmod
 from . import contracts, market
+from . import gate
+from . import intraday
 from .intraday import build_context, generate_ideas, premarket_ideas
 from .monitor import LiveCall, Store, new_live_call, update
 from .pricing import make_option_call
 
 MAX_CALLS_PER_DAY = 3
 STOP_DAY_R = -2.0
-ENTRY_FROM, ENTRY_UNTIL = dtime(9, 30), dtime(14, 45)
+ENTRY_FROM, ENTRY_UNTIL = dtime(9, 30), dtime(12, 0)  # morning reversals tested better than midday in both periods
 
 
 def entries_allowed(ts: datetime) -> bool:
@@ -27,9 +29,11 @@ def day_realized_r(calls: list[LiveCall]) -> float:
     return sum(c.r_multiple or 0.0 for c in calls if not c.open)
 
 
-def maybe_create(calls, ideas, ctx, chain, capital, risk_pct, now, vix, preview=False) -> list[LiveCall]:
-    """Price new ideas into option calls, honouring the day-level risk rules."""
+def maybe_create(calls, ideas, ctx, chain, capital, risk_pct, now, vix, preview=False, allow=None) -> list[LiveCall]:
+    """Price new ideas into option calls, honouring the day-level risk rules and the walk-forward gate."""
     made: list[LiveCall] = []
+    if allow is not None:
+        ideas = [i for i in ideas if allow.get((i.family, i.side), {}).get("ok")]
     if not preview:
         if not entries_allowed(now) or len(calls) >= MAX_CALLS_PER_DAY or day_realized_r(calls) <= STOP_DAY_R:
             return made
@@ -46,6 +50,16 @@ def maybe_create(calls, ideas, ctx, chain, capital, risk_pct, now, vix, preview=
                 break
         made.append(new_live_call(oc, now, ctx.spot) if not preview else LiveCall(call=asdict(oc), status="PREVIEW", last_ts=str(now)))
     return made
+
+
+def _gate_hist(und: str, df5: pd.DataFrame, compute: bool = False) -> pd.DataFrame | None:
+    """Evidence history keyed on the previous session (so it is built once per day). Requests only read the cache;
+    the server's startup thread builds it, so a page load never blocks for the ~90s computation."""
+    prev = sorted(set(df5.index.date))[-2] if len(set(df5.index.date)) > 1 else df5.index[-1].date()
+    try:
+        return gate.for_underlying(und, prev, compute)
+    except Exception:
+        return None
 
 
 def refresh(und: str, store: Store, capital: float = 300_000, risk_pct: float = 1.0, now: datetime | None = None) -> dict:
@@ -73,7 +87,8 @@ def refresh(und: str, store: Store, capital: float = 300_000, risk_pct: float = 
             if lc.open:
                 update(lc, b1[b1.index.to_series().dt.date == df5.index[-1].date()])
         ideas = generate_ideas(ctx, df5)
-        for lc in maybe_create(calls, ideas, ctx, chain, capital, risk_pct, ctx.ts, vix):
+        allow = gate.allowed(_gate_hist(und, df5), df5.index[-1].date())
+        for lc in maybe_create(calls, ideas, ctx, chain, capital, risk_pct, ctx.ts, vix, allow=allow):
             store.add(und, lc)
             calls.append(lc)
         store.save()
@@ -82,7 +97,8 @@ def refresh(und: str, store: Store, capital: float = 300_000, risk_pct: float = 
         nxt = market.next_session_open(now if now.date() > df5.index[-1].date() or now.time() > contracts.CLOSE else datetime.combine(now.date() - pd.Timedelta(days=1), dtime(15, 30)))
         pre_chain = chainmod.Chain(und, ctx.spot, contracts.next_expiry(und, nxt), "model")
         preview = maybe_create([], premarket_ideas(ctx), ctx, pre_chain, capital, risk_pct, nxt, vix, preview=True)
-        replayed = replay_day(df5, daily, und, df5.index[-1].date(), vix, capital, risk_pct)
+        hist = _gate_hist(und, df5)
+        replayed = replay_day(df5, daily, und, df5.index[-1].date(), vix, capital, risk_pct, gate.allowed(hist, df5.index[-1].date()))
         calls = [c for c in replayed if c.entered_at] if not calls else calls
 
     events = sorted((dict(e, id=c.call["symbol"]) for c in calls for e in c.events), key=lambda e: e["ts"])[-40:]
@@ -105,6 +121,8 @@ def refresh(und: str, store: Store, capital: float = 300_000, risk_pct: float = 
             "levels": [{"price": round(x.price, 1), "kind": x.kind, "strength": x.strength} for x in ctx.levels],
         },
         "calls": [{**asdict(c), "open": c.open} for c in calls],
+        "gate": [{"family": f, "side": s, **v} for (f, s), v in sorted((gate.allowed(_gate_hist(und, df5), df5.index[-1].date()) or {}).items())
+                 if f in (intraday.ENABLED or ())],
         "preview": [asdict(c) for c in preview],
         "replayed": not live and bool(calls),
         "events": events,
@@ -130,7 +148,7 @@ def _vix_by_date() -> dict:
         return {}
 
 
-def replay_day(df5: pd.DataFrame, daily: pd.DataFrame, und: str, day, vix: float, capital: float, risk_pct: float) -> list[LiveCall]:
+def replay_day(df5: pd.DataFrame, daily: pd.DataFrame, und: str, day, vix: float, capital: float, risk_pct: float, allow=None) -> list[LiveCall]:
     pos = np.flatnonzero(df5.index.date == day)
     if len(pos) < 30:
         return []
@@ -147,7 +165,7 @@ def replay_day(df5: pd.DataFrame, daily: pd.DataFrame, und: str, day, vix: float
         hist = df5.iloc[: i + 1]
         ctx = build_context(hist, bias, vix)
         ch = chainmod.Chain(und, ctx.spot, contracts.next_expiry(und, now), "model")
-        calls += maybe_create(calls, generate_ideas(ctx, hist), ctx, ch, capital, risk_pct, now, vix)
+        calls += maybe_create(calls, generate_ideas(ctx, hist), ctx, ch, capital, risk_pct, now, vix, allow=allow)
     for lc in calls:  # anything still open at the end of the data is closed at the last price
         if lc.open and lc.entered_at:
             from .monitor import _close
@@ -158,14 +176,17 @@ def replay_day(df5: pd.DataFrame, daily: pd.DataFrame, und: str, day, vix: float
     return calls
 
 
-def backtest(und: str, days: int = 20, capital: float = 100_000, risk_pct: float = 1.0) -> dict:
+def backtest(und: str, days: int = 20, capital: float = 300_000, risk_pct: float = 1.0, use_gate: bool = True) -> dict:
     und = und.upper()
     df5, daily, vixes = market.index_bars(und, "5m"), market.index_bars(und, "1d"), _vix_by_date()
-    dates = sorted({d for d in df5.index.date})[-days:]
+    all_days = sorted({d for d in df5.index.date})
+    hist = gate.for_underlying(und, all_days[-1]) if use_gate else None
+    # the gate needs LOOKBACK prior sessions, so the replay can only start after them
+    dates = all_days[gate.LOOKBACK:][-days:] if use_gate else all_days[-days:]
     trades: list[dict] = []
     per_day = []
     for d in dates:
-        calls = replay_day(df5, daily, und, d, vixes.get(d, market.DEFAULT_VIX), capital, risk_pct)
+        calls = replay_day(df5, daily, und, d, vixes.get(d, market.DEFAULT_VIX), capital, risk_pct, gate.allowed(hist, d) if use_gate else None)
         done = [c for c in calls if c.entered_at]
         per_day.append({"date": str(d), "trades": len(done), "r": round(float(sum(c.r_multiple or 0 for c in done)), 2)})
         for c in done:
