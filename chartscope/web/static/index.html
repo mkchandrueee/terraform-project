@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChartScope</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>ChartScope</h1>
+  <form id="controls">
+    <label>Symbol <input id="symbol" value="NIFTY" autocomplete="off" spellcheck="false" size="12"></label>
+    <label>Timeframe
+      <select id="interval">
+        <option>5m</option><option selected>15m</option><option>30m</option><option>1h</option><option>1d</option><option>1wk</option>
+      </select>
+    </label>
+    <label>Capital <input id="capital" type="number" value="100000" min="1000" step="1000"></label>
+    <label>Risk % <input id="risk" type="number" value="1" min="0.1" max="10" step="0.1"></label>
+    <button type="submit">Analyze</button>
+    <label class="check"><input id="live" type="checkbox" checked> Live (30s)</label>
+  </form>
+  <div id="status" role="status"></div>
+</header>
+
+<main>
+  <section id="chart-col">
+    <div id="chart"></div>
+    <div id="legend"></div>
+  </section>
+
+  <aside>
+    <section class="card" id="plan"></section>
+    <section class="card" id="calls"></section>
+    <section class="card"><h2>Patterns</h2><div id="patterns"></div></section>
+    <section class="card"><h2>Support &amp; resistance</h2><div id="levels"></div></section>
+  </aside>
+</main>
+
+<section id="analogs-wrap">
+  <h2>Same setup in history</h2>
+  <div id="analog-summary"></div>
+  <div id="analog-grid">
+    <div><div id="analog-chart"></div><p class="hint">Bold line: the latest bars. Thin lines: the closest past matches; the part running past the bold line is what happened next. Green/red = ended up/down. % move from window start.</p></div>
+    <div class="table-wrap"><table id="analog-table"><thead><tr><th>Window</th><th>Sim</th><th>Next move</th><th>Patterns then</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<footer>Educational analysis from delayed public data. Not investment advice; patterns and past analogs do not guarantee outcomes.</footer>
+
+<script src="/static/lightweight-charts.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

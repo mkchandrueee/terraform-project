@@ -1,0 +1,21 @@
+[project]
+name = "chartscope"
+version = "0.1.0"
+description = "Live chart pattern, support/resistance and historical-analog trade inputs for NSE/BSE and other markets"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.0", "numpy>=1.24", "yfinance>=0.2.40", "fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+chartscope = "chartscope.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["chartscope*"]
+
+[tool.setuptools.package-data]
+"chartscope.web" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
