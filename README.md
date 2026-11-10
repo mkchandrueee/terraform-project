@@ -1,8 +1,8 @@
 #Terraform Multicloud project
 In this project we use terraform to automate aws and azure colud resources.
 
-## DataRecon (data migration testing)
-Lightweight single-file Streamlit app: `pip install -r requirements.txt && streamlit run datarecon.py`.
+## Equaliser (data migration testing)
+Lightweight single-file Streamlit app: `pip install -r requirements.txt && streamlit run datarecon.py   # file name unchanged for compatibility`.
 Source and target can each be a file (CSV/XLSX/Parquet) or a SQL query; rows are matched by key (order-independent).
 
 Validations: column/row counts (with abs/% tolerance and group-by breakdown), missing/extra rows, cell mismatches,
