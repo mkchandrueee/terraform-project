@@ -1,0 +1,11 @@
+streamlit>=1.40   # newer (>=1.50) builds downloads on click; older shows a Prepare button first
+pandas>=2.2
+sqlalchemy>=2.0
+openpyxl
+jinja2
+xlsxwriter
+pyarrow
+cryptography      # encrypted saved passwords
+psycopg2-binary   # PostgreSQL
+pymysql           # MySQL
+pyodbc            # SQL Server (needs ODBC Driver 18)

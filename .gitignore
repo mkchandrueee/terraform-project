@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+demo/data/
+demo/.demo_profile.json
+demo/.demo.key
+demo/data/
+demo/.demo_profile.json
+demo/.demo.key
