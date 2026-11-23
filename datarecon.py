@@ -1,6 +1,6 @@
 """Equaliser: one-page data migration reconciliation (file / SQL on either side).
 
-Run:  streamlit run datarecon.py
+Run the web workspace with: python -m uvicorn datarecon_api:app
 
 Compares Source vs Target by KEY (not by row position), so row order after a
 migration does not matter. Reports missing rows, extra rows, cell-level
@@ -22,7 +22,6 @@ import uuid
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
@@ -37,38 +36,6 @@ DEFAULT_NULL_TOKENS = "NULL, None, NaN, N/A, #N/A"
 SAFE_INT = 2**53
 
 
-def _st_version():
-    try:
-        return tuple(int(x) for x in re.findall(r"\d+", st.__version__)[:2])
-    except Exception:
-        return (0, 0)
-
-
-# width="stretch" and deferred (callable) downloads need a recent Streamlit; older ones get a fallback.
-MODERN_ST = _st_version() >= (1, 50)
-
-
-def show_df(target, frame, **kwargs):
-    """st.dataframe at full width on any Streamlit version."""
-    kwargs.update({"width": "stretch"} if MODERN_ST else {"use_container_width": True})
-    return target.dataframe(frame, hide_index=True, **kwargs)
-
-
-def download(target, label, builder, file_name, mime, key):
-    """Download button that builds its file only when needed.
-
-    Modern Streamlit builds on click (callable data). Older versions get a two-step
-    'Prepare' button so the file is still not rebuilt on every rerun.
-    """
-    if MODERN_ST:
-        return target.download_button(label, builder, file_name, mime, key=key)
-    cache = st.session_state.setdefault("_ready_downloads", {})
-    if key in cache:
-        target.download_button(f"{label} (ready)", cache[key], file_name, mime, key=key)
-    elif target.button(f"Prepare: {label}", key=f"prep_{key}"):
-        with st.spinner("Building report..."):
-            cache[key] = builder()
-        st.rerun()
 DB_DEFAULTS = {"PostgreSQL": 5432, "SQL Server": 1433, "MySQL": 3306, "SQLite": 0}
 
 
@@ -120,8 +87,10 @@ def encrypt_password(password):
 
 
 def decrypt_password(token):
+    if not token:
+        return ""
     cipher = _fernet()
-    if not cipher or not token:
+    if not cipher:
         return ""
     try:
         return cipher.decrypt(token.encode()).decode()
@@ -132,8 +101,8 @@ def decrypt_password(token):
 # --------------------------------------------------------------------------
 # Loading data
 # --------------------------------------------------------------------------
-def read_file(uploaded, sep=","):
-    ext = Path(uploaded.name).suffix.lower()
+def read_file(uploaded, sep=",", filename=None):
+    ext = Path(filename if filename is not None else uploaded.name).suffix.lower()
     if ext in (".csv", ".txt", ".tsv"):
         sep = "\t" if ext == ".tsv" and sep == "," else sep
         return pd.read_csv(uploaded, sep=sep, dtype=str, low_memory=False)
@@ -834,7 +803,7 @@ def new_evidence(source=None, target=None, rules=None):
         "run_id": uuid.uuid4().hex[:12].upper(),
         "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "generated_local": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "run_by": user, "tool_version": APP_VERSION, "pandas": pd.__version__, "streamlit": st.__version__,
+        "run_by": user, "tool_version": APP_VERSION, "pandas": pd.__version__,
         "source": _no_secrets(source), "target": _no_secrets(target), "rules": rules or {},
     }
 
@@ -846,7 +815,7 @@ def evidence_frame(result):
         ("Run", "Run ID", ev.get("run_id", "")), ("Run", "Generated (UTC)", ev.get("generated_utc", "")),
         ("Run", "Generated (local)", ev.get("generated_local", "")), ("Run", "Run by (OS user)", ev.get("run_by", "")),
         ("Run", f"{APP_NAME} version", ev.get("tool_version", "")),
-        ("Run", "Library versions", f"pandas {ev.get('pandas', '')}, streamlit {ev.get('streamlit', '')}"),
+        ("Run", "Library versions", f"pandas {ev.get('pandas', '')}"),
         ("Run", "Verdict", "PASS" if result["passed"] else "FAIL"), ("Run", "Mode", result["mode"]),
         ("Run", "Compare duration (s)", result["seconds"]),
     ]
@@ -906,7 +875,7 @@ def _table(frame, cell_class=None, cap=HTML_ROWS):
 
 
 def build_html(result):
-    """Self-contained evidence report with the same sections and highlighting as the Streamlit page."""
+    """Self-contained evidence report with the same sections and highlighting as the web workspace."""
     ev = result.get("evidence") or {}
     esc = html.escape
     parts = []
@@ -987,450 +956,3 @@ def build_html(result):
               f'Re-hash the body to detect changes; the Excel/CSV reports carry the full data.</footer>')
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{APP_NAME} evidence {esc(ev.get("run_id", ""))}</title>'
             f"<style>{_CSS}</style></head><body>{body}{footer}</body></html>").encode("utf-8")
-
-
-# --------------------------------------------------------------------------
-# UI
-# --------------------------------------------------------------------------
-def pwd_key(name):
-    return f"pwd::{name}"
-
-
-def get_password(config, name):
-    """Session password, else the encrypted one saved with the connection."""
-    key = pwd_key(name)
-    if not st.session_state.get(key):
-        pw = decrypt_password(config["connections"].get(name, {}).get("password_enc"))
-        if pw:
-            st.session_state[key] = pw
-    return st.session_state.get(key, "")
-
-
-def connections_panel(config):
-    with st.expander("Database connections (saved locally; saved passwords are encrypted)"):
-        conns = config["connections"]
-        pick = st.selectbox("Load connection", [NEW] + sorted(conns), key="cx_pick")
-        if st.session_state.get("cx_loaded") != pick:
-            saved = conns.get(pick, {})
-            for field, default in dict(name="" if pick == NEW else pick,
-                                       type="PostgreSQL", host="", port=5432,
-                                       database="", username="").items():
-                key_map = {"type": "database_type"}
-                st.session_state[f"cx_{field}"] = saved.get(key_map.get(field, field), default)
-            st.session_state["cx_password"] = get_password(config, pick) if pick != NEW else ""
-            st.session_state["cx_remember"] = pick == NEW or "password_enc" in saved
-            st.session_state["cx_loaded"] = pick
-        c1, c2, c3 = st.columns(3)
-        name = c1.text_input("Name", key="cx_name")
-        kind = c2.selectbox("Type", list(DB_DEFAULTS), key="cx_type")
-        host = c3.text_input("Host", key="cx_host")
-        c4, c5, c6, c7 = st.columns(4)
-        port = c4.number_input("Port", 0, 65535, key="cx_port")
-        database = c5.text_input("Database (SQLite: file path)", key="cx_database")
-        user = c6.text_input("Username", key="cx_username")
-        password = c7.text_input("Password", type="password", key="cx_password")
-        conn = dict(database_type=kind, host=host.strip(), port=int(port),
-                    database=database.strip(), username=user.strip())
-        remember = st.checkbox("Remember password (encrypted on this machine)", key="cx_remember")
-        b1, b2, b3 = st.columns(3)
-        if b1.button("Save connection"):
-            if not name.strip() or not database.strip():
-                st.error("Name and database are required.")
-            else:
-                if remember and password:
-                    token = encrypt_password(password)
-                    if token:
-                        conn["password_enc"] = token
-                    else:
-                        st.warning("Install 'cryptography' to save passwords; kept for this session only.")
-                conns[name.strip()] = conn
-                save_config(config)
-                st.session_state[pwd_key(name.strip())] = password
-                st.success(f"Saved '{name.strip()}'" + (" with encrypted password." if "password_enc" in conn else "."))
-        if b2.button("Test connection"):
-            try:
-                engine = make_engine(conn, password)
-                with engine.connect() as db:
-                    db.execute(text("SELECT 1"))
-                engine.dispose()
-                st.success("Connection succeeded.")
-            except Exception as err:
-                st.error(f"Connection failed: {err}")
-        if b3.button("Delete saved connection") and pick in conns:
-            del conns[pick]
-            save_config(config)
-            st.session_state["cx_loaded"] = None
-            st.rerun()
-
-
-def side_input(label, prefix, config):
-    """Render one side (file or SQL); return a zero-arg loader and its label."""
-    st.markdown(f"**{label}**")
-    mode = st.radio("Input", ["File", "Database query"], horizontal=True,
-                    key=f"{prefix}_mode", label_visibility="collapsed")
-    if mode == "File":
-        up = st.file_uploader("File", type=["csv", "txt", "tsv", "xlsx", "xls", "parquet"],
-                              key=f"{prefix}_file", label_visibility="collapsed")
-        sep = st.text_input("CSV delimiter", ",", key=f"{prefix}_sep", max_chars=3)
-
-        def load():
-            if not up:
-                raise ValueError(f"{label}: choose a file.")
-            frame, digest = read_file(up, sep or ","), hashlib.sha256(up.getvalue()).hexdigest()
-            info = {"input_type": "File", "name": up.name, "file_size_bytes": up.size, "sha256": digest,
-                    "delimiter": sep or ",", "rows": len(frame), "columns": len(frame.columns),
-                    "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
-            return frame, up.name, digest, info
-        return load
-
-    conns, queries = config["connections"], config["queries"]
-    cname = st.selectbox("Connection", [""] + sorted(conns), key=f"{prefix}_conn",
-                         format_func=lambda n: n or "-- select --")
-    qname = st.selectbox("Saved query", [""] + sorted(queries), key=f"{prefix}_saved",
-                         format_func=lambda n: n or "-- none --")
-    if st.session_state.get(f"{prefix}_qloaded") != qname:
-        st.session_state[f"{prefix}_sql"] = queries.get(qname, "")
-        st.session_state[f"{prefix}_qloaded"] = qname
-    sql = st.text_area("SQL (SELECT / WITH)", height=140, key=f"{prefix}_sql",
-                       placeholder="SELECT * FROM schema.table")
-    s1, s2 = st.columns([3, 1])
-    save_as = s1.text_input("Save query as", key=f"{prefix}_saveas", label_visibility="collapsed",
-                            placeholder="Save query as…")
-    if s2.button("Save", key=f"{prefix}_savebtn") and save_as.strip():
-        queries[save_as.strip()] = sql
-        save_config(config)
-        st.toast(f"Saved query '{save_as.strip()}'")
-    max_rows = st.number_input("Max rows (0 = all)", 0, step=10_000, key=f"{prefix}_max")
-
-    def load():
-        if not cname:
-            raise ValueError(f"{label}: select a connection.")
-        frame = run_query(conns[cname], get_password(config, cname),
-                          sql, int(max_rows))
-        conn = conns[cname]
-        info = {"input_type": "Database query", "name": f"{cname} query", "connection": cname,
-                "database_type": conn["database_type"], "host": conn.get("host", ""), "port": conn.get("port", ""),
-                "database": conn["database"], "username": conn.get("username", ""),
-                "sql": sql.strip(), "sql_sha256": hashlib.sha256(sql.strip().encode("utf-8")).hexdigest(),
-                "max_rows": int(max_rows), "rows": len(frame), "columns": len(frame.columns),
-                "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
-        return frame, f"{cname} query", None, info
-    return load
-
-
-def show_result(result, names):
-    verdict = st.success if result["passed"] else st.error
-    verdict(f"{'PASS' if result['passed'] else 'FAIL'} - {result['mode']}")
-    m = st.columns(5)
-    m[0].metric(f"{names[0]} rows", f"{result['source_rows']:,}")
-    m[1].metric(f"{names[1]} rows", f"{result['target_rows']:,}")
-    m[2].metric("Missing in target", f"{len(result['only_in_source']):,}")
-    m[3].metric("Extra in target", f"{len(result['only_in_target']):,}")
-    m[4].metric("Mismatched cells", f"{result['total_mismatch_cells']:,}")
-
-    st.caption(f"Compared in {result['seconds']}s. Reports are built when you click a download button.")
-    ev = result.get("evidence") or {}
-    with st.expander(f"Run information - run {ev.get('run_id', '')} (included in every report)", expanded=True):
-        for side in ("source", "target"):
-            info = ev.get(side) or {}
-            st.markdown(f"**{side.title()}** - {info.get('input_type', '')} - {info.get('name', '')}")
-            if info.get("sql"):
-                st.code(info["sql"], language="sql")
-        run_info = evidence_frame(result)
-        show_df(st, run_info[run_info["item"] != "SQL"].astype("string"))
-    if len(result["full"]) > 200_000:
-        st.caption("Large result: the CSV zip is much faster to build than the Excel report.")
-    d1, d2, d3, d4 = st.columns(4)
-    rid = ev.get("run_id", "run")
-    run_id = id(result)  # new result -> new buttons; old prepared files are dropped
-    if st.session_state.get("_dl_run") != run_id:
-        st.session_state["_ready_downloads"] = {}
-        st.session_state["_dl_run"] = run_id
-    download(d1, "Download Excel report", lambda: build_xlsx(result), f"equaliser_report_{rid}.xlsx",
-             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "dl_xlsx")
-    download(d2, "Download CSV reports (zip)", lambda: build_csv_zip(result), f"equaliser_reports_{rid}.zip",
-             "application/zip", "dl_zip")
-    download(d3, "Download JSON summary", lambda: build_json(result), f"equaliser_summary_{rid}.json",
-             "application/json", "dl_json")
-    download(d4, "Download evidence report (HTML)", lambda: build_html(result),
-             f"equaliser_evidence_{rid}.html", "text/html", "dl_html")
-
-    def paint(columns, color):
-        return lambda row: [f"background-color: {color}" if c in columns else "" for c in row.index]
-
-    def table(title, frame, note="", style=None):
-        st.subheader(f"{title} ({len(frame):,})")
-        if note:
-            st.caption(note)
-        if len(frame) > DISPLAY_ROWS:
-            st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(frame):,}; downloads contain every row.")
-        view = frame.head(DISPLAY_ROWS).astype("string").fillna("<NULL>")
-        try:  # highlighting needs jinja2; fall back to a plain grid
-            shown = view.style.apply(style, axis=1) if style and len(view) else view
-        except (ImportError, AttributeError):
-            shown = view
-        show_df(st, shown)
-
-    table("Checks", result["checks"])
-    if len(result["insights"]):
-        st.subheader("Why do rows differ?")
-        for f in result["insights"].itertuples():
-            st.markdown(f"- **{f.column}** ({f.rows:,} rows): {f.finding}")
-    if result["fast"]:
-        st.info("Full data validation only: profiling, data types, aggregations and distributions were skipped.")
-    if not result["columns"].empty:
-        table("Column profile", result["columns"],
-              "Null / distinct / numeric-sum totals and mismatches per column.")
-    if not result["nulls"].empty:
-        tokens = ", ".join(result["null_tokens"]) or "none"
-        table("Null / NA details", result["nulls"],
-              f"Real NULL, blank text and NULL-equivalent tokens ({tokens}) are all treated as NULL when comparing. "
-              "NULL->value / value->NULL count matched rows where only one side is NULL.")
-    if not result["fast"]:
-        table("Data types", result["dtypes"],
-              "Inferred from values (comparable across file and DB); WARN = compatible, e.g. integer vs decimal.")
-        table("Aggregations on critical columns", result["aggregations"],
-              "Count, distinct, sum, avg, min, max per column; tolerance applies to numeric metrics.")
-    if (result["schema"]["status"] != "On both sides").any():
-        table("Schema differences",
-              result["schema"][result["schema"]["status"] != "On both sides"])
-    if len(result["groups"]):
-        table("Row counts by group", result["groups"])
-    if len(result["distribution"]):
-        table("Value distribution differences", result["distribution"],
-              "Low-cardinality columns (<= 50 distinct): values whose counts differ.")
-    full = result["full"]
-    st.subheader(f"Full data comparison ({len(full):,} rows)")
-    counts = pd.Series(result["full_counts"])
-    cols = st.columns(4)
-    for c, name in zip(cols, ("MATCHED", "MISMATCH", "MISSING_IN_TARGET", "EXTRA_IN_TARGET")):
-        c.metric(name.replace("_", " ").title(), f"{int(counts.get(name, 0)):,}")
-    if not result["include_matched"]:
-        st.caption("Matched rows are not listed (counted only). Tick 'Include matched rows' in the rules to list them.")
-    shown_status = sorted(full["status"].unique())
-    chosen = st.multiselect("Show statuses", shown_status, default=shown_status, key="full_status")
-    view = full[full["status"].isin(chosen)]
-    if len(view) > DISPLAY_ROWS:
-        st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(view):,}; the Excel/CSV download has every row.")
-    view = view.head(DISPLAY_ROWS).astype("string").fillna("<NULL>")
-
-    def highlight(row):
-        bad = {c.strip() for c in row["mismatched_columns"].split(",") if c.strip()}
-        return ["background-color: #ffd6d6" if c.rsplit("_", 1)[0] in bad and c.endswith(("_source", "_target"))
-                else "background-color: #fff3c4" if row["status"] in ("MISSING_IN_TARGET", "EXTRA_IN_TARGET")
-                and c.endswith(("_source", "_target")) else "" for c in row.index]
-    try:  # cell highlighting needs jinja2; fall back to a plain grid
-        shown = view.style.apply(highlight, axis=1) if len(view.columns) < 60 else view
-    except (ImportError, AttributeError):
-        shown = view
-    show_df(st, shown)
-    for label, key in (("Duplicate records in source", "dup_source"), ("Duplicate records in target", "dup_target")):
-        if len(result[key]):
-            table(label, result[key], "Every row whose key appears more than once, with group size and occurrence #.",
-                  paint({"duplicate_count", "occurrence"}, "#f8cbad"))
-    table("Value mismatches", result["mismatches"],
-          f"{result['total_mismatch_cells']:,} mismatched cells in total. 'issue' tells NULL vs value apart from value differences."
-          + (" Detail capped at 100,000 rows." if result["mismatches_capped"] else ""),
-          paint({"column", "source", "target", "issue"}, "#ffd6d6"))
-    table("Rows only in source", result["only_in_source"])
-    table("Rows only in target", result["only_in_target"])
-
-
-WORKSPACE_STYLES = """
-<style>
-[data-testid="stSidebar"] {
-    background: #351765;
-    border-right: 1px solid #573582;
-}
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
-[data-testid="stSidebar"] a {
-    color: #f7f0ff;
-}
-[data-testid="stSidebar"] a {
-    display: block;
-    padding: .52rem .7rem;
-    border-radius: .45rem;
-    text-decoration: none;
-}
-[data-testid="stSidebar"] a:hover,
-[data-testid="stSidebar"] a:focus-visible {
-    background: #532b85;
-    text-decoration: underline;
-}
-.workspace-brand {
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    margin: .3rem 0 1.55rem;
-}
-.workspace-mark {
-    display: grid;
-    place-items: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: .7rem;
-    background: #f4eaff;
-    color: #58258a;
-    font-size: 1.35rem;
-    font-weight: 800;
-}
-.workspace-brand strong { font-size: 1.22rem; }
-.workspace-heading {
-    color: #554763;
-    font-size: .88rem;
-    padding: .7rem 0;
-    border-bottom: 1px solid #e0dae9;
-}
-[data-testid="stMainBlockContainer"] {
-    max-width: 90rem;
-    padding-top: 3.5rem;
-}
-[data-testid="stMain"] h1 { letter-spacing: -.04em; }
-[data-testid="stMain"] h2 { scroll-margin-top: 4rem; }
-[data-testid="stMain"] [data-testid="stExpander"] details,
-[data-testid="stMain"] [data-testid="stMetric"],
-[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
-    background: #fff;
-    border-radius: .7rem;
-}
-[data-testid="stMain"] [data-testid="stMetric"] {
-    border: 1px solid #e0dae9;
-    padding: .85rem;
-}
-</style>
-"""
-
-
-def workspace_navigation(has_data=False, has_result=False):
-    with st.sidebar:
-        st.markdown(
-            '<div class="workspace-brand"><span class="workspace-mark" aria-hidden="true">E</span>'
-            '<strong>Equaliser</strong></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("**Migration workspace**")
-        st.markdown("[Connections](#connections)\n\n[Source and target](#source-and-target)")
-        if has_data:
-            st.markdown("[Comparison rules](#comparison-rules)")
-        if has_result:
-            st.markdown("[Results and reports](#results-and-reports)")
-
-
-def main():
-    st.set_page_config(page_title=APP_NAME, layout="wide", initial_sidebar_state="expanded")
-    st.markdown(WORKSPACE_STYLES, unsafe_allow_html=True)
-    st.markdown(
-        '<div class="workspace-heading">Migration workspace / Reconciliation</div>',
-        unsafe_allow_html=True,
-    )
-    st.title("Migration reconciliation")
-    st.caption("Compare file or SQL results on either side, matched by key.")
-    config = load_config()
-    st.header("Connections", anchor="connections")
-    connections_panel(config)
-
-    st.header("Source and target", anchor="source-and-target")
-    left, right = st.columns(2)
-    with left.container(border=True):
-        load_src = side_input("Source (legacy)", "src", config)
-    with right.container(border=True):
-        load_tgt = side_input("Target (migrated)", "tgt", config)
-
-    if st.button("Load data", type="primary"):
-        st.session_state.pop("result", None)
-        try:
-            with st.spinner("Loading..."):
-                src, sname, shash, sinfo = load_src()
-                tgt, tname, thash, tinfo = load_tgt()
-            hashes = (shash, thash) if shash and thash else None
-            st.session_state["data"] = (src, tgt, (sname, tname), hashes, (sinfo, tinfo))
-        except Exception as err:
-            st.session_state.pop("data", None)
-            st.error(f"Could not load data: {err}")
-
-    data = st.session_state.get("data")
-    if not data:
-        st.info("Choose a source and a target, then press Load data.")
-        workspace_navigation()
-        return
-    src, tgt, names, hashes, infos = data
-    p1, p2 = st.columns(2)
-    for col, frame, name in ((p1, src, names[0]), (p2, tgt, names[1])):
-        col.caption(f"{name}: {len(frame):,} rows x {len(frame.columns)} columns")
-        show_df(col, frame.head(10).astype("string"))
-
-    st.header("Comparison rules", anchor="comparison-rules")
-    norm = lambda df: [str(c).strip().lower() for c in df.columns]
-    common = [c for c in norm(src) if c in set(norm(tgt))]
-    every = sorted(set(norm(src)) | set(norm(tgt)))
-    defaults = {"r_keys": [c for c in common if c in ("id", "pk")][:1], "r_ignore": [],
-                "r_agg": [], "r_group": [], "r_trim": True, "r_empty": True, "r_case": False,
-                "r_tol": 0.0, "r_fast": False, "r_matched": False, "r_nulltok": DEFAULT_NULL_TOKENS, "r_markers": DEFAULT_MARKERS, "r_cnt_abs": 0, "r_cnt_pct": 0.0}
-    rules = config["rules"]
-    pick = st.selectbox("Saved rule set", [""] + sorted(rules), format_func=lambda n: n or "-- none --")
-    if st.session_state.get("r_loaded") != pick or "r_trim" not in st.session_state:
-        for k, v in {**defaults, **rules.get(pick, {})}.items():
-            if isinstance(v, list):  # drop columns this dataset doesn't have
-                v = [c for c in v if c in every]
-            st.session_state[k] = v
-        st.session_state["r_loaded"] = pick
-
-    m = st.columns(2)
-    fast = m[0].checkbox("Full data validation only (fast: skips profiling, data types, aggregations, distributions)",
-                         key="r_fast")
-    inc_matched = m[1].checkbox("Include matched rows in the full-data result (slower, large exports)",
-                                key="r_matched")
-    keys = st.multiselect("Key column(s) - blank compares whole rows as a set", common, key="r_keys")
-    ignore = st.multiselect("Ignore columns (audit timestamps, surrogate keys...)", every, key="r_ignore")
-    agg_cols = st.multiselect("Critical columns for aggregations (blank = all numeric columns)",
-                              common, key="r_agg")
-    group_by = st.multiselect("Row counts by group (optional, e.g. region, load date)", common, key="r_group")
-    o = st.columns(4)
-    trim = o[0].checkbox("Trim whitespace", key="r_trim")
-    empty_null = o[1].checkbox("Treat empty text as NULL", key="r_empty")
-    nocase = o[2].checkbox("Ignore value case", key="r_case")
-    tol = o[3].number_input("Numeric tolerance", 0.0, format="%g", step=0.01, key="r_tol")
-    c = st.columns(3)
-    markers = c[0].text_input("Missing-value markers (counted as incomplete)", key="r_markers")
-    cnt_abs = c[1].number_input("Row-count tolerance (rows)", 0, key="r_cnt_abs")
-    cnt_pct = c[2].number_input("Row-count tolerance (%)", 0.0, format="%g", key="r_cnt_pct")
-
-    nulltok = st.text_input("Treat these values as NULL when comparing (comma-separated, case-insensitive; blank = off)",
-                            key="r_nulltok")
-
-    r1, r2 = st.columns([3, 1])
-    save_as = r1.text_input("Save these rules as", label_visibility="collapsed", placeholder="Save rules as…")
-    if r2.button("Save rules") and save_as.strip():
-        rules[save_as.strip()] = {k: st.session_state[k] for k in defaults}
-        save_config(config)
-        st.toast(f"Saved rules '{save_as.strip()}'")
-
-    if st.button("Run comparison", type="primary"):
-        try:
-            with st.spinner("Comparing..."):
-                st.session_state["result"] = compare(
-                    src, tgt, keys, ignore, trim, empty_null, nocase, tol,
-                    agg_cols=agg_cols, markers=markers.split(","), count_tol_abs=cnt_abs,
-                    count_tol_pct=cnt_pct, group_by=group_by, file_hashes=hashes,
-                    fast=fast, include_matched=inc_matched,
-                    null_tokens=nulltok.split(","),
-                    evidence=new_evidence(infos[0], infos[1], {
-                        "keys": keys or "(whole row)", "ignored columns": ignore or "(none)",
-                        "aggregation columns": agg_cols or "(all numeric)", "group by": group_by or "(none)",
-                        "trim whitespace": trim, "empty text is NULL": empty_null, "ignore value case": nocase,
-                        "numeric tolerance": tol, "values treated as NULL": nulltok or "(off)",
-                        "missing-value markers": markers, "row-count tolerance (rows)": cnt_abs,
-                        "row-count tolerance (%)": cnt_pct, "full data validation only": fast,
-                        "matched rows listed": inc_matched}))
-        except Exception as err:
-            st.session_state.pop("result", None)
-            st.error(f"Comparison failed: {err}")
-
-    if "result" in st.session_state:
-        st.header("Results and reports", anchor="results-and-reports")
-        show_result(st.session_state["result"], names)
-    workspace_navigation(has_data=True, has_result="result" in st.session_state)
-
-
-if __name__ == "__main__":
-    main()

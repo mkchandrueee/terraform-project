@@ -2,7 +2,19 @@
 In this project we use terraform to automate aws and azure colud resources.
 
 ## Equaliser (data migration testing)
-Lightweight single-file Streamlit app: `pip install -r requirements.txt && streamlit run datarecon.py   # file name unchanged for compatibility`.
+Equaliser uses a React workspace and a local FastAPI server. From the repository root, with Python 3.11+ and Node.js 20.19+ or 22.12+:
+
+```sh
+python -m pip install -r requirements.txt
+npm --prefix frontend ci
+npm --prefix frontend run build
+python -m uvicorn datarecon_api:app --host 127.0.0.1 --port 8000
+```
+
+Open [Equaliser](http://127.0.0.1:8000). The workspace is designed for a single local operator. The server reads connections, saved queries, and rules from the existing local profile.
+
+For frontend development, leave Uvicorn running and use `npm --prefix frontend run dev`.
+
 Source and target can each be a file (CSV/XLSX/Parquet) or a SQL query; rows are matched by key (order-independent).
 
 Validations: column/row counts (with abs/% tolerance and group-by breakdown), missing/extra rows, cell mismatches,

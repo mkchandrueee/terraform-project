@@ -7,3 +7,6 @@ demo/.demo.key
 demo/data/
 demo/.demo_profile.json
 demo/.demo.key
+.venv/
+frontend/node_modules/
+frontend/dist/
