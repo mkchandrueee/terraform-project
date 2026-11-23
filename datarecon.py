@@ -1236,18 +1236,104 @@ def show_result(result, names):
     table("Rows only in target", result["only_in_target"])
 
 
+WORKSPACE_STYLES = """
+<style>
+[data-testid="stSidebar"] {
+    background: #351765;
+    border-right: 1px solid #573582;
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] a {
+    color: #f7f0ff;
+}
+[data-testid="stSidebar"] a {
+    display: block;
+    padding: .52rem .7rem;
+    border-radius: .45rem;
+    text-decoration: none;
+}
+[data-testid="stSidebar"] a:hover,
+[data-testid="stSidebar"] a:focus-visible {
+    background: #532b85;
+    text-decoration: underline;
+}
+.workspace-brand {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin: .3rem 0 1.55rem;
+}
+.workspace-mark {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: .7rem;
+    background: #f4eaff;
+    color: #58258a;
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+.workspace-brand strong { font-size: 1.22rem; }
+.workspace-heading {
+    color: #554763;
+    font-size: .88rem;
+    padding: .7rem 0;
+    border-bottom: 1px solid #e0dae9;
+}
+[data-testid="stMainBlockContainer"] {
+    max-width: 90rem;
+    padding-top: 3.5rem;
+}
+[data-testid="stMain"] h1 { letter-spacing: -.04em; }
+[data-testid="stMain"] h2 { scroll-margin-top: 4rem; }
+[data-testid="stMain"] [data-testid="stExpander"] details,
+[data-testid="stMain"] [data-testid="stMetric"],
+[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
+    background: #fff;
+    border-radius: .7rem;
+}
+[data-testid="stMain"] [data-testid="stMetric"] {
+    border: 1px solid #e0dae9;
+    padding: .85rem;
+}
+</style>
+"""
+
+
+def workspace_navigation(has_data=False, has_result=False):
+    with st.sidebar:
+        st.markdown(
+            '<div class="workspace-brand"><span class="workspace-mark" aria-hidden="true">E</span>'
+            '<strong>Equaliser</strong></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("**Migration workspace**")
+        st.markdown("[Connections](#connections)\n\n[Source and target](#source-and-target)")
+        if has_data:
+            st.markdown("[Comparison rules](#comparison-rules)")
+        if has_result:
+            st.markdown("[Results and reports](#results-and-reports)")
+
+
 def main():
-    st.set_page_config(page_title=APP_NAME, layout="wide")
-    st.title(f"{APP_NAME} - migration reconciliation")
+    st.set_page_config(page_title=APP_NAME, layout="wide", initial_sidebar_state="expanded")
+    st.markdown(WORKSPACE_STYLES, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="workspace-heading">Migration workspace / Reconciliation</div>',
+        unsafe_allow_html=True,
+    )
+    st.title("Migration reconciliation")
     st.caption("Compare file or SQL results on either side, matched by key.")
     config = load_config()
+    st.header("Connections", anchor="connections")
     connections_panel(config)
 
-    st.header("1 - Source and target")
+    st.header("Source and target", anchor="source-and-target")
     left, right = st.columns(2)
-    with left:
+    with left.container(border=True):
         load_src = side_input("Source (legacy)", "src", config)
-    with right:
+    with right.container(border=True):
         load_tgt = side_input("Target (migrated)", "tgt", config)
 
     if st.button("Load data", type="primary"):
@@ -1265,6 +1351,7 @@ def main():
     data = st.session_state.get("data")
     if not data:
         st.info("Choose a source and a target, then press Load data.")
+        workspace_navigation()
         return
     src, tgt, names, hashes, infos = data
     p1, p2 = st.columns(2)
@@ -1272,7 +1359,7 @@ def main():
         col.caption(f"{name}: {len(frame):,} rows x {len(frame.columns)} columns")
         show_df(col, frame.head(10).astype("string"))
 
-    st.header("2 - Rules")
+    st.header("Comparison rules", anchor="comparison-rules")
     norm = lambda df: [str(c).strip().lower() for c in df.columns]
     common = [c for c in norm(src) if c in set(norm(tgt))]
     every = sorted(set(norm(src)) | set(norm(tgt)))
@@ -1340,8 +1427,9 @@ def main():
             st.error(f"Comparison failed: {err}")
 
     if "result" in st.session_state:
-        st.header("3 - Results")
+        st.header("Results and reports", anchor="results-and-reports")
         show_result(st.session_state["result"], names)
+    workspace_navigation(has_data=True, has_result="result" in st.session_state)
 
 
 if __name__ == "__main__":
