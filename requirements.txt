@@ -1,0 +1,14 @@
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.18,<1
+xlrd>=2,<3
+pandas>=2.2
+sqlalchemy>=2.0
+openpyxl
+jinja2
+xlsxwriter
+pyarrow
+cryptography      # encrypted saved passwords
+psycopg2-binary   # PostgreSQL
+pymysql           # MySQL
+pyodbc            # SQL Server (needs ODBC Driver 18)
