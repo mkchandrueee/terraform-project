@@ -1,0 +1,36 @@
+{
+  "default_source_connection": "Legacy system",
+  "default_target_connection": "New platform",
+
+  "connections": {
+    "Legacy system": {
+      "database_type": "PostgreSQL",
+      "host": "legacy-db.example.com",
+      "port": 5432,
+      "database": "sales",
+      "username": "readonly_user",
+      "password_env": "EQUALISER_LEGACY_PASSWORD"
+    },
+    "New platform": {
+      "database_type": "SQL Server",
+      "host": "new-db.example.com",
+      "port": 1433,
+      "database": "dw",
+      "username": "readonly_user",
+      "password_env": "EQUALISER_NEW_PASSWORD"
+    }
+  },
+
+  "queries": {
+    "Customers (legacy)": "SELECT * FROM public.customers ORDER BY customer_id"
+  },
+
+  "batches": {
+    "Customer migration": [
+      {"test": "Customers", "source_connection": "Legacy system", "source_sql": "SELECT * FROM public.customers",
+       "target_connection": "New platform", "target_sql": "SELECT * FROM dbo.customers", "keys": "customer_id", "ignore": "etl_loaded_at"},
+      {"test": "Orders", "source_connection": "Legacy system", "source_sql": "SELECT * FROM public.orders",
+       "target_connection": "New platform", "target_sql": "SELECT * FROM dbo.orders", "keys": "order_id", "ignore": ""}
+    ]
+  }
+}

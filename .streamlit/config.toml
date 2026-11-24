@@ -1,0 +1,6 @@
+# Streamlit defaults raise "File must be 200.0MB or smaller" for uploads; Equaliser handles larger files.
+[server]
+maxUploadSize = 2048
+
+[browser]
+gatherUsageStats = false

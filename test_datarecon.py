@@ -237,3 +237,156 @@ def test_leading_zero_explanation_is_not_called_rounding():
     tgt = pd.DataFrame({"id": list("abcd"), "zip": ["2134", "501", "7001", "10001"]})
     text = " ".join(compare(src, tgt, keys=["id"])["insights"].finding)
     assert "Leading zeros lost" in text and "rounded" not in text
+
+
+# ---------------------------------------------------------------- default connections (config file)
+def _write_cfg(path, **extra):
+    import json
+    cfg = {"connections": {
+        "Legacy (default)": {"database_type": "SQLite", "database": "/tmp/legacy.db"},
+        "PG default": {"database_type": "PostgreSQL", "host": "h", "database": "d", "username": "u", "password_env": "EQ_TEST_PW"},
+        "Broken": {"database_type": "Oracle", "database": "x"},
+        "NoDb": {"database_type": "SQLite"}},
+        "default_source_connection": "Legacy (default)", **extra}
+    path.write_text(json.dumps(cfg))
+
+
+def test_default_connections_load_merge_and_are_never_saved(tmp_path, monkeypatch):
+    import json, datarecon
+    cfg = tmp_path / "equaliser_config.json"
+    _write_cfg(cfg)
+    monkeypatch.setenv("EQUALISER_CONFIG", str(cfg))
+    monkeypatch.setattr(datarecon, "PROFILE_FILE", tmp_path / "profile.json")
+    (tmp_path / "profile.json").write_text(json.dumps({"connections": {"Mine": {"database_type": "SQLite", "database": "m.db"}}}))
+    c = datarecon.load_config()
+    assert {"Legacy (default)", "PG default", "Mine"} <= set(c["connections"])
+    assert "Broken" not in c["connections"] and "NoDb" not in c["connections"]            # invalid entries skipped...
+    assert len(c["_defaults_problems"]) == 2                                              # ...and reported
+    assert c["_default_names"]["connections"] == {"Legacy (default)", "PG default"}
+    assert c["_default_source"] == "Legacy (default)" and c["connections"]["PG default"]["port"] == 5432
+    datarecon.save_config(c)                                                              # defaults must stay out of the user profile
+    saved = json.loads((tmp_path / "profile.json").read_text())
+    assert set(saved["connections"]) == {"Mine"} and not any(k.startswith("_") for k in saved)
+
+
+def test_default_connection_password_sources(tmp_path, monkeypatch):
+    import datarecon
+    monkeypatch.setattr(datarecon, "KEY_FILE", tmp_path / "k.key")
+    monkeypatch.setenv("EQ_TEST_PW", "from-env")
+    assert datarecon.resolve_conn_password({"password_env": "EQ_TEST_PW", "password": "plain"}) == "from-env"   # env wins
+    token = datarecon.encrypt_password("from-token")
+    assert datarecon.resolve_conn_password({"password_env": "NOT_SET_ANYWHERE", "password_enc": token}) == "from-token"
+    assert datarecon.resolve_conn_password({"password": "plain"}) == "plain"
+    assert datarecon.resolve_conn_password({}) == ""
+
+
+def test_missing_config_is_not_an_error(tmp_path, monkeypatch):
+    import datarecon
+    monkeypatch.delenv("EQUALISER_CONFIG", raising=False)
+    monkeypatch.setattr(datarecon, "PROFILE_FILE", tmp_path / "none.json")
+    monkeypatch.setenv("EQUALISER_CONFIG", str(tmp_path / "absent.json"))
+    c = datarecon.load_config()
+    assert c["connections"] == {} and "not found" in c["_defaults_problems"][0]
+
+
+# ---------------------------------------------------------------- batch: many queries in one run
+def _batch_dbs(tmp_path):
+    import sqlite3
+    src, tgt = tmp_path / "src.db", tmp_path / "tgt.db"
+    a = pd.DataFrame({"id": [1, 2, 3, 4], "name": ["a", "b", "c", "d"], "amt": [10.0, 20.0, 30.0, 40.0]})
+    for path, frame in ((src, a), (tgt, a.assign(name=["a", "B", "c", "d"]))):
+        con = sqlite3.connect(path); frame.to_sql("t", con, index=False); a.assign(amt=1.0).to_sql("u", con, index=False); con.close()
+    conns = {"S": {"database_type": "SQLite", "database": str(src)}, "T": {"database_type": "SQLite", "database": str(tgt)}}
+    return conns
+
+
+def _tests():
+    row = lambda name, ssql, tsql, keys="id", ignore="": {"test": name, "source_connection": "S", "source_sql": ssql,
+                                                          "target_connection": "T", "target_sql": tsql, "keys": keys, "ignore": ignore}
+    return [row("same table", "SELECT * FROM u ORDER BY id", "SELECT * FROM u ORDER BY id"),
+            row("name differs", "SELECT * FROM t", "SELECT * FROM t"),
+            row("bad sql", "SELECT * FROM missing_table", "SELECT * FROM t"),
+            row("ignored column", "SELECT * FROM t", "SELECT * FROM t", ignore="name")]
+
+
+def test_parse_tests_reports_every_problem():
+    import datarecon
+    bad = pd.DataFrame([{"test": "a", "source_connection": "S", "source_sql": "", "target_connection": "T", "target_sql": "x"},
+                        {"test": "a", "source_connection": "S", "source_sql": "q", "target_connection": "", "target_sql": "x"}])
+    try:
+        datarecon.parse_tests(bad)
+        raise AssertionError("expected ValueError")
+    except ValueError as err:
+        text = str(err)
+    assert "Row 1: 'source_sql' is empty" in text and "Row 2: 'target_connection' is empty" in text and "duplicate test name 'a'" in text
+    try:
+        datarecon.parse_tests(pd.DataFrame({"test": ["x"]}))
+        raise AssertionError("expected ValueError")
+    except ValueError as err:
+        assert "Missing column(s)" in str(err)
+
+
+def test_run_batch_isolates_errors_and_reports_each_test(tmp_path):
+    import datarecon
+    conns, progress = _batch_dbs(tmp_path), []
+    tests = datarecon.parse_tests(pd.DataFrame(_tests()))
+    batch = datarecon.run_batch(tests, conns, lambda name: "", progress=lambda d, t, n: progress.append((d, t)))
+    status = {r["test"]: r["status"] for r in batch["records"]}
+    assert status == {"same table": "PASS", "name differs": "FAIL", "bad sql": "ERROR", "ignored column": "PASS"}   # error did not stop the run
+    assert "missing_table" in [r for r in batch["records"] if r["test"] == "bad sql"][0]["error"]
+    assert progress[0] == (0, 4) and progress[-1] == (4, 4)
+    s = datarecon.batch_summary(batch).set_index("test")
+    assert s.loc["name differs", "mismatched_cells"] == 1 and s.loc["same table", "mismatched_cells"] == 0
+    assert "OperationalError" in s.loc["bad sql", "error"]
+
+
+def test_combined_workbook_has_every_test_and_every_sql(tmp_path):
+    import io, openpyxl, datarecon
+    batch = datarecon.run_batch(datarecon.parse_tests(pd.DataFrame(_tests())), _batch_dbs(tmp_path), lambda n: "")
+    wb = openpyxl.load_workbook(io.BytesIO(datarecon.build_batch_xlsx(batch)))
+    assert wb.sheetnames[:2] == ["Batch Summary", "Batch Run Info"]
+    assert {"All Checks", "All Mismatches", "T02 Full Data"} <= set(wb.sheetnames)
+    assert "T01 Full Data" not in wb.sheetnames and "T04 Full Data" not in wb.sheetnames   # passing tests have no differing rows to list
+    assert "T03 Full Data" not in wb.sheetnames                                      # the errored test has no result to detail
+    summary = {r[1]: r[-1] for r in wb["Batch Summary"].iter_rows(min_row=2, values_only=True)}
+    assert summary["name differs"] == "T02 Full Data" and not summary["same table"]  # summary names only sheets that exist
+    info = " ".join(str(c.value) for row in wb["Batch Run Info"].iter_rows() for c in row)
+    for sql in ("SELECT * FROM u ORDER BY id", "SELECT * FROM missing_table"):      # both SQLs, including the failed test's
+        assert sql in info
+    assert "same table" in info and "bad sql" in info and "Batch ID" in info
+    mism = list(wb["All Mismatches"].iter_rows(values_only=True))
+    assert mism[0][:3] == ("test", "key", "column") and mism[1][0] == "name differs" and mism[1][1] == "id=2"
+    assert len(wb["Batch Summary"].conditional_formatting) > 0 and len(wb["All Mismatches"].conditional_formatting) > 0
+    lean = openpyxl.load_workbook(io.BytesIO(datarecon.build_batch_xlsx(batch, detail_sheets=False)))
+    assert not any(n.endswith("Full Data") for n in lean.sheetnames)
+
+
+def test_batch_html_and_json(tmp_path):
+    import json, hashlib, datarecon
+    batch = datarecon.run_batch(datarecon.parse_tests(pd.DataFrame(_tests())), _batch_dbs(tmp_path), lambda n: "")
+    doc = datarecon.build_batch_html(batch).decode()
+    assert "Batch Evidence Report" in doc and "ATTENTION" in doc and doc.count("<details>") == 4
+    assert "SELECT * FROM missing_table" in doc and "OperationalError" in doc
+    body = doc.split("<body>")[1].split("<footer>")[0]
+    assert hashlib.sha256(body.encode()).hexdigest() in doc
+    js = json.loads(datarecon.build_batch_json(batch))
+    assert [t["status"] for t in js["tests"]] == ["PASS", "FAIL", "ERROR", "PASS"] and js["summary"][1]["mismatched_cells"] == 1
+
+
+def test_large_stacked_sheets_split_never_truncate(monkeypatch, tmp_path):
+    import datarecon
+    monkeypatch.setattr(datarecon, "EXPORT_ROW_CAP", 3)
+    batch = datarecon.run_batch(datarecon.parse_tests(pd.DataFrame(_tests()[:1])), _batch_dbs(tmp_path), lambda n: "")
+    parts = datarecon._batch_parts(batch)
+    checks = [n for n in parts if n.startswith("All Checks")]
+    assert len(checks) > 1 and sum(len(parts[n][1]) for n in checks) == len(batch["records"][0]["result"]["checks"])
+
+
+def test_plaintext_password_in_config_is_flagged(tmp_path, monkeypatch):
+    import json, datarecon
+    cfg = tmp_path / "c.json"
+    cfg.write_text(json.dumps({"connections": {"X": {"database_type": "SQLite", "database": "x.db", "password": "hunter2"}}}))
+    monkeypatch.setenv("EQUALISER_CONFIG", str(cfg))
+    defaults, path, problems = datarecon.load_default_config()
+    assert "X" in defaults["connections"] and any("plain-text password" in p for p in problems)
+    assert "hunter2" not in " ".join(problems)                  # the warning never echoes the secret

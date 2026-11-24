@@ -75,21 +75,96 @@ DB_DEFAULTS = {"PostgreSQL": 5432, "SQL Server": 1433, "MySQL": 3306, "SQLite": 
 # --------------------------------------------------------------------------
 # Saved profiles (connections + named queries; passwords never written)
 # --------------------------------------------------------------------------
+def default_config_path():
+    """Shared defaults file: $EQUALISER_CONFIG, else equaliser_config.json beside the app, else ~/.equaliser_config.json."""
+    env = os.environ.get("EQUALISER_CONFIG")
+    if env:
+        return Path(env)
+    for candidate in (Path(__file__).resolve().with_name("equaliser_config.json"), Path.home() / ".equaliser_config.json"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def load_default_config():
+    """Read the shared defaults file. Returns (defaults dict, path or None, list of problems)."""
+    path, problems = default_config_path(), []
+    out = {"connections": {}, "queries": {}, "rules": {}, "batches": {}}
+    if path is None:
+        return out, None, problems
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return out, path, [f"Config file not found: {path}"]
+    except (OSError, json.JSONDecodeError) as err:
+        return out, path, [f"Could not read {path}: {err}"]
+    for section in out:
+        value = raw.get(section, {})
+        if isinstance(value, dict):
+            out[section] = value
+        elif value:
+            problems.append(f"'{section}' must be an object; ignored.")
+    for name, conn in list(out["connections"].items()):
+        if not isinstance(conn, dict) or not conn.get("database_type") or not conn.get("database"):
+            problems.append(f"Connection '{name}' needs database_type and database; ignored.")
+            del out["connections"][name]
+        elif conn["database_type"] not in DB_DEFAULTS:
+            problems.append(f"Connection '{name}': unknown database_type '{conn['database_type']}'; ignored.")
+            del out["connections"][name]
+        else:
+            conn.setdefault("host", "")
+            conn["port"] = int(conn.get("port") or DB_DEFAULTS[conn["database_type"]])
+            conn.setdefault("username", "")
+            if conn.get("password"):
+                problems.append(f"Connection '{name}' keeps a plain-text password in the config file. "
+                                "Use \"password_env\" (an environment variable) or \"password_enc\" instead.")
+    for key in ("default_source_connection", "default_target_connection", "default_connection"):
+        if raw.get(key):
+            out[key] = str(raw[key])
+    return out, path, problems
+
+
+def resolve_conn_password(conn):
+    """Password for a connection: environment variable named by password_env, else password_enc, else password."""
+    env_name = conn.get("password_env")
+    if env_name and os.environ.get(env_name):
+        return os.environ[env_name]
+    if conn.get("password_enc"):
+        pw = decrypt_password(conn["password_enc"])
+        if pw:
+            return pw
+    return conn.get("password", "") or ""
+
+
 def load_config():
+    """User profile merged with the shared defaults file (defaults win on a name clash and are read-only)."""
     try:
         config = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         config = {}
-    config.setdefault("connections", {})
-    config.setdefault("queries", {})
-    config.setdefault("rules", {})
+    for section in ("connections", "queries", "rules", "batches"):
+        config.setdefault(section, {})
+    defaults, path, problems = load_default_config()
+    config["_default_names"] = {}
+    for section in ("connections", "queries", "rules", "batches"):
+        config["_default_names"][section] = set(defaults[section])
+        config[section] = {**config[section], **defaults[section]}
+    config["_defaults_path"], config["_defaults_problems"] = path, problems
+    config["_default_source"] = defaults.get("default_source_connection") or defaults.get("default_connection")
+    config["_default_target"] = defaults.get("default_target_connection") or defaults.get("default_connection")
     return config
 
 
 def save_config(config):
+    """Persist only the user's own entries; default (config-file) entries and internal keys are never written."""
+    defaults = config.get("_default_names", {})
+    clean = {k: v for k, v in config.items() if not k.startswith("_")}
+    for section, names in defaults.items():
+        if section in clean:
+            clean[section] = {k: v for k, v in clean[section].items() if k not in names}
     PROFILE_FILE.parent.mkdir(parents=True, exist_ok=True)
     PROFILE_FILE.write_text(
-        json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(clean, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     try:  # may hold encrypted passwords: owner-only
         os.chmod(PROFILE_FILE, 0o600)
@@ -685,7 +760,7 @@ def compare(src, tgt, keys=(), ignore=(), trim=True, empty_is_null=True,
         "passed": bool((checks["status"] != "FAIL").all()),
         "mode": ("whole-row (no key)" if row_mode else f"key: {', '.join(keys)}")
                 + (" | full data validation only" if fast else ""),
-        "fast": fast, "seconds": round(time.perf_counter() - started, 1),
+        "fast": fast, "keys": list(keys), "seconds": round(time.perf_counter() - started, 1),
         "evidence": evidence or new_evidence(),
         "checks": checks, "columns": profile, "schema": schema,
         "dtypes": dtypes, "aggregations": aggs, "insights": insights, "full": full,
@@ -733,6 +808,13 @@ def _highlight_sheet(writer, sheet, base, frame):
     cols, last = list(frame.columns), max(len(frame), 1)
     ws.freeze_panes(1, 0)
     ws.set_column(0, max(len(cols) - 1, 0), 18)
+    if base == "Batch Run Info":  # test / section / item / value
+        wrap = book.add_format({"text_wrap": True, "valign": "top"})
+        ws.set_column(0, 0, 26)
+        ws.set_column(1, 1, 12)
+        ws.set_column(2, 2, 26, wrap)
+        ws.set_column(3, 3, 120, wrap)
+        return
     if base == "Run Info":  # SQL text needs a wide, wrapped cell
         wrap = book.add_format({"text_wrap": True, "valign": "top"})
         ws.set_column(0, 0, 14)
@@ -754,13 +836,15 @@ def _highlight_sheet(writer, sheet, base, frame):
                 rule(i, i + 1, f'=OR(${st_}2="MISSING_IN_TARGET",${st_}2="EXTRA_IN_TARGET")', yellow)
         rule(cols.index("status"), cols.index("mismatched_columns"), f'=${st_}2="MISMATCH"', red)
         rule(cols.index("status"), cols.index("status"), f'=OR(${st_}2="MISSING_IN_TARGET",${st_}2="EXTRA_IN_TARGET")', yellow)
-    elif base == "Mismatches" and "source" in cols:
+    elif base in ("Mismatches", "All Mismatches") and "source" in cols:
         rule(cols.index("source"), cols.index("target"), "=TRUE", red)
         rule(cols.index("column"), cols.index("column"), "=TRUE", red)
     elif base.startswith("Duplicates") and "duplicate_count" in cols:
         rule(0, 1, "=TRUE", orange)
-    elif base == "Checks":
-        for word, fmt in (("FAIL", red), ("WARN", yellow)):
+    elif base == "All Duplicates" and "duplicate_count" in cols:
+        rule(cols.index("duplicate_count"), cols.index("duplicate_count"), "=TRUE", orange)
+    elif base in ("Checks", "All Checks", "Batch Summary"):
+        for word, fmt in (("FAIL", red), ("ERROR", red), ("WARN", yellow)):
             rule(cols.index("status"), cols.index("status"), f'=${xl_col_to_name(cols.index("status"))}2="{word}"', fmt)
     elif base in ("Null Details", "Columns", "Data Types", "Aggregations") and "status" in cols:
         col = xl_col_to_name(cols.index("status"))
@@ -905,7 +989,7 @@ def _table(frame, cell_class=None, cap=HTML_ROWS):
     return f'<div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>{note}'
 
 
-def build_html(result):
+def _report_body(result):
     """Self-contained evidence report with the same sections and highlighting as the Streamlit page."""
     ev = result.get("evidence") or {}
     esc = html.escape
@@ -981,12 +1065,290 @@ def build_html(result):
     section("Rows only in source", _table(result["only_in_source"]))
     section("Rows only in target", _table(result["only_in_target"]))
 
-    body = "\n".join(parts)
+    return "\n".join(parts)
+
+
+def build_html(result):
+    """Self-contained evidence report with the same sections and highlighting as the Streamlit page."""
+    ev = result.get("evidence") or {}
+    esc = html.escape
+    body = _report_body(result)
     fingerprint = hashlib.sha256(body.encode("utf-8")).hexdigest()
     footer = (f'<footer>Report content SHA-256: {fingerprint}<br>Generated by {APP_NAME} v{esc(ev.get("tool_version", ""))}. '
               f'Re-hash the body to detect changes; the Excel/CSV reports carry the full data.</footer>')
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{APP_NAME} evidence {esc(ev.get("run_id", ""))}</title>'
             f"<style>{_CSS}</style></head><body>{body}{footer}</body></html>").encode("utf-8")
+
+
+# --------------------------------------------------------------------------
+# Batch: many source/target query pairs in one run, reported in one workbook
+# --------------------------------------------------------------------------
+BATCH_COLUMNS = ["test", "source_connection", "source_sql", "target_connection", "target_sql", "keys", "ignore"]
+BATCH_REQUIRED = BATCH_COLUMNS[:5]
+
+
+def _split(text_):
+    return [x.strip() for x in str(text_ or "").split(",") if x.strip()]
+
+
+def parse_tests(frame):
+    """Validate a test table into a list of dicts. Raises ValueError naming every problem."""
+    frame = frame.copy()
+    frame.columns = [str(c).strip().lower() for c in frame.columns]
+    missing = [c for c in BATCH_REQUIRED if c not in frame.columns]
+    if missing:
+        raise ValueError(f"Missing column(s): {', '.join(missing)}. Expected: {', '.join(BATCH_COLUMNS)}.")
+    tests, problems, seen = [], [], set()
+    for position, (_, row) in enumerate(frame.iterrows(), 1):
+        vals = {c: ("" if c not in row or pd.isna(row[c]) else str(row[c]).strip()) for c in BATCH_COLUMNS}
+        if not any(vals.values()):
+            continue  # blank row from the editor
+        problems += [f"Row {position}: '{c}' is empty." for c in BATCH_REQUIRED if not vals[c]]
+        if vals["test"] in seen:
+            problems.append(f"Row {position}: duplicate test name '{vals['test']}'.")
+        seen.add(vals["test"])
+        tests.append(vals)
+    if problems:
+        raise ValueError("\n".join(problems))
+    if not tests:
+        raise ValueError("Add at least one test.")
+    return tests
+
+
+def _db_info(name, conn, sql, max_rows, frame):
+    return {"input_type": "Database query", "name": f"{name} query", "connection": name,
+            "database_type": conn["database_type"], "host": conn.get("host", ""), "port": conn.get("port", ""),
+            "database": conn["database"], "username": conn.get("username", ""),
+            "sql": sql.strip(), "sql_sha256": hashlib.sha256(sql.strip().encode("utf-8")).hexdigest(),
+            "max_rows": int(max_rows), "rows": len(frame), "columns": len(frame.columns),
+            "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
+
+
+def default_batch_rules():
+    return {"keys": [], "ignore": [], "agg_cols": [], "group_by": [], "trim": True, "empty_is_null": True,
+            "ignore_case": False, "tol": 0.0, "null_tokens": _split(DEFAULT_NULL_TOKENS),
+            "markers": _split(DEFAULT_MARKERS), "count_tol_abs": 0, "count_tol_pct": 0.0,
+            "fast": False, "include_matched": False}
+
+
+def run_batch(tests, connections, password_for, rules=None, max_rows=0, progress=None):
+    """Run every test in order. A failing test is recorded as ERROR and never stops the run.
+
+    connections: name -> connection dict; password_for(name) -> password; progress(done, total, current_test).
+    """
+    rules = {**default_batch_rules(), **(rules or {})}
+    started = time.perf_counter()
+    batch = {"batch_id": uuid.uuid4().hex[:12].upper(),
+             "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+             "run_by": new_evidence()["run_by"], "rules": rules, "records": []}
+    for index, test in enumerate(tests, 1):
+        if progress:
+            progress(index - 1, len(tests), test["test"])
+        rec = {"index": index, "test": test["test"], "status": "ERROR", "error": "", "result": None,
+               "seconds": 0.0, "source_info": {}, "target_info": {}}
+        t0 = time.perf_counter()
+        frames = {}
+        try:
+            for side in ("source", "target"):
+                cname = test[f"{side}_connection"]
+                if cname not in connections:
+                    raise ValueError(f"{side} connection '{cname}' is not defined.")
+            for side in ("source", "target"):
+                cname, sql = test[f"{side}_connection"], test[f"{side}_sql"]
+                frames[side] = run_query(connections[cname], password_for(cname), sql, max_rows)
+                rec[f"{side}_info"] = _db_info(cname, connections[cname], sql, max_rows, frames[side])
+            keys = _split(test.get("keys")) or list(rules["keys"])
+            ignore = _split(test.get("ignore")) + list(rules["ignore"])
+            shown = {"keys": keys or "(whole row)", "ignored columns": ignore or "(none)",
+                     "trim whitespace": rules["trim"], "empty text is NULL": rules["empty_is_null"],
+                     "ignore value case": rules["ignore_case"], "numeric tolerance": rules["tol"],
+                     "values treated as NULL": ", ".join(rules["null_tokens"]) or "(off)",
+                     "full data validation only": rules["fast"], "matched rows listed": rules["include_matched"],
+                     "batch ID": batch["batch_id"]}
+            result = compare(
+                frames["source"], frames["target"], keys=keys, ignore=ignore, trim=rules["trim"],
+                empty_is_null=rules["empty_is_null"], ignore_case=rules["ignore_case"], tol=rules["tol"],
+                agg_cols=rules["agg_cols"], markers=rules["markers"], count_tol_abs=rules["count_tol_abs"],
+                count_tol_pct=rules["count_tol_pct"], group_by=rules["group_by"], fast=rules["fast"],
+                include_matched=rules["include_matched"], null_tokens=rules["null_tokens"],
+                evidence=new_evidence(rec["source_info"], rec["target_info"], shown))
+            rec["result"], rec["status"] = result, ("PASS" if result["passed"] else "FAIL")
+        except Exception as err:
+            rec["error"] = f"{type(err).__name__}: {err}"
+        finally:
+            frames.clear()  # release both data sets before the next test
+        rec["seconds"] = round(time.perf_counter() - t0, 1)
+        batch["records"].append(rec)
+    if progress:
+        progress(len(tests), len(tests), "")
+    batch["seconds"] = round(time.perf_counter() - started, 1)
+    return batch
+
+
+def batch_summary(batch):
+    rows = []
+    for rec in batch["records"]:
+        res = rec["result"]
+        row = {"#": rec["index"], "test": rec["test"], "status": rec["status"]}
+        if res:
+            counts = res["full_counts"]
+            row.update({"source_rows": res["source_rows"], "target_rows": res["target_rows"], "matched": counts["MATCHED"],
+                        "mismatch_rows": counts["MISMATCH"], "missing_in_target": counts["MISSING_IN_TARGET"],
+                        "extra_in_target": counts["EXTRA_IN_TARGET"], "mismatched_cells": res["total_mismatch_cells"],
+                        "duplicate_key_rows": len(res["dup_source"]) + len(res["dup_target"])})
+        row.update({"seconds": rec["seconds"], "error": rec["error"]})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _key_text(frame, keys):
+    """Key columns as one readable string per row, e.g. 'id=5 | region=EU'."""
+    if frame.empty:
+        return pd.Series([], dtype="string")
+    out = None
+    for k in keys:
+        part = f"{k}=" + frame[k].astype("string").fillna("<NULL>")
+        out = part if out is None else out + " | " + part
+    return out
+
+
+def _row_text(frame, keys):
+    """The non-key values of each row as 'col=value; col=value'."""
+    values = [c for c in frame.columns if c not in keys]
+    out = pd.Series([""] * len(frame), index=frame.index, dtype="string")
+    for c in values:
+        part = f"{c}=" + frame[c].astype("string").fillna("<NULL>")
+        out = part if (out == "").all() else out + "; " + part
+    return out
+
+
+def _info_rows(source, target):
+    rows = []
+    for section, info in (("Source", source), ("Target", target)):
+        for key, label in _INFO_LABELS.items():
+            if info.get(key) not in (None, ""):
+                rows.append((section, label, str(info[key])))
+    return rows
+
+
+def batch_frames(batch):
+    """Stacked tables across all tests: name -> (highlight base, DataFrame)."""
+    recs = batch["records"]
+    summary = batch_summary(batch)
+    summary["detail_sheet"] = [f"T{r['index']:02d} Full Data" if r["result"] is not None and len(r["result"]["full"]) else "" for r in recs]
+    counts = summary["status"].value_counts()
+    info = [("(batch)", "Batch", "Batch ID", batch["batch_id"]), ("(batch)", "Batch", "Generated (UTC)", batch["generated_utc"]),
+            ("(batch)", "Batch", "Run by (OS user)", batch["run_by"]), ("(batch)", "Batch", "Tests",
+             f"{len(recs)} (PASS {counts.get('PASS', 0)}, FAIL {counts.get('FAIL', 0)}, ERROR {counts.get('ERROR', 0)})"),
+            ("(batch)", "Batch", "Duration (s)", str(batch["seconds"]))]
+    for key, value in batch["rules"].items():
+        info.append(("(batch)", "Rules", key, ", ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value)))
+    checks, mism, dups, missing, extra = [], [], [], [], []
+    for rec in recs:
+        name, res = rec["test"], rec["result"]
+        if res is None:
+            info += [(name, s, i, v) for s, i, v in _info_rows(rec["source_info"], rec["target_info"])]
+            info.append((name, "Error", "Message", rec["error"]))
+            continue
+        ev = evidence_frame(res)
+        info += [(name, r.section, r.item, r.value) for r in ev.itertuples()]
+        keys = res["keys"]
+        checks.append(res["checks"].assign(test=name)[["test", "check", "source", "target", "status"]])
+        m = res["mismatches"]
+        if len(m):
+            mism.append(pd.DataFrame({"test": name, "key": _key_text(m, keys), "column": m["column"], "issue": m["issue"],
+                                      "source": m["source"], "target": m["target"]}))
+        for side, frame in (("source", res["dup_source"]), ("target", res["dup_target"])):
+            if len(frame):
+                g = frame.assign(key=_key_text(frame, keys)).drop_duplicates("key")
+                dups.append(pd.DataFrame({"test": name, "side": side, "key": g["key"], "duplicate_count": g["duplicate_count"]}))
+        for store, frame in ((missing, res["only_in_source"]), (extra, res["only_in_target"])):
+            if len(frame):
+                store.append(pd.DataFrame({"test": name, "key": _key_text(frame, keys), "row": _row_text(frame, keys)}))
+    out = {"Batch Summary": ("Batch Summary", summary),
+           "Batch Run Info": ("Batch Run Info", pd.DataFrame(info, columns=["test", "section", "item", "value"]))}
+    for sheet, frames in (("All Checks", checks), ("All Mismatches", mism), ("All Duplicates", dups),
+                          ("All Missing Rows", missing), ("All Extra Rows", extra)):
+        if frames:
+            out[sheet] = (sheet, pd.concat(frames, ignore_index=True))
+    return out
+
+
+def _batch_parts(batch, detail_sheets=True):
+    """Every sheet to write, splitting frames over EXPORT_ROW_CAP into numbered parts (never truncating)."""
+    wanted = dict(batch_frames(batch))
+    if detail_sheets:
+        for rec in batch["records"]:
+            if rec["result"] is not None and len(rec["result"]["full"]):
+                wanted[f"T{rec['index']:02d} Full Data"] = ("Full Data", rec["result"]["full"])
+    parts = {}
+    for name, (base, frame) in wanted.items():
+        n = max(1, -(-len(frame) // EXPORT_ROW_CAP))
+        for i in range(n):
+            parts[name if n == 1 else f"{name} {i + 1}"[:31]] = (base, frame.iloc[i * EXPORT_ROW_CAP:(i + 1) * EXPORT_ROW_CAP])
+    return parts
+
+
+def build_batch_xlsx(batch, detail_sheets=True):
+    """One workbook for the whole run: summary, run info with every SQL, stacked results, per-test detail."""
+    try:
+        import xlsxwriter  # noqa: F401
+        engine, options = "xlsxwriter", {"engine_kwargs": {"options": {"strings_to_urls": False}}}
+    except ImportError:
+        engine, options = "openpyxl", {}
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine=engine, **options) as writer:
+        for sheet, (base, frame) in _batch_parts(batch, detail_sheets).items():
+            frame.astype(object).where(frame.notna(), None).to_excel(writer, sheet_name=sheet[:31], index=False)
+            if engine == "xlsxwriter":
+                _highlight_sheet(writer, sheet[:31], base, frame)
+    return out.getvalue()
+
+
+def build_batch_json(batch):
+    summary = batch_summary(batch)
+    tests = []
+    for rec in batch["records"]:
+        item = {"test": rec["test"], "status": rec["status"], "seconds": rec["seconds"], "error": rec["error"],
+                "source": rec["source_info"], "target": rec["target_info"]}
+        if rec["result"] is not None:
+            res = rec["result"]
+            item.update(full_counts=res["full_counts"], mismatched_cells=res["total_mismatch_cells"],
+                        checks=res["checks"].astype(object).where(res["checks"].notna(), None).to_dict("records"),
+                        insights=res["insights"].to_dict("records"))
+        tests.append(item)
+    return json.dumps({"batch_id": batch["batch_id"], "generated_utc": batch["generated_utc"], "run_by": batch["run_by"],
+                       "rules": batch["rules"], "seconds": batch["seconds"],
+                       "summary": summary.astype(object).where(summary.notna(), None).to_dict("records"),
+                       "tests": tests}, indent=2, default=str).encode()
+
+
+def build_batch_html(batch):
+    """Self-contained evidence for the whole run: summary first, then each test's full report in a collapsible section."""
+    esc = html.escape
+    summary = batch_summary(batch)
+    counts = summary["status"].value_counts()
+    ok = not counts.get("FAIL", 0) and not counts.get("ERROR", 0)
+    parts = [f"<h1>{APP_NAME} - Batch Evidence Report</h1>"
+             f'<div class="muted">Batch {esc(batch["batch_id"])} | {esc(batch["generated_utc"])} | run by {esc(batch["run_by"])}'
+             f' | v{APP_VERSION} <button onclick="window.print()">Print / Save as PDF</button></div>'
+             f'<div class="banner {"pass" if ok else "fail"}">{"PASS" if ok else "ATTENTION"} - {len(summary)} tests: '
+             f'{counts.get("PASS", 0)} passed, {counts.get("FAIL", 0)} failed, {counts.get("ERROR", 0)} errors</div>',
+             "<h2>Summary</h2>", _table(summary.drop(columns=["error"]) if not summary["error"].any() else summary,
+                                       lambda r, c: _STATUS_CLASS.get(str(r[c]), "") if c == "status" else "")]
+    for rec in batch["records"]:
+        label = f'{rec["index"]}. {rec["test"]} - {rec["status"]}'
+        if rec["result"] is None:
+            sql = "".join(f"<p><b>{side.title()}</b></p><pre>{esc(rec[side + '_info'].get('sql', ''))}</pre>" for side in ("source", "target"))
+            parts.append(f'<details><summary><b>{esc(label)}</b></summary><div class="banner fail">{esc(rec["error"])}</div>{sql}</details>')
+        else:
+            parts.append(f"<details><summary><b>{esc(label)}</b></summary>{_report_body(rec['result'])}</details>")
+    body = "\n".join(parts)
+    fingerprint = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    footer = f"<footer>Report content SHA-256: {fingerprint}<br>Generated by {APP_NAME} v{APP_VERSION}.</footer>"
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{APP_NAME} batch evidence {esc(batch["batch_id"])}</title>'
+            f"<style>{_CSS}details{{margin:12px 0;border:1px solid #dfe2ea;border-radius:8px;padding:6px 12px}}</style></head>"
+            f"<body>{body}{footer}</body></html>").encode("utf-8")
 
 
 # --------------------------------------------------------------------------
@@ -997,10 +1359,10 @@ def pwd_key(name):
 
 
 def get_password(config, name):
-    """Session password, else the encrypted one saved with the connection."""
+    """Session password, else the one from the connection (env variable, encrypted token or config file)."""
     key = pwd_key(name)
     if not st.session_state.get(key):
-        pw = decrypt_password(config["connections"].get(name, {}).get("password_enc"))
+        pw = resolve_conn_password(config["connections"].get(name, {}))
         if pw:
             st.session_state[key] = pw
     return st.session_state.get(key, "")
@@ -1009,7 +1371,13 @@ def get_password(config, name):
 def connections_panel(config):
     with st.expander("Database connections (saved locally; saved passwords are encrypted)"):
         conns = config["connections"]
-        pick = st.selectbox("Load connection", [NEW] + sorted(conns), key="cx_pick")
+        default_names = config.get("_default_names", {}).get("connections", set())
+        if config.get("_defaults_path"):
+            st.caption(f"Default connections loaded from {config['_defaults_path']} ({len(default_names)} available in every session).")
+        for problem in config.get("_defaults_problems", []):
+            st.warning(problem)
+        pick = st.selectbox("Load connection", [NEW] + sorted(conns), key="cx_pick",
+                            format_func=lambda n: f"{n} (default)" if n in default_names else n)
         if st.session_state.get("cx_loaded") != pick:
             saved = conns.get(pick, {})
             for field, default in dict(name="" if pick == NEW else pick,
@@ -1034,7 +1402,9 @@ def connections_panel(config):
         remember = st.checkbox("Remember password (encrypted on this machine)", key="cx_remember")
         b1, b2, b3 = st.columns(3)
         if b1.button("Save connection"):
-            if not name.strip() or not database.strip():
+            if name.strip() in default_names:
+                st.error(f"'{name.strip()}' is a default connection managed by the config file. Save it under another name.")
+            elif not name.strip() or not database.strip():
                 st.error("Name and database are required.")
             else:
                 if remember and password:
@@ -1056,11 +1426,14 @@ def connections_panel(config):
                 st.success("Connection succeeded.")
             except Exception as err:
                 st.error(f"Connection failed: {err}")
-        if b3.button("Delete saved connection") and pick in conns:
-            del conns[pick]
-            save_config(config)
-            st.session_state["cx_loaded"] = None
-            st.rerun()
+        if b3.button("Delete saved connection"):
+            if pick in default_names:
+                st.error("Default connections come from the config file and can't be deleted here.")
+            elif pick in conns:
+                del conns[pick]
+                save_config(config)
+                st.session_state["cx_loaded"] = None
+                st.rerun()
 
 
 def side_input(label, prefix, config):
@@ -1084,8 +1457,12 @@ def side_input(label, prefix, config):
         return load
 
     conns, queries = config["connections"], config["queries"]
+    default_names = config.get("_default_names", {}).get("connections", set())
+    preferred = config.get("_default_source" if prefix == "src" else "_default_target")
+    if preferred in conns:  # configured default connection is preselected once per session
+        st.session_state.setdefault(f"{prefix}_conn", preferred)
     cname = st.selectbox("Connection", [""] + sorted(conns), key=f"{prefix}_conn",
-                         format_func=lambda n: n or "-- select --")
+                         format_func=lambda n: "-- select --" if not n else (f"{n} (default)" if n in default_names else n))
     qname = st.selectbox("Saved query", [""] + sorted(queries), key=f"{prefix}_saved",
                          format_func=lambda n: n or "-- none --")
     if st.session_state.get(f"{prefix}_qloaded") != qname:
@@ -1118,7 +1495,7 @@ def side_input(label, prefix, config):
     return load
 
 
-def show_result(result, names):
+def show_result(result, names, key_prefix=""):
     verdict = st.success if result["passed"] else st.error
     verdict(f"{'PASS' if result['passed'] else 'FAIL'} - {result['mode']}")
     m = st.columns(5)
@@ -1147,13 +1524,13 @@ def show_result(result, names):
         st.session_state["_ready_downloads"] = {}
         st.session_state["_dl_run"] = run_id
     download(d1, "Download Excel report", lambda: build_xlsx(result), f"equaliser_report_{rid}.xlsx",
-             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "dl_xlsx")
+             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f"{key_prefix}dl_xlsx")
     download(d2, "Download CSV reports (zip)", lambda: build_csv_zip(result), f"equaliser_reports_{rid}.zip",
-             "application/zip", "dl_zip")
+             "application/zip", f"{key_prefix}dl_zip")
     download(d3, "Download JSON summary", lambda: build_json(result), f"equaliser_summary_{rid}.json",
-             "application/json", "dl_json")
+             "application/json", f"{key_prefix}dl_json")
     download(d4, "Download evidence report (HTML)", lambda: build_html(result),
-             f"equaliser_evidence_{rid}.html", "text/html", "dl_html")
+             f"equaliser_evidence_{rid}.html", "text/html", f"{key_prefix}dl_html")
 
     def paint(columns, color):
         return lambda row: [f"background-color: {color}" if c in columns else "" for c in row.index]
@@ -1208,7 +1585,7 @@ def show_result(result, names):
     if not result["include_matched"]:
         st.caption("Matched rows are not listed (counted only). Tick 'Include matched rows' in the rules to list them.")
     shown_status = sorted(full["status"].unique())
-    chosen = st.multiselect("Show statuses", shown_status, default=shown_status, key="full_status")
+    chosen = st.multiselect("Show statuses", shown_status, default=shown_status, key=f"{key_prefix}full_status")
     view = full[full["status"].isin(chosen)]
     if len(view) > DISPLAY_ROWS:
         st.caption(f"Showing first {DISPLAY_ROWS:,} of {len(view):,}; the Excel/CSV download has every row.")
@@ -1236,12 +1613,152 @@ def show_result(result, names):
     table("Rows only in target", result["only_in_target"])
 
 
+def batch_mode(config):
+    """Screen for running many source/target query pairs together."""
+    conns = config["connections"]
+    st.header("Multiple queries in one run")
+    st.caption("Each row is one test: a source query and a target query, compared by key. "
+               "All tests run together and are reported in one Excel workbook.")
+    if not conns:
+        st.info("Add or configure at least one database connection first (expander above).")
+    state = st.session_state
+    if "batch_df" not in state:
+        state["batch_df"], state["batch_ver"] = pd.DataFrame([{
+            "test": "Test 1", "source_connection": config.get("_default_source") or "",
+            "source_sql": "", "target_connection": config.get("_default_target") or "", "target_sql": "",
+            "keys": "", "ignore": ""}], columns=BATCH_COLUMNS), 0
+
+    c1, c2, c3 = st.columns([2, 2, 1])
+    saved = c1.selectbox("Load a saved test list", [""] + sorted(config["batches"]), format_func=lambda n: n or "-- none --")
+    if saved and state.get("batch_loaded") != saved:
+        state["batch_df"] = pd.DataFrame(config["batches"][saved]).reindex(columns=BATCH_COLUMNS).fillna("")
+        state["batch_ver"] += 1
+        state["batch_loaded"] = saved
+    up = c2.file_uploader("...or upload a test list (CSV / Excel)", type=["csv", "xlsx", "xls"], key="batch_upload")
+    if up is not None and state.get("batch_upload_seen") != (up.name, up.size):
+        try:
+            loaded = read_file(up)
+            loaded.columns = [str(c).strip().lower() for c in loaded.columns]
+            state["batch_df"] = loaded.reindex(columns=BATCH_COLUMNS).fillna("")
+            state["batch_ver"] += 1
+            state["batch_upload_seen"] = (up.name, up.size)
+        except Exception as err:
+            st.error(f"Could not read the test list: {err}")
+    c3.download_button("Template (CSV)", pd.DataFrame([{
+        "test": "Customers", "source_connection": "Legacy system", "source_sql": "SELECT * FROM customers",
+        "target_connection": "New platform", "target_sql": "SELECT * FROM customers", "keys": "customer_id",
+        "ignore": "etl_loaded_at"}], columns=BATCH_COLUMNS).to_csv(index=False).encode("utf-8-sig"),
+        "equaliser_test_list_template.csv", "text/csv", key="batch_template")
+
+    width = {"width": "stretch"} if MODERN_ST else {"use_container_width": True}
+    cfg = {"source_connection": st.column_config.SelectboxColumn("source_connection", options=sorted(conns)),
+           "target_connection": st.column_config.SelectboxColumn("target_connection", options=sorted(conns)),
+           "source_sql": st.column_config.TextColumn("source_sql", width="large"),
+           "target_sql": st.column_config.TextColumn("target_sql", width="large"),
+           "keys": st.column_config.TextColumn("keys", help="Comma-separated key columns; blank = default keys / whole row"),
+           "ignore": st.column_config.TextColumn("ignore", help="Comma-separated columns to ignore")}
+    edited = st.data_editor(state["batch_df"], num_rows="dynamic", column_config=cfg, hide_index=True,
+                            key=f"batch_editor_{state['batch_ver']}", **width)
+    s1, s2 = st.columns([3, 1])
+    save_as = s1.text_input("Save this test list as", label_visibility="collapsed", placeholder="Save this test list as...", key="batch_saveas")
+    if s2.button("Save list") and save_as.strip():
+        try:
+            tests = parse_tests(edited)
+            if save_as.strip() in config.get("_default_names", {}).get("batches", set()):
+                st.error("That name is a default test list from the config file. Choose another name.")
+            else:
+                config["batches"][save_as.strip()] = tests
+                save_config(config)
+                st.toast(f"Saved test list '{save_as.strip()}'")
+        except ValueError as err:
+            st.error(str(err))
+
+    st.subheader("Rules for every test")
+    rules_cfg = config["rules"]
+    pick = st.selectbox("Apply a saved rule set", [""] + sorted(rules_cfg), format_func=lambda n: n or "-- defaults --", key="batch_ruleset")
+    base = rules_cfg.get(pick, {})
+    suffix = f"_{pick}"  # new rule set -> new widgets with that set's values
+    o = st.columns(4)
+    trim = o[0].checkbox("Trim whitespace", base.get("r_trim", True), key=f"b_trim{suffix}")
+    empty = o[1].checkbox("Treat empty text as NULL", base.get("r_empty", True), key=f"b_empty{suffix}")
+    nocase = o[2].checkbox("Ignore value case", base.get("r_case", False), key=f"b_case{suffix}")
+    tol = o[3].number_input("Numeric tolerance", 0.0, value=float(base.get("r_tol", 0.0)), format="%g", step=0.01, key=f"b_tol{suffix}")
+    nulltok = st.text_input("Treat these values as NULL when comparing (comma-separated; blank = off)",
+                            base.get("r_nulltok", DEFAULT_NULL_TOKENS), key=f"b_nulltok{suffix}")
+    m = st.columns(3)
+    fast = m[0].checkbox("Full data validation only (fast)", base.get("r_fast", False), key=f"b_fast{suffix}")
+    matched = m[1].checkbox("List matched rows (slower, bigger)", base.get("r_matched", False), key=f"b_matched{suffix}")
+    max_rows = m[2].number_input("Max rows per query (0 = all)", 0, step=10_000, key="b_maxrows")
+    details = st.checkbox("Add a Full Data detail sheet per test to the Excel workbook", True, key="b_details")
+
+    if st.button("Run all tests", type="primary"):
+        try:
+            tests = parse_tests(edited)
+        except ValueError as err:
+            st.error(str(err))
+            tests = None
+        if tests:
+            rules = {**default_batch_rules(), "keys": base.get("r_keys", []), "ignore": base.get("r_ignore", []),
+                     "agg_cols": base.get("r_agg", []), "group_by": base.get("r_group", []), "trim": trim,
+                     "empty_is_null": empty, "ignore_case": nocase, "tol": tol, "null_tokens": _split(nulltok),
+                     "markers": _split(base.get("r_markers", DEFAULT_MARKERS)), "count_tol_abs": base.get("r_cnt_abs", 0),
+                     "count_tol_pct": base.get("r_cnt_pct", 0.0), "fast": fast, "include_matched": matched}
+            bar = st.progress(0.0, text="Starting...")
+            batch = run_batch(tests, conns, lambda n: get_password(config, n), rules, int(max_rows),
+                              lambda done, total, name: bar.progress(done / total, text=f"Running {done + 1} of {total}: {name}" if name else "Done"))
+            bar.empty()
+            batch["detail_sheets"] = details
+            state["batch"] = batch
+
+    batch = state.get("batch")
+    if not batch:
+        return
+    st.header("Batch results")
+    summary = batch_summary(batch)
+    counts = summary["status"].value_counts()
+    t = st.columns(5)
+    t[0].metric("Tests", len(summary))
+    t[1].metric("Passed", int(counts.get("PASS", 0)))
+    t[2].metric("Failed", int(counts.get("FAIL", 0)))
+    t[3].metric("Errors", int(counts.get("ERROR", 0)))
+    t[4].metric("Mismatched cells", int(summary.get("mismatched_cells", pd.Series(dtype=float)).fillna(0).sum()))
+    st.caption(f"Batch {batch['batch_id']} finished in {batch['seconds']}s. Reports are built when you click a download button.")
+    paint = lambda row: [f"background-color: {'#d8f3dc' if row['status'] == 'PASS' else '#ffd6d6'}" if c == "status" else "" for c in row.index]
+    view = summary.astype("string").fillna("")
+    try:
+        show_df(st, view.style.apply(paint, axis=1))
+    except (ImportError, AttributeError):
+        show_df(st, view)
+    if state.get("_batch_dl") != batch["batch_id"]:
+        state["_ready_downloads"], state["_batch_dl"] = {}, batch["batch_id"]
+    d1, d2, d3 = st.columns(3)
+    bid = batch["batch_id"]
+    download(d1, "Download combined Excel workbook", lambda: build_batch_xlsx(batch, batch.get("detail_sheets", True)),
+             f"equaliser_batch_{bid}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "bdl_xlsx")
+    download(d2, "Download batch evidence (HTML)", lambda: build_batch_html(batch), f"equaliser_batch_evidence_{bid}.html",
+             "text/html", "bdl_html")
+    download(d3, "Download batch summary (JSON)", lambda: build_batch_json(batch), f"equaliser_batch_{bid}.json",
+             "application/json", "bdl_json")
+
+    names = [f"{r['index']}. {r['test']} - {r['status']}" for r in batch["records"]]
+    chosen = st.selectbox("Show details for a test", names, key="batch_detail_pick")
+    rec = batch["records"][names.index(chosen)]
+    if rec["result"] is None:
+        st.error(rec["error"])
+    else:
+        show_result(rec["result"], (rec["source_info"].get("name", "Source"), rec["target_info"].get("name", "Target")),
+                    key_prefix=f"b{rec['index']}_")
+
+
 def main():
     st.set_page_config(page_title=APP_NAME, layout="wide")
     st.title(f"{APP_NAME} - migration reconciliation")
     st.caption("Compare file or SQL results on either side, matched by key.")
     config = load_config()
     connections_panel(config)
+    if st.radio("Mode", ["Single comparison", "Multiple queries (one run)"], horizontal=True, key="app_mode") != "Single comparison":
+        batch_mode(config)
+        return
 
     st.header("1 - Source and target")
     left, right = st.columns(2)
@@ -1271,6 +1788,10 @@ def main():
     for col, frame, name in ((p1, src, names[0]), (p2, tgt, names[1])):
         col.caption(f"{name}: {len(frame):,} rows x {len(frame.columns)} columns")
         show_df(col, frame.head(10).astype("string"))
+
+    cells = max(len(src) * len(src.columns), len(tgt) * len(tgt.columns))
+    st.caption(f"Estimated peak memory for this comparison: about {max(cells / 1e6 * 0.16, 0.05):.1f} GB "
+               "(measured at ~0.1-0.16 GB per million cells of one side; each open browser session holds its own copy).")
 
     st.header("2 - Rules")
     norm = lambda df: [str(c).strip().lower() for c in df.columns]
